@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "principle": "Location only. Function, seniority and experience are each person's own choices (include/exclude, rubric): a wrongly rejected posting is never scored, so nobody ever learns it was good.",
+  "rules": [
+    {
+      "id": "HARD_LOCATION_NONEU",
+      "where": "location",
+      "action": "reject",
+      "pattern": "united states|\\busa?\\b|u\\.s\\.|canada|australia|new zealand|singapore|japan|korea|\\bindia\\b|brazil|mexico|china|hong kong|dubai|\\buae\\b|israel|south africa|london|united kingdom|\\buk\\b|\\buki\\b",
+      "note": "Non-EU location or non-EU remote (section 1). Must run BEFORE HARD_LOCATION: 'United States, Remote' satisfies a bare 'remote' requirement, so without this rule every US-remote posting passes."
+    },
+    {
+      "id": "HARD_LOCATION",
+      "where": "location",
+      "action": "require",
+      "pattern": "berlin|deutschland|german|europe|\\beu\\b|emea|dach|hybrid|remote|worldwide|anywhere|global|work from",
+      "note": "Berlin on-site/hybrid or EU-remote (section 1). Skipped when the feed gives no location - unknown is not disqualifying. Bare 'remote' passes here only because the non-EU rule above has already run."
+    }
+  ]
+}

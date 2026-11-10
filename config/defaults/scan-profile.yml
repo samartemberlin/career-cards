@@ -1,0 +1,7 @@
+# What the shared scan knows about "the candidate": only the country, for career-ops' location pass-through.
+# Not a person. Per-person targets live in config/people/<p>/ and are merged by src/search.mjs.
+location:
+  country: "Germany"
+  city: "Berlin"
+target_roles:
+  primary: []
