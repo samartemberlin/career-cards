@@ -34,7 +34,7 @@ function listsBoards(u: URL): boolean {
 export function denyBoardListing(f: typeof fetch): typeof fetch {
   return (async (input: string | URL | Request, init?: RequestInit) => {
     const u = urlOf(input);
-    if (listsBoards(u)) throw new SampleGuardError(`refused: ${u.pathname} is a board listing or search`);
+    if (listsBoards(u)) throw new SampleGuardError(`refused: ${u.pathname} lists boards or searches (board listing refused)`);
     return f(input, init);
   }) as typeof fetch;
 }

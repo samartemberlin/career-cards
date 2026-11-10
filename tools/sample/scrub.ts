@@ -34,7 +34,8 @@ function collectIds(rec: Recording): string[] {
   return [...ids].sort();
 }
 
-/** Ids are renumbered in sorted order of the real ids, so `before=` paging over the scrubbed ids still works. */
+/** Ids are renumbered in sorted order of the real ids, so `before=` paging over the scrubbed ids still works.
+ *  The id and short-URL maps live for one call: scrub files that must agree together, via scrubRecordings. */
 export function scrubRecording(rec: Recording, o: { botUsername: string }): Recording {
   const ids = new Map(collectIds(rec).map((id, i) => [id, `fa4e${(i + 1).toString(16).padStart(20, '0')}`]));
   const shortUrls = new Map<string, string>();

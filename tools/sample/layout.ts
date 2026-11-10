@@ -1,4 +1,3 @@
-// What the three sample boards hold: one made-up person, "Alex Example", with two profiles.
 import { jobCardDesc, jobCardTitle, RUN_SUMMARY_PREFIX } from '../../src/trello/cards.ts';
 import type { SampleBoard } from './guard.ts';
 
