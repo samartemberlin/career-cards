@@ -114,7 +114,6 @@ test('write responses have the captured shape', async () => {
 
   for (const w of writes) {
     const url = new URL(`https://api.trello.com/1${w.path}`);
-    const isJson = typeof w.body === 'object' && w.body !== null;
     const init: RequestInit = {
       method: w.method,
       headers: { authorization: 'OAuth oauth_consumer_key="k", oauth_token="t"', accept: 'application/json' },
@@ -122,7 +121,6 @@ test('write responses have the captured shape', async () => {
 
     // For POST to /cards and /lists and /labels and /checklists, build a minimal body.
     // We test the shape (key set), not the values.
-    let body: unknown;
     if (w.path === '/cards') {
       // Pick an existing list from the jobs board.
       const jobsRec = load('jobs');
@@ -130,9 +128,8 @@ test('write responses have the captured shape', async () => {
       const lists = JSON.parse(readFileSync(join(DIR, 'jobs.recording.json'), 'utf8')) as Recording;
       const listsEntry = lists.find((c) => c.path === `/boards/${bid}/lists`);
       const listId = (listsEntry!.body as { id: string }[])[0]!.id;
-      body = { idList: listId, name: 'Test', desc: '', pos: 'bottom' };
       url.pathname = '/1/cards';
-      init.body = JSON.stringify(body);
+      init.body = JSON.stringify({ idList: listId, name: 'Test', desc: '', pos: 'bottom' });
       init.headers = { ...init.headers as Record<string, string>, 'content-type': 'application/json' };
     } else if (/^\/cards\/[^/]+\/actions\/comments$/.test(w.path)) {
       init.body = JSON.stringify({ text: 'test comment' });
@@ -146,7 +143,6 @@ test('write responses have the captured shape', async () => {
       init.body = form;
       url.pathname = `/1${w.path}`;
     } else if (/^\/cards\/[^/]+$/.test(w.path) && w.method === 'PUT') {
-      const cardId = w.path.split('/')[2]!;
       init.body = JSON.stringify({ closed: true });
       init.headers = { ...init.headers as Record<string, string>, 'content-type': 'application/json' };
       url.pathname = `/1${w.path}`;

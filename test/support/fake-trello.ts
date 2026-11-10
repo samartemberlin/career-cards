@@ -1,6 +1,5 @@
 // FakeTrello: an in-memory Trello that mirrors captured recordings.
 // Seeds from GET bodies; serves every route createTrelloClient uses.
-// See task-4-brief.md for the contract.
 import type { Recording } from '../../tools/sample/scrub.ts';
 import type {
   TBoard, TMember, TList, TCard, TChecklist, TCheckItem, TLabel, TCardWithList,
