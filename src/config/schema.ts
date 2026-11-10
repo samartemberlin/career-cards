@@ -102,8 +102,10 @@ export const PreferencesSchema: z.ZodType<Preferences> = z.object({
 
 export const UserConfigSchema = z.object({
   settings: SettingsSchema,
-  profiles: z.array(ProfileSchema)
-    .refine((ps) => ps.some((p) => p.active), { message: 'at least one profile must be active' }),
+  profiles: z.array(ProfileSchema).superRefine((ps, ctx) => {
+    if (!ps.length) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'no profile column found' });
+    else if (!ps.some((p) => p.active)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'at least one profile must be active' });
+  }),
   sharedCv: z.string(),
   // The masking list; with nothing in it, masking has nothing to remove, so the user is not run.
   personalDetails: z.array(z.string().min(1)).min(1),

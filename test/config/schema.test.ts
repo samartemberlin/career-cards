@@ -95,3 +95,10 @@ test('unknown keys fail and the message names the key', () => {
   assert.match(PreferencesSchema.safeParse({ years_experiance: 2 }).error!.message, /years_experiance/);
   assert.match(PreferencesSchema.safeParse({ penalties: { driving_license: { points: 1 } } }).error!.message, /driving_license/);
 });
+
+test('a board with no profile column says so, not that a profile must be active', () => {
+  const r = UserConfigSchema.safeParse(userIn({ profiles: [] }));
+  assert.equal(r.success, false);
+  assert.match(r.error!.message, /no profile column found/);
+  assert.doesNotMatch(r.error!.message, /must be active/);
+});
