@@ -75,4 +75,5 @@ test('closed board is refused', async () => {
   const closedProblems = problems.filter((p): p is PrivacyProblem => p.reason === 'closed');
   assert.equal(closedProblems.length, 1);
   assert.equal(closedProblems[0]!.board, boards[0]);
+  assert.equal(closedProblems[0]!.detail, 'board is closed');
 });

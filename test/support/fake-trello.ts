@@ -525,6 +525,7 @@ export class FakeTrello {
 
   /** Add a member to a board's member list (affects boardMembers() responses). */
   addBoardMember(boardId: string, member: TMember): void {
+    if (!this._boards.has(boardId)) throw new Error(`FakeTrello.addBoardMember: board ${boardId} not found`);
     const members = this._boardMembers.get(boardId) ?? [];
     this._boardMembers.set(boardId, [...members, { id: member.id, username: member.username }]);
   }
