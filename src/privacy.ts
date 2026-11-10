@@ -1,3 +1,6 @@
+import type { Profile, UserConfig } from './config/schema.ts';
+import type { LlmConfig } from './pipeline/llm.ts';
+
 export class PrivacyError extends Error {
   constructor(message: string) {
     super(message);
@@ -133,4 +136,36 @@ export function buildMasker(details: string[]): Masker {
 
 export function maskText(text: string, m: Masker): string {
   return m.mask(text);
+}
+
+declare const MASKED: unique symbol;
+
+/** Everything the scorer sends about a person. Only buildScoreContext makes one: the brand stops a hand-built
+ * object at compile time, and isMaskedContext stops a cast or a copy at run time. */
+export type MaskedContext = Readonly<{ rubric: string; cv: string; llm: LlmConfig; translateTitle: boolean }> & {
+  readonly [MASKED]: true;
+};
+
+const built = new WeakSet<object>();
+
+/** The one place prompt text about a person is built. Throws PrivacyError (fails closed) if masking cannot be trusted. */
+export function buildScoreContext(input: {
+  user: Pick<UserConfig, 'sharedCv' | 'personalDetails'>;
+  profile: Pick<Profile, 'rubric' | 'cv'>;
+  llm: LlmConfig;
+  translateTitle: boolean;
+}): MaskedContext {
+  const m = buildMasker(input.user.personalDetails);
+  const ctx = Object.freeze({
+    rubric: maskText(input.profile.rubric, m),
+    cv: maskText(input.profile.cv ?? input.user.sharedCv, m),
+    llm: input.llm,
+    translateTitle: input.translateTitle,
+  }) as MaskedContext;
+  built.add(ctx);
+  return ctx;
+}
+
+export function isMaskedContext(ctx: unknown): ctx is MaskedContext {
+  return typeof ctx === 'object' && ctx !== null && built.has(ctx);
 }

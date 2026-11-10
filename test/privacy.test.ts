@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildMasker, maskText, classifyDetail, PrivacyError } from '../src/privacy.ts';
+import { buildMasker, buildScoreContext, maskText, classifyDetail, PrivacyError } from '../src/privacy.ts';
+import type { LlmConfig } from '../src/pipeline/llm.ts';
 
 describe('privacy masking', () => {
   it('masks name variants with case and spacing differences', () => {
@@ -105,5 +106,26 @@ describe('privacy masking', () => {
     const text = 'Job in Berlin, worked 2019-2021 and 2019–2021, deadline 2026-11-30, salary 50000-60000 EUR, 50.000 - 60.000';
     assert.strictEqual(maskText(text, m), text);
     assert.strictEqual(maskText('call 0170/5550123 or 030 1234 5678 or 030-1234567.', m), 'call [PHONE] or [PHONE] or [PHONE].');
+  });
+});
+
+describe('buildScoreContext', () => {
+  const llm: LlmConfig = { name: 'one', apiKey: 'k', baseUrl: 'http://x', model: 'm' };
+  const user = { sharedCv: 'Alex Example, alex@example.com, Berlin', personalDetails: ['Alex Example'] };
+
+  it('masks the rubric and the CV, preferring the profile CV over the shared one', () => {
+    const shared = buildScoreContext({ user, profile: { rubric: 'Score Alex Example highly' }, llm, translateTitle: true });
+    assert.deepEqual([shared.rubric, shared.cv, shared.translateTitle], ['Score [USER] highly', '[USER], [EMAIL], Berlin', true]);
+    const own = buildScoreContext({ user, profile: { rubric: 'R', cv: 'Alex Example, editor' }, llm, translateTitle: false });
+    assert.equal(own.cv, '[USER], editor');
+  });
+
+  it('is frozen, so masked text cannot be swapped afterwards', () => {
+    const ctx = buildScoreContext({ user, profile: { rubric: 'R' }, llm, translateTitle: false });
+    assert.throws(() => { (ctx as { cv: string }).cv = 'Alex Example'; }, TypeError);
+  });
+
+  it('fails closed without personal details', () => {
+    assert.throws(() => buildScoreContext({ user: { ...user, personalDetails: [] }, profile: { rubric: 'R' }, llm, translateTitle: false }), PrivacyError);
   });
 });

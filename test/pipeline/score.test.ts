@@ -6,11 +6,15 @@ import { join } from 'node:path';
 import type { Job } from '../../src/pipeline/keys.ts';
 import type { FetchJson, LlmConfig } from '../../src/pipeline/llm.ts';
 import { buildMessages, parseScore, scoreAll, scoreJob, shareOf } from '../../src/pipeline/score.ts';
-import type { ScoreContext, ScoreResult } from '../../src/pipeline/score.ts';
+import type { ScoreResult } from '../../src/pipeline/score.ts';
+import { buildScoreContext } from '../../src/privacy.ts';
+import type { MaskedContext } from '../../src/privacy.ts';
 
 const job = (key: string, o: Partial<Job> = {}): Job => ({ key, url: `https://x.example/${key}`, company: 'c', title: 't', ...o });
 const llm: LlmConfig = { name: 'one', apiKey: 'k', baseUrl: 'http://x', model: 'm' };
-const ctxOf = (l: LlmConfig = llm): ScoreContext => ({ rubric: 'R', cv: 'C', llm: l, translateTitle: false, masked: true });
+const ctxOf = (l: LlmConfig = llm): MaskedContext => buildScoreContext({
+  user: { sharedCv: 'C', personalDetails: ['Alex Example'] }, profile: { rubric: 'R' }, llm: l, translateTitle: false,
+});
 
 /** A fetch stand-in that answers each scoring request with a valid score for the key in the prompt. */
 function scorer(score = 6) {
@@ -78,12 +82,12 @@ test('prompt asks for title_en only when translation is on, and has no feedback 
   assert.match(on, /already English/);
 });
 
-test('scoreJob refuses a context without masked: true', async () => {
+test('scoreJob refuses a context that buildScoreContext did not build', async () => {
   const { keys, fetchImpl } = scorer();
-  const unmasked = { ...ctxOf(), masked: false } as unknown as ScoreContext;
-  await assert.rejects(scoreJob(unmasked, job('a'), { fetchImpl }), /refusing to score/);
-  const missing = { rubric: 'R', cv: 'C', llm, translateTitle: false } as unknown as ScoreContext;
-  await assert.rejects(scoreJob(missing, job('a'), { fetchImpl }), /refusing to score/);
+  const handMade = { rubric: 'R', cv: 'C', llm, translateTitle: false, masked: true } as unknown as MaskedContext;
+  await assert.rejects(scoreJob(handMade, job('a'), { fetchImpl }), /refusing to score/);
+  const copied = { ...ctxOf() } as MaskedContext;
+  await assert.rejects(scoreJob(copied, job('a'), { fetchImpl }), /refusing to score/);
   assert.equal(keys.length, 0); // nothing was sent
   const r = await scoreJob(ctxOf(), job('a'), { fetchImpl });
   assert.deepEqual([r.key, r.score, r.model], ['a', 6, 'one:m']);
