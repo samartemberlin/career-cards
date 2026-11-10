@@ -135,12 +135,10 @@ test('write responses have the captured shape', async () => {
       init.body = JSON.stringify(body);
       init.headers = { ...init.headers as Record<string, string>, 'content-type': 'application/json' };
     } else if (/^\/cards\/[^/]+\/actions\/comments$/.test(w.path)) {
-      const cardId = w.path.split('/')[2]!;
       init.body = JSON.stringify({ text: 'test comment' });
       init.headers = { ...init.headers as Record<string, string>, 'content-type': 'application/json' };
       url.pathname = `/1${w.path}`;
     } else if (/^\/cards\/[^/]+\/attachments$/.test(w.path)) {
-      const cardId = w.path.split('/')[2]!;
       const form = new FormData();
       form.set('name', 'test.md');
       form.set('mimeType', 'text/markdown');
@@ -176,7 +174,6 @@ test('write responses have the captured shape', async () => {
       init.headers = { ...init.headers as Record<string, string>, 'content-type': 'application/json' };
       url.pathname = '/1/checklists';
     } else if (/^\/checklists\/[^/]+\/checkItems$/.test(w.path)) {
-      const checklistId = w.path.split('/')[2]!;
       init.body = JSON.stringify({ name: 'Test item' });
       init.headers = { ...init.headers as Record<string, string>, 'content-type': 'application/json' };
       url.pathname = `/1${w.path}`;
