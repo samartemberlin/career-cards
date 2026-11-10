@@ -69,7 +69,6 @@ function compileDetail(raw: string, originalIndex: number): CompiledDetail {
 function applyMask(text: string, compiled: readonly CompiledDetail[]): string {
   let out = text;
 
-  // Detail strings first, longest stripped length first (handles substring details correctly).
   for (const { replaceRe, placeholder } of compiled) {
     out = out.replace(replaceRe, placeholder);
   }
