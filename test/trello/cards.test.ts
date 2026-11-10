@@ -8,6 +8,7 @@ import {
   parseJobKey,
   parseTitleScore,
   runColumnName,
+  isRunColumnName,
   shortLocation,
   isRunSummaryTitle,
   RUN_SUMMARY_PREFIX,
@@ -205,4 +206,12 @@ test('RUN_SUMMARY_PREFIX and isRunSummaryTitle', () => {
   assert.ok(isRunSummaryTitle('ℹ️ Run'));
   assert.ok(!isRunSummaryTitle('8 · Co — Title'));
   assert.ok(!isRunSummaryTitle(''));
+});
+
+test('isRunColumnName: true for runColumnName output, false otherwise', () => {
+  assert.ok(isRunColumnName('Nov 10 · 01:00'));
+  assert.ok(isRunColumnName('Mar 9 · 23:59'));
+  assert.ok(!isRunColumnName('To apply'));
+  assert.ok(!isRunColumnName('New · Sat 11 Oct'));
+  assert.ok(!isRunColumnName('Nov 10 · 1:00'));  // single-digit hour not padded
 });
