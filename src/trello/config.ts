@@ -131,6 +131,7 @@ function readSystem(c: Collector, raw: Record<string, unknown>, lists: TList[], 
     const names = itemsOf([cl]);
     if (norm(cl.name) === 'add') add.push(...names);
     else if (norm(cl.name) === 'drop') drop.push(...names);
+    else c.fail(o, `unknown checklist "${cl.name}"; the Sources checklists are "Add", "Drop"`);
   }
   raw['sources'] = { add, drop };
   c.origin('sources', o);

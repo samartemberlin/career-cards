@@ -219,6 +219,17 @@ test('missing required cards in a profile column are each a problem', async () =
   assert.deepEqual(problems.map((p) => p.where), ['Profiles › Copywriter', 'Profiles › Copywriter']);
 });
 
+test('unknown Sources checklist "Add company" is a problem on the Sources card', async () => {
+  const s = setup(({ system }) => {
+    cardIn(system, 'Config', 'Sources').checklists![0]!.name = 'Add company';
+  });
+  const problems = await problemsOf(s);
+  assert.equal(problems.length, 1);
+  assert.equal(problems[0]!.where, 'System › Sources');
+  assert.equal(problems[0]!.card?.name, 'Sources');
+  assert.match(problems[0]!.message, /"Add company"/);
+});
+
 test('no Sources card means nothing added or dropped', async () => {
   const s = setup(({ system }) => {
     system.cards.splice(system.cards.findIndex((c) => c.name === 'Sources'), 1);
