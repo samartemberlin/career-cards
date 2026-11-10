@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildMasker, maskText, classifyDetail, PrivacyError } from '../src/privacy.ts';
+import { buildMasker, buildScoreContext, maskText, classifyDetail, PrivacyError } from '../src/privacy.ts';
+import type { LlmConfig } from '../src/pipeline/llm.ts';
 
 describe('privacy masking', () => {
   it('masks name variants with case and spacing differences', () => {
@@ -68,5 +69,63 @@ describe('privacy masking', () => {
     const m = buildMasker(['Jane', 'Jane Roe']);
     // 'Jane Roe' must be replaced as one unit, not 'Jane' first leaving 'Roe'
     assert.strictEqual(maskText('Jane Roe applied', m), '[USER] applied');
+  });
+  // Protections from samjobs' anonymize.mjs that the first port lost.
+  it('invisible characters and decomposed letters cannot hide a name', () => {
+    const m = buildMasker(['Theo Example', 'José']);
+    const out = maskText('The\u00ADo Exam\u200Bple and Jose\u0301 wrote', m);
+    assert.strictEqual(out, '[USER] and [USER] wrote');
+  });
+
+  it('the fail-closed check sees through invisible characters', () => {
+    // The detail equals its placeholder, so masking leaves it; the check must still find it behind a zero-width space.
+    const m = buildMasker(['[USER]']);
+    assert.throws(() => maskText('[US\u200BER]', m), PrivacyError);
+  });
+
+  it('bare-domain personal links are masked', () => {
+    const m = buildMasker(['Jane Roe']);
+    const out = maskText('see linkedin.com/in/jane-roe and github.com/janeroe, janeroe.de', m);
+    assert.doesNotMatch(out, /linkedin|github|janeroe|\.de/);
+    assert.strictEqual(maskText('Node.js and e.g. Excel, GPA 3.91', m), 'Node.js and e.g. Excel, GPA 3.91');
+  });
+
+  it('a bare-domain detail is a link', () => {
+    assert.strictEqual(classifyDetail('linkedin.com/in/theo-example'), 'link');
+    const m = buildMasker(['Theo Example', 'linkedin.com/in/theo-example']);
+    assert.strictEqual(maskText('Profile: linkedin.com/in/theo-example', m), 'Profile: [LINK]');
+  });
+
+  it('short names match whole words only; long names also inside joined words', () => {
+    const m = buildMasker(['Theo', 'Josephine']);
+    assert.strictEqual(maskText('Theo moved to Theory; JosephineExample', m), '[USER] moved to Theory; [USER]Example');
+  });
+
+  it('dates, year ranges and number ranges are not phone numbers; slash phones are', () => {
+    const m = buildMasker(['Theo Example']);
+    const text = 'Job in Berlin, worked 2019-2021 and 2019–2021, deadline 2026-11-30, salary 50000-60000 EUR, 50.000 - 60.000';
+    assert.strictEqual(maskText(text, m), text);
+    assert.strictEqual(maskText('call 0170/5550123 or 030 1234 5678 or 030-1234567.', m), 'call [PHONE] or [PHONE] or [PHONE].');
+  });
+});
+
+describe('buildScoreContext', () => {
+  const llm: LlmConfig = { name: 'one', apiKey: 'k', baseUrl: 'http://x', model: 'm' };
+  const user = { sharedCv: 'Alex Example, alex@example.com, Berlin', personalDetails: ['Alex Example'] };
+
+  it('masks the rubric and the CV, preferring the profile CV over the shared one', () => {
+    const shared = buildScoreContext({ user, profile: { rubric: 'Score Alex Example highly' }, llm, translateTitle: true });
+    assert.deepEqual([shared.rubric, shared.cv, shared.translateTitle], ['Score [USER] highly', '[USER], [EMAIL], Berlin', true]);
+    const own = buildScoreContext({ user, profile: { rubric: 'R', cv: 'Alex Example, editor' }, llm, translateTitle: false });
+    assert.equal(own.cv, '[USER], editor');
+  });
+
+  it('is frozen, so masked text cannot be swapped afterwards', () => {
+    const ctx = buildScoreContext({ user, profile: { rubric: 'R' }, llm, translateTitle: false });
+    assert.throws(() => { (ctx as { cv: string }).cv = 'Alex Example'; }, TypeError);
+  });
+
+  it('fails closed without personal details', () => {
+    assert.throws(() => buildScoreContext({ user: { ...user, personalDetails: [] }, profile: { rubric: 'R' }, llm, translateTitle: false }), PrivacyError);
   });
 });

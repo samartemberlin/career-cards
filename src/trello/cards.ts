@@ -36,9 +36,8 @@ export function jobCardTitle(r: {
 // --- description ---------------------------------------------------------
 
 /** Description with the key footer always intact; JD trimmed to fit Trello's limit.
- * The score lives only in the card title — it does not appear in the description. */
+ * The score lives only in the card title; the reason is shown here without it. Facts become labels (jobLabels). */
 export function jobCardDesc(r: Job & {
-  facts?: Facts;
   reason?: string;
   flags?: string[];
   title_en?: string;
@@ -51,6 +50,7 @@ export function jobCardDesc(r: Job & {
     `**Link:** ${r.url}`,
     `**Location:** ${r.location || '—'}  ·  **Posted:** ${r.posted || '—'}  ·  **Deadline:** ${r.deadline || '—'}`,
     '',
+    r.reason ? `**Why:** ${r.reason}` : '',
     r.flags?.length ? `**Flags:** ${r.flags.join(', ')}` : '',
     '',
     '---',
@@ -70,9 +70,10 @@ export function jobCardDesc(r: Job & {
 
 // --- key parsing ---------------------------------------------------------
 
-const KEY_RE = /(?:career-cards|samjobs)-key:\s*(\S+)/;
+// Only the last line: the footer follows the job text, which is untrusted and may carry a key line of its own.
+const KEY_RE = /(?:^|\n)(?:career-cards|samjobs)-key:[ \t]*(\S+)\s*$/;
 
-/** Reads `career-cards-key:` or `samjobs-key:` from a card description. */
+/** Reads `career-cards-key:` or `samjobs-key:` from the last line of a card description. */
 export function parseJobKey(desc: string): string | null {
   return KEY_RE.exec(desc)?.[1] ?? null;
 }

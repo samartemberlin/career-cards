@@ -1,9 +1,11 @@
 // LLM scoring against a person's rubric. Ported from samjobs' score.mjs and budget.mjs.
 // No files and no rubric versioning here: the caller passes only jobs that still need a score, and stores each
-// result itself (onResult). The rubric and CV must already be masked (see ScoreContext.masked).
+// result itself (onResult). The context comes from buildScoreContext, which masks the rubric and CV.
+import { isMaskedContext } from '../privacy.ts';
+import type { MaskedContext } from '../privacy.ts';
 import type { Job } from './keys.ts';
 import { QuotaExhausted, callLLM } from './llm.ts';
-import type { CallOpts, LlmConfig, Message, Usage } from './llm.ts';
+import type { CallOpts, Message, Usage } from './llm.ts';
 
 // Only flags that change what the reader should do. Anything else the model invents
 // (e.g. 'salary not stated', true of most postings) is dropped in parseScore.
@@ -12,9 +14,6 @@ export const FLAGS = new Set([
   'driving licence', 'deadline soon', 'discovery', 'suspicious',
 ]);
 const JD_MAX_CHARS = 6000;
-
-/** Everything the scorer sends about a person. `masked: true` is the caller's promise that rubric and CV were masked. */
-export type ScoreContext = { rubric: string; cv: string; llm: LlmConfig; translateTitle: boolean; masked: true };
 
 export type ParsedScore = { key: string; score: number; reason: string; flags: string[]; title_en?: string };
 export type ScoreResult = ParsedScore & { usage: Usage; model: string };
@@ -58,9 +57,8 @@ export function parseScore(text: string, key: string): ParsedScore {
   return { key, score: obj.score, reason: obj.reason.trim().slice(0, 400), flags, ...(titleEn ? { title_en: titleEn } : {}) };
 }
 
-export async function scoreJob(ctx: ScoreContext, job: Job, opts: CallOpts = {}): Promise<ScoreResult> {
-  // Prompt text about a person must be masked before it gets here; an unmasked context is a bug, not a shortcut.
-  if (ctx?.masked !== true) throw new Error('refusing to score: context is not marked masked');
+export async function scoreJob(ctx: MaskedContext, job: Job, opts: CallOpts = {}): Promise<ScoreResult> {
+  if (!isMaskedContext(ctx)) throw new Error('refusing to score: context was not built by buildScoreContext');
   const messages = buildMessages({ rubric: ctx.rubric, cv: ctx.cv, job, translateTitle: ctx.translateTitle });
   let lastErr: Error | undefined;
   for (let i = 0; i < 2; i++) { // one repair retry on malformed output
@@ -95,7 +93,7 @@ export type ScoreAllResult = {
 };
 
 /** Score every job given (the caller passes only unscored ones). Stops cleanly on QuotaExhausted or the deadline. */
-export async function scoreAll(ctx: ScoreContext, jobs: Job[], opts: ScoreAllOpts = {}): Promise<ScoreAllResult> {
+export async function scoreAll(ctx: MaskedContext, jobs: Job[], opts: ScoreAllOpts = {}): Promise<ScoreAllResult> {
   const { concurrency = 3, deadline = Infinity, log = console.log, onResult, outagePauseMs = 120000, outagePauses = 2 } = opts;
   const results: ScoreResult[] = [], errors: { key: string; error: string }[] = [];
   let next = 0, tokens = 0, pauses = 0;

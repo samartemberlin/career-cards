@@ -3,12 +3,9 @@
 //   listing-jsonld  a listing page links to detail pages that carry schema.org JobPosting (WWF / Prescreen)
 // Keys are assigned by the pipeline after scan.
 import { extractJobPosting, htmlToText } from '../html.ts';
-import type { Job } from '../keys.ts';
 import type { FetchLike } from '../jd.ts';
+import type { ScanRow, SourceError, SourceResult } from './types.ts';
 
-type ScanRow = Omit<Job, 'key'>;
-type SourceError = { company: string; error: string };
-type SourceResult = ScanRow[] & { errors: SourceError[] };
 
 const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
 const sleepMs = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
@@ -155,5 +152,5 @@ export async function fetchPageSources(
       errors.push({ company: s.name, error: msg });
     }
   }
-  return Object.assign(jobs, { errors }) as SourceResult;
+  return Object.assign(jobs, { errors });
 }

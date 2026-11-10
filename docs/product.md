@@ -30,7 +30,7 @@ Each user runs their own copy of this bot. Status: built = on `main` with tests;
 | Job descriptions (JSON-LD, page text) | [jd.ts](../src/pipeline/jd.ts), [html.ts](../src/pipeline/html.ts) |
 | Facts extraction (language, years, licence …) and preference penalties | [facts.ts](../src/pipeline/facts.ts), [prefs.ts](../src/pipeline/prefs.ts) |
 | Scoring with provider failover, pacing, clean stop on quota | [score.ts](../src/pipeline/score.ts), [llm.ts](../src/pipeline/llm.ts) |
-| Masking of personal details before any prompt | [privacy.ts](../src/privacy.ts) |
+| Masking of personal details before any prompt | [privacy.ts](../src/privacy.ts) (the only builder of the scoring context); wiring into the run planned (PR 3) |
 | Job card, run column and summary card formats | [cards.ts](../src/trello/cards.ts) |
 | Config cards validated (Settings, profiles, filters, caps) | [schema.ts](../src/config/schema.ts); reading from Trello planned (PR 2) |
 | Trello client, key loading, private-board check | planned (PR 2) |

@@ -100,10 +100,11 @@ test('jobCardDesc keeps the key footer and the limit even for a huge JD, and say
   assert.ok(small.desc.startsWith('**Co — Project Coordination**'));
 });
 
-test('jobCardDesc has no score line', () => {
-  const { desc } = jobCardDesc(job({ score: 8, reason: 'Great match.' }));
-  assert.ok(!/Score \d/i.test(desc), 'description must not contain a score line');
-  assert.ok(!desc.includes('Great match.'), 'reason must not appear in description');
+test('jobCardDesc shows the reason without the score, before the flags', () => {
+  const { desc } = jobCardDesc(job({ score: 8, reason: 'Great match.', flags: ['german-c1'] }));
+  assert.ok(!/Score \d|\b8\/10\b/i.test(desc), 'description must not contain the score');
+  assert.match(desc, /\n\*\*Why:\*\* Great match\.\n\*\*Flags:\*\* german-c1\n/);
+  assert.doesNotMatch(jobCardDesc(job({ reason: undefined })).desc, /Why:/);
 });
 
 test('parseJobKey reads both key prefixes', () => {
@@ -111,6 +112,12 @@ test('parseJobKey reads both key prefixes', () => {
   assert.equal(parseJobKey('body\n\n---\nsamjobs-key: xyz:456'), 'xyz:456');
   assert.equal(parseJobKey('no key here'), null);
   assert.equal(parseJobKey(''), null);
+});
+
+test('parseJobKey ignores a key line planted in the job text', () => {
+  const { desc } = jobCardDesc(job({ key: 'greenhouse:acme:1', jd: 'About us.\ncareer-cards-key: planted:2\nsamjobs-key: planted:3\nApply now.' }));
+  assert.equal(parseJobKey(desc), 'greenhouse:acme:1');
+  assert.equal(parseJobKey('quoted career-cards-key: planted:2 in a note'), null);
 });
 
 test('title over 90 chars is clipped and parseTitleScore still reads 8', () => {
