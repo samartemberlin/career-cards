@@ -94,6 +94,8 @@ test('matchStatic: "@bot what is this?" → none', () => {
   assert.deepEqual(matchStatic('@bot constructor', 'bot'), { kind: 'none' });
   assert.deepEqual(matchStatic('@bot toString', 'bot'), { kind: 'none' });
   assert.deepEqual(matchStatic('@bot yes, but what about the salary?', 'bot'), { kind: 'none' });
+  assert.deepEqual(matchStatic('@bot fit why so low?', 'bot'), { kind: 'none' });
+  assert.deepEqual(matchStatic('@bot open now please', 'bot'), { kind: 'none' });
 });
 
 test('matchStatic: "@bot yes" → builtin yes', () => {
@@ -114,5 +116,4 @@ test('matchStatic: arguments', () => {
   assert.deepEqual(action('@bot feedback  Too senior,\nskip these. ').args, { text: 'Too senior,\nskip these.' });
   assert.equal(matchStatic('@bot feedback', 'bot').kind, 'bad_args');
   assert.equal(matchStatic(`@bot feedback ${'x'.repeat(2001)}`, 'bot').kind, 'bad_args');
-  assert.equal(matchStatic('@bot open now please', 'bot').kind, 'bad_args');
 });

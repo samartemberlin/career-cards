@@ -22,10 +22,9 @@ export const FEEDBACK_MAX = 2000;
 export const REPLY_MAX = 4000;
 
 const NoArgs = z.object({}).strict();
-const noText = (rest: string): unknown => (rest ? { unexpected: rest } : {});
 
 const simple = (id: string, verbs: string[], stage: Stage): ActionSpec =>
-  ({ id, verbs, stage, router: 'auto', args: NoArgs, textArgs: noText, usage: `${verbs[0]}, with nothing after it` });
+  ({ id, verbs, stage, router: 'auto', args: NoArgs, textArgs: () => ({}), usage: verbs[0]! });
 
 export const CATALOGUE: ActionSpec[] = [
   simple('check_open', ['open', 'offen'], 'code'),
@@ -91,6 +90,8 @@ export function matchStatic(comment: string, botName: string): StaticMatch {
 
   const spec = CATALOGUE.find((s) => s.verbs.includes(word));
   if (!spec) return { kind: 'none' };
+  // "@bot fit why so low?" is a question, not a command with bad arguments: free text is the router's job.
+  if (rest && spec.args === NoArgs) return { kind: 'none' };
   const parsed = spec.args.safeParse(spec.textArgs(rest));
   if (parsed.success) return { kind: 'action', spec, args: parsed.data };
   return { kind: 'bad_args', spec, message: `Use: ${spec.usage}` };
