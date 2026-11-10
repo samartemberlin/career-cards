@@ -32,7 +32,7 @@ Each user runs their own copy of this bot. Status: built = on `main` with tests;
 | Scoring with provider failover, pacing, clean stop on quota | [score.ts](../src/pipeline/score.ts), [llm.ts](../src/pipeline/llm.ts) |
 | Masking of personal details before any prompt | [privacy.ts](../src/privacy.ts) (the only builder of the scoring context); wiring into the run planned (PR 3) |
 | Job card, run column and summary card formats | [cards.ts](../src/trello/cards.ts) |
-| Config cards validated (Settings, profiles, filters, caps) | [schema.ts](../src/config/schema.ts); reading from Trello planned (PR 2) |
+| Config cards validated (Settings, profiles, filters, caps) | [schema.ts](../src/config/schema.ts), read from Trello by [config.ts](../src/trello/config.ts); every problem reported at once with a link to its card |
 | Trello client (paced, with backoff and allCards paging) | [api.ts](../src/trello/api.ts), [client.ts](../src/trello/client.ts); [key loading](../src/trello/job-index.ts) built; scope guard, private-board check planned (PR 2) |
 | Nightly run: run column, status card, `--dry-run` | planned (PR 3) |
 | `@bot` catalogue and static commands | [catalogue.ts](../src/bot/catalogue.ts) |

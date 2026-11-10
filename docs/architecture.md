@@ -19,7 +19,7 @@ run:  config cards → job keys → scan → dedup → filter → JD → filter 
 | Pipeline (ported from samjobs) | [src/pipeline/](../src/pipeline/) |
 | Trello: card formats, paced client | [cards.ts](../src/trello/cards.ts), [api.ts](../src/trello/api.ts), [client.ts](../src/trello/client.ts); fake board planned (PR 2) |
 | Trello: scope guard | every Trello call is scoped to the user's three boards; writes into `Originals` throw — [scoped.ts](../src/trello/scoped.ts) |
-| Config schema | [schema.ts](../src/config/schema.ts) |
+| Config schema, config cards reader | [schema.ts](../src/config/schema.ts), [trello/config.ts](../src/trello/config.ts) |
 | Bot: action catalogue, router output schema | [catalogue.ts](../src/bot/catalogue.ts); router and stages planned (PR 7, 8) |
 | Masking | [privacy.ts](../src/privacy.ts) |
 | Model child process | `runModelProcess` in [llm.ts](../src/pipeline/llm.ts) |
