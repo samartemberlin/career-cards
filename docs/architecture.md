@@ -26,8 +26,7 @@ run:  config cards → job keys → scan → dedup → filter → JD → filter 
 
 ## Stage and security model
 
-No stage gets untrusted content, private data and a way out at once. Stages are declared per action in
-[catalogue.ts](../src/bot/catalogue.ts); their runners are planned (PR 7, 8).
+No stage gets untrusted content, private data and a way out at once. Stage runners: planned (PR 7, 8).
 
 | Stage | Inputs | Tools | Private data | Network |
 |---|---|---|---|---|
@@ -44,10 +43,10 @@ No stage gets untrusted content, private data and a way out at once. Stages are 
 
 ## Decisions
 
-- Trello is the database and the UI — config edits apply next run without a commit; the repo holds no user data. [schema.ts](../src/config/schema.ts)
+- Config lives on the user's Trello cards — edits apply next run without a commit; the repo holds no user data. [schema.ts](../src/config/schema.ts)
 - Memory is the key line on a card, open or archived — re-runs never duplicate, and no other state exists. [cards.ts](../src/trello/cards.ts)
-- Readers also accept `samjobs-key:` and keys derive as in samjobs — migrated history keeps matching. [keys.ts](../src/pipeline/keys.ts)
-- The score lives only in the title — one source of truth. [cards.ts](../src/trello/cards.ts)
+- Key derivation and the `samjobs-key:` prefix are kept — migrated history keeps deduplicating. [keys.ts](../src/pipeline/keys.ts)
+- No score in the description — one source of truth, visible on the board. [cards.ts](../src/trello/cards.ts)
 - Every scored job gets a card, no threshold — low scores stay visible at the bottom, never lost. planned (PR 3)
 - List moves and title edits are not feedback; only `@bot feedback` is — users move cards for their own tracking. [catalogue.ts](../src/bot/catalogue.ts)
 - A Trello automation rule triggers the run — nothing polls, and the user edits the schedule in Trello. planned (PR 4)
@@ -58,4 +57,4 @@ No stage gets untrusted content, private data and a way out at once. Stages are 
 - A typed `@bot <verb>` counts as confirmation — the user named the action; only router picks need `yes`. [catalogue.ts](../src/bot/catalogue.ts)
 - Model calls run `claude` as a child with an explicit env, own cwd and fixed tool flags — no secret or tool leaks in. [llm.ts](../src/pipeline/llm.ts)
 - No prompt-injection classifier — containment by stage capabilities is the defence. planned (PR 7)
-- TypeScript by type stripping, zod at data boundaries — mechanical port, no build; one schema is check and type. [package.json](../package.json)
+- zod at data boundaries (config cards, model JSON) — one schema is both runtime check and type. [schema.ts](../src/config/schema.ts)
