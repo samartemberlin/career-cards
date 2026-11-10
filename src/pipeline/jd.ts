@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import type { Job } from './keys.ts';
 import { extractJobPosting, fromJobPosting, htmlToText } from './html.ts';
+import { fetchLinkedinJd } from './sources/linkedin.ts';
 
 const MAX_HTML = 3_000_000;
 const MAX_TEXT = 20_000;
@@ -72,8 +73,8 @@ export async function fetchJd(
     fetchImpl = fetch as FetchLike,
     atsFetch = runFetchJd,
     careerOpsDir = DEFAULT_CAREER_OPS_DIR,
-    // Task 3 wires the default LinkedIn fetch implementation.
-    linkedinFetch = async (): Promise<null> => null,
+    // LinkedIn guest endpoint, paced and capped; injectable for tests.
+    linkedinFetch = (id: string): Promise<string | null> => fetchLinkedinJd(id),
   } = opts;
 
   if (job.key.startsWith('linkedin:')) {
