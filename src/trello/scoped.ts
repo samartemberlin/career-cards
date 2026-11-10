@@ -54,22 +54,18 @@ export function scopeClient(api: TrelloApi, scope: Scope): TrelloApi {
     if (!allowed.has(boardId)) throw new ScopeError(boardId);
   }
 
-  // Verifies a card's board is in scope and returns the card.
-  // Throws ScopeError if the board is out of scope.
   async function verifyCard(cardId: string): Promise<TCardWithList> {
     const c = await api.card(cardId);
     assertBoard(c.idBoard);
     return c;
   }
 
-  // Verifies a list's board is in scope and returns the list.
   async function verifyList(listId: string): Promise<TList> {
     const l = await api.list(listId);
     assertBoard(l.idBoard);
     return l;
   }
 
-  // Throws OriginalsWriteError if the card is in an Originals list on the Profiles board.
   function assertNotOriginals(card: TCardWithList, cardId: string): void {
     if (
       scope.profilesBoard !== undefined &&
@@ -80,7 +76,6 @@ export function scopeClient(api: TrelloApi, scope: Scope): TrelloApi {
     }
   }
 
-  // Throws OriginalsWriteError if the list is Originals on the Profiles board.
   function assertListNotOriginals(list: TList): void {
     if (
       scope.profilesBoard !== undefined &&
@@ -92,7 +87,6 @@ export function scopeClient(api: TrelloApi, scope: Scope): TrelloApi {
   }
 
   return {
-    // Passthrough: no board id involved
     me: () => api.me(),
     myOrganizations: () => api.myOrganizations(),
     organizationMembers: (orgId) => api.organizationMembers(orgId),
@@ -107,7 +101,6 @@ export function scopeClient(api: TrelloApi, scope: Scope): TrelloApi {
     createLabel: async (boardId, name, color) => { assertBoard(boardId); return api.createLabel(boardId, name, color); },
     createList: async (boardId, name, pos) => { assertBoard(boardId); return api.createList(boardId, name, pos); },
 
-    // createBoard is never permitted through the scoped client
     createBoard: async (_name, _idOrganization) => {
       throw new ScopeError('(new board)');
     },
@@ -159,11 +152,10 @@ export function scopeClient(api: TrelloApi, scope: Scope): TrelloApi {
     },
 
     addCheckItem: async (checklistId, name, checked) => {
-      // Look up the checklist, then its card
       const cl = await api.checklist(checklistId);
       const c = await api.card(cl.idCard);
       assertBoard(c.idBoard);
-      assertNotOriginals(c, cl.idCard);
+      assertNotOriginals(c, c.id);
       return api.addCheckItem(checklistId, name, checked);
     },
 
@@ -175,7 +167,6 @@ export function scopeClient(api: TrelloApi, scope: Scope): TrelloApi {
     },
 
     createCard: async (c) => {
-      // Check the target list's board and whether it is Originals
       const l = await api.list(c.idList);
       assertBoard(l.idBoard);
       assertListNotOriginals(l);

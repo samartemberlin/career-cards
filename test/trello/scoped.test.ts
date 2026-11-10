@@ -17,7 +17,7 @@ function makeCard(overrides: Partial<TCard & { idBoard: string; list?: { id: str
     closed: false,
     pos: 0,
     shortUrl: 'https://trello.com/c/sample001',
-    list: overrides.list ?? { id: overrides.idList ?? 'list1', name: overrides.name ?? 'Open' },
+    list: overrides.list ?? { id: overrides.idList ?? 'list1', name: 'Open' },
   };
 }
 
