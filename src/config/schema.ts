@@ -146,6 +146,10 @@ export type UserConfig = z.infer<typeof UserConfigSchema>;
 
 const YAML_BLOCK = /```yaml[ \t]*\r?\n([\s\S]*?)```/;
 
+export function hasYamlBlock(desc: string): boolean {
+  return YAML_BLOCK.test(desc);
+}
+
 export function parseYamlBlock(desc: string): unknown {
   const m = YAML_BLOCK.exec(desc);
   if (!m) throw new ConfigError('no ```yaml block in the card description');
