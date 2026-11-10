@@ -1,0 +1,902 @@
+[
+ {
+  "label": "[base] Werkstudent role",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "Wir suchen eine:n Werkstudent:in für 20h/Woche.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": "HARD_WERKSTUDENT"
+ },
+ {
+  "label": "[base] Pflichtpraktikum",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "Es handelt sich um ein Pflichtpraktikum.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": "HARD_ENROLLED"
+ },
+ {
+  "label": "[base] enrolled required",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "You must be enrolled at a university.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": "HARD_ENROLLED"
+ },
+ {
+  "label": "[base] German C1 (now a penalty, not a reject)",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "Deutschkenntnisse auf C1 Niveau.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[base] verhandlungssicher (now a penalty, not a reject)",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "Verhandlungssicheres Deutsch in Wort und Schrift.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[base] fluent German EN (now a penalty, not a reject)",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "Fluent German and English required.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[base] native German (now a penalty, not a reject)",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "Native German speaker.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[base] 5+ years",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "5+ years of experience in project management.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": "HARD_EXP_5Y"
+ },
+ {
+  "label": "[base] 7 years",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "7 years of professional experience required.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": "HARD_EXP_5Y"
+ },
+ {
+  "label": "[base] direct reports",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "You will have three direct reports.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": "HARD_MGMT"
+ },
+ {
+  "label": "[base] team of 8",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "You will lead a team of 8 coordinators.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": "HARD_MGMT"
+ },
+ {
+  "label": "[base] P&L",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "Full P&L responsibility for the region.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": "HARD_PL"
+ },
+ {
+  "label": "[base] US only (the candidate is a US citizen: authorization is not a reject)",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "Must be authorized to work in the United States.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[base] intern field",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": "intern",
+   "seniority": null
+  },
+  "expect": "HARD_EMPLOYMENT_TYPE"
+ },
+ {
+  "label": "[base] working_student field",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": "working_student",
+   "seniority": null
+  },
+  "expect": "HARD_EMPLOYMENT_TYPE"
+ },
+ {
+  "label": "[base] executive seniority",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": "executive"
+  },
+  "expect": "HARD_SENIORITY"
+ },
+ {
+  "label": "[base] US location",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "",
+   "location": "United States, Remote",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": "HARD_LOCATION_NONEU"
+ },
+ {
+  "label": "[base] Australia remote",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "",
+   "location": "LiveEO Australia (Remote)",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": "HARD_LOCATION_NONEU"
+ },
+ {
+  "label": "[base] London",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "",
+   "location": "London",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": "HARD_LOCATION_NONEU"
+ },
+ {
+  "label": "[base] Munich",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "",
+   "location": "Munich",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": "HARD_LOCATION"
+ },
+ {
+  "label": "[base] 3-5 years range",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "3-5 years of experience in a similar role.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[base] 3+ years soft",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "3+ years of experience preferred.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[base] good German B2",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "Gute Deutschkenntnisse sind von Vorteil.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[base] German a plus",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "German language skills are a plus.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[base] English working lang",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "English is our working language; German is helpful.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[base] lead a project",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "You will lead a project from concept to delivery.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[base] work with a team",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "You will work with a team of researchers.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[base] trainee/Volontariat",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "A two-year Volontariat.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": "trainee",
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[base] entry seniority",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": "entry"
+  },
+  "expect": null
+ },
+ {
+  "label": "[base] experienced seniority",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "Entry level welcome.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": "experienced"
+  },
+  "expect": null
+ },
+ {
+  "label": "[base] company 5 years old",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "We have been growing for 5 years and now serve 200 clients.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[base] no location given",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "",
+   "location": null,
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[base] Berlin hybrid",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "",
+   "location": "Berlin Office (Hybrid)",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[base] EU remote",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "",
+   "location": "Europe (Remote)",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[base] mentions US harmlessly",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "We have offices in Berlin and the United States.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[base] revenue mentioned once",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "You will support the team that reports on revenue.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[lang] verhandlungssicher separated (now a penalty, not a reject)",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "Verhandlungssichere Kenntnisse in deutscher und englischer Sprache.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[lang] verhandlungssicher + der (now a penalty, not a reject)",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "Verhandlungssichere Kenntnisse in der deutschen Sprache.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[lang] Deutschkenntnisse sind einwandfrei (now a penalty, not a reject)",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "Deine Deutschkenntnisse sind einwandfrei.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[lang] einwandfreies Deutsch (now a penalty, not a reject)",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "Einwandfreies Deutsch in Wort und Schrift.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[lang] German at least C1 (now a penalty, not a reject)",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "Fluent in English, German at least C1.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[lang] German bracketed C2 (now a penalty, not a reject)",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "German (C2 or Native) and English at a negotiation level.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[lang] Deutsch bracketed C1 (now a penalty, not a reject)",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "Sprachen: Deutsch (C1), Englisch (B2).",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[lang] negotiation English, good German",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "Verhandlungssicheres Englisch sowie gute Deutschkenntnisse.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[lang] B2 German, C1 English",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "German (B2) required, C1 English preferred.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[lang] sehr gute Deutschkenntnisse",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "Sehr gute Deutschkenntnisse in Wort und Schrift.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[lang] Deutsch B2 explicitly",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "Deutsch min. B2. Abgeschlossenes Studium.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[lang] German helpful",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "English is our working language; German is helpful.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[lang] native English wanted",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "Native English speaker, German a plus.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[lang] C1 English only",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "English at C1 level; no German required.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[exp] bare Erfahrung",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "Mindesten 5 Jahre Erfahrung im PMO-Umfeld.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": "HARD_EXP_5Y"
+ },
+ {
+  "label": "[exp] einschlägige Erfahrung",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "Mindestens 5 Jahre einschlägige Erfahrung.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": "HARD_EXP_5Y"
+ },
+ {
+  "label": "[exp] Berufserfahrung",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "mindestens 7 Jahre Berufserfahrung.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": "HARD_EXP_5Y"
+ },
+ {
+  "label": "[exp] Projekterfahrung",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "5+ Jahre Projekterfahrung erwünscht.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": "HARD_EXP_5Y"
+ },
+ {
+  "label": "[exp] fundierte Führungserfahrung",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "mindestens 6 Jahre fundierte Führungserfahrung.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": "HARD_EXP_5Y"
+ },
+ {
+  "label": "[exp] English still works",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "At least 5 years of relevant experience.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": "HARD_EXP_5Y"
+ },
+ {
+  "label": "[exp] N+ years in <field>",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "5+ years in B2B marketing, ideally in food ingredients.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": "HARD_EXP_5Y"
+ },
+ {
+  "label": "[exp] N+ years as <role>",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "8+ years as a programme manager.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": "HARD_EXP_5Y"
+ },
+ {
+  "label": "[exp] mindestens N Jahre im",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "Mindestens 5 Jahre im Projektmanagement.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": "HARD_EXP_5Y"
+ },
+ {
+  "label": "[exp] at least N years in",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "At least 6 years in a similar role.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": "HARD_EXP_5Y"
+ },
+ {
+  "label": "[exp] dashed range",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "3-5 Jahre Erfahrung in der Projektarbeit.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[exp] German written range",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "3 bis 5 Jahre Erfahrung.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[exp] English written range",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "3 to 5 years of experience.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[exp] two years",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "2 Jahre Erfahrung sind ausreichend.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[exp] company age",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "Wir bestehen seit 5 Jahren am Markt.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[exp] project duration",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "Das Projekt läuft über 5 Jahre.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[exp] junior range",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "1-3 years of experience.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[exp] range with a plus",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "3-5+ years in a comparable role.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[exp] company history names a field",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "We have been growing for 5 years in Berlin.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[exp] bare N years in, no minimum",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "Our team has 5 years in climate finance behind it.",
+   "location": "Berlin",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[loc] Anywhere in the World",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "",
+   "location": "Anywhere in the World",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[loc] Worldwide",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "",
+   "location": "Worldwide",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[loc] Global remote",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "",
+   "location": "Global (Remote)",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": null
+ },
+ {
+  "label": "[loc] US still rejected",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "",
+   "location": "United States, Remote",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": "HARD_LOCATION_NONEU"
+ },
+ {
+  "label": "[loc] Canada still rejected",
+  "post": {
+   "title": "Project Coordinator",
+   "jd": "",
+   "location": "Remote - Canada",
+   "company": "Test Org",
+   "employment_type": null,
+   "seniority": null
+  },
+  "expect": "HARD_LOCATION_NONEU"
+ }
+]

@@ -1,0 +1,272 @@
+# Shared sources for everyone. Scanned ONCE per night by career-ops (scan.mjs + scan-interamt.mjs).
+# This file is only the shared base: src/search.mjs merges in each person's config/people/<p>/search.yml at run time
+# (Bundesagentur keywords, extra employers), and keeps a posting if ANY person's `include` matches its title.
+# So there is no positive title list here. `negative` applies to everybody; matching (career-ops) is a
+# case-insensitive substring, 2-3 letter entries match on word boundaries, `word:` = whole word.
+#
+# Sources probed live on 2026-10-10.
+
+title_filter:
+  negative:
+    # Legally unavailable to graduates. Kept deliberately small: everything
+    # else (seniority, function) is decided per person.
+    - "Werkstudent"
+    - "Working Student"
+    - "Studentische"
+    - "Pflichtpraktikum"
+    - "Duales Studium"
+    - "Azubi"
+    - "word:Ausbildung"
+    - "Abschlussarbeit"
+
+location_filter:
+  allow:
+    - "Berlin"
+    - "Potsdam"
+    - "Brandenburg"
+    - "Remote"
+    - "Homeoffice"
+    - "Home Office"
+    - "Worldwide"
+    - "Anywhere"
+    - "Global"
+    - "Work from"
+    - "Deutschland"
+    - "Germany"
+    - "Europe"
+    - "EMEA"
+  block:
+    - "United States"
+    - "USA"
+    - "Canada"
+    - "India"
+
+# --- Aggregators ---------------------------------------------------------
+
+job_boards:
+  - name: Bundesagentur für Arbeit — Berlin
+    provider: arbeitsagentur
+    arbeitsagentur:
+      wo: Berlin
+      umkreis: 25
+      days: 14            # with dedup against data/seen, survives a ~2-week gap
+      remoteNationwide: true
+      remoteMatch: filter
+      remoteMaxPages: 3
+    enabled: true
+
+  - name: Arbeitnow
+    provider: arbeitnow
+    max_pages: 3
+    enabled: true
+
+# --- Interamt (German public sector: Senate departments, Bezirksämter, federal
+# agencies, universities). Read by career-ops/scan-interamt.mjs (Playwright),
+# NOT by scan.mjs — src/run.mjs must call it as a second step, see TODO there.
+  # --- Remote / curated boards -------------------------------------------------------------------
+  - name: Welcome to the Jungle — Berlin
+    provider: wttj
+    wttj:
+      filters: 'offices.city:Berlin'
+      max_hits: 1000
+    enabled: true
+  - name: We Work Remotely
+    provider: weworkremotely
+    enabled: true
+  - name: Remotive
+    provider: remotive
+    enabled: true
+  - name: Working Nomads
+    provider: workingnomads
+    enabled: true
+  - name: Himalayas
+    provider: himalayas
+    enabled: true
+  - name: Jobspresso
+    provider: jobspresso
+    enabled: true
+
+interamt_searches:
+  - was: "Projektkoordination"
+  - was: "Projektassistenz"
+  - was: "Projektmitarbeiter"
+  - was: "Koordination"
+  - was: "Teamassistenz"
+  - was: "Assistenz"
+  - was: "Referent"
+  - was: "Öffentlichkeitsarbeit"
+  - was: "Kommunikation"
+  - was: "Veranstaltungsmanagement"
+  - was: "Wissenschaftskoordination"
+  - was: "Redaktion"
+
+# --- Employer boards ------------------------------------------------------
+# Verified 2026-10-10 (HTTP 200 on the public feed) unless marked otherwise.
+# Tier = per-person sector ranking configured in each person's samjobs.yml `tiers`.
+
+tracked_companies:
+  # Tier A — NGO / climate / civil society
+  - name: atmosfair
+    careers_url: https://atmosfair.jobs.personio.de
+    enabled: true
+  - name: BUND
+    careers_url: https://bund.jobs.personio.de
+    enabled: true
+  - name: CORRECTIV
+    careers_url: https://correctiv.jobs.personio.de
+    enabled: true
+  - name: Democracy Reporting International
+    careers_url: https://democracy-reporting.jobs.personio.de
+    enabled: true
+  - name: ECFR
+    careers_url: https://ecfr.jobs.personio.de
+    enabled: true
+  - name: Reporter ohne Grenzen
+    careers_url: https://reporter-ohne-grenzen.jobs.personio.de
+    enabled: true
+  - name: Falling Walls
+    careers_url: https://falling-walls.jobs.personio.de   # real board, often empty
+    enabled: true
+  - name: LiveEO
+    careers_url: https://liveeo-gmbh.jobs.personio.de
+    enabled: true
+  - name: share
+    careers_url: https://share.recruitee.com
+    enabled: true
+  - name: Formo
+    careers_url: https://formofoodsgmbh.recruitee.com
+    enabled: true
+  - name: Too Good To Go
+    careers_url: https://jobs.ashbyhq.com/toogoodtogo
+    enabled: true
+  - name: Watershed
+    careers_url: https://jobs.ashbyhq.com/watershed
+    enabled: true
+  - name: Ecosia
+    careers_url: https://jobs.ashbyhq.com/ecosia.org   # real board, empty since Aug
+    enabled: true
+
+  # Tier C — academia / research
+  - name: ResearchGate
+    careers_url: https://jobs.lever.co/researchgate
+    enabled: true
+
+  # Tier D — mission-adjacent tech (non-technical roles only)
+  - name: juna.ai
+    careers_url: https://juna-ai.jobs.personio.de
+    enabled: true
+  - name: telli
+    careers_url: https://jobs.ashbyhq.com/telli
+    enabled: true
+  - name: Babbel
+    careers_url: https://jobs.ashbyhq.com/babbel
+    enabled: true
+  - name: DeepL
+    careers_url: https://jobs.ashbyhq.com/DeepL
+    enabled: true
+  - name: Aleph Alpha
+    careers_url: https://jobs.ashbyhq.com/AlephAlpha
+    enabled: true
+  - name: Wikimedia Foundation
+    careers_url: https://job-boards.greenhouse.io/wikimedia
+    api: https://boards-api.greenhouse.io/v1/boards/wikimedia/jobs
+    enabled: false    # location is a bare "Remote" (mostly US) — ~12 low-value LLM calls/night
+
+  # Known but not reachable — kept so nobody re-adds the wrong slug
+  - name: ProVeg
+    careers_url: https://proveg.jobs.personio.de
+    enabled: false    # /xml returns 404 on 2026-10-10 — find the current board
+  - name: adelphi
+    careers_url: https://careers.adelphi.de
+    enabled: false    # Personio on a custom domain; /xml 404 — needs `personio: <slug>`
+
+# Wrong slugs (squatted / unconfigured Personio accounts, or another company):
+#   personio: wwf-deutschland, adelphi, ecosia, germanwatch, dgap
+#   ashby: share (telecoms, Nairobi) · greenhouse: tomorrow (Tomorrow.io)
+#   lever: ashoka (global board) · smartrecruiters: springernature (Pune only)
+#
+# No machine-readable feed (need a page-diff provider later):
+#   WWF Deutschland (wwf.de pages), Hertie School, GPPi, Hot or Cool Institute,
+#   PIK Potsdam, tbd.community, Blinkist, BookBeat, Pitch, Nitrokey, Cogram,
+#   Berlin Startup Jobs (RSS — career-ops has no RSS provider upstream).
+
+  # --- Company pages, ATS boards verified 2026-10-11 -------------------------------------------
+  - name: New York Times
+    careers_url: https://job-boards.greenhouse.io/thenewyorktimes
+    enabled: true
+  - name: N26
+    careers_url: https://job-boards.greenhouse.io/n26
+    enabled: true
+  - name: Trade Republic
+    careers_url: https://job-boards.greenhouse.io/traderepublicbank
+    enabled: true
+  - name: GetYourGuide
+    careers_url: https://job-boards.greenhouse.io/getyourguide
+    enabled: true
+  - name: AUTO1
+    careers_url: https://jobs.smartrecruiters.com/auto1
+    enabled: true
+  - name: Solaris
+    careers_url: https://job-boards.greenhouse.io/solarisbank
+    enabled: true
+  - name: Forto
+    careers_url: https://jobs.ashbyhq.com/forto
+    enabled: true
+  - name: Sastrify
+    careers_url: https://sastrify.jobs.personio.de
+    # real board, often empty
+    enabled: true
+  - name: Personio
+    careers_url: https://personio.jobs.personio.de
+    # 1 posting; the company's main board may sit elsewhere
+    enabled: true
+  - name: Pitch
+    careers_url: https://apply.workable.com/pitch-software
+    enabled: true
+  - name: Parloa
+    careers_url: https://jobs.ashbyhq.com/parloa
+    enabled: true
+  - name: Enpal
+    careers_url: https://jobs.ashbyhq.com/enpal
+    enabled: true
+  - name: Choco
+    careers_url: https://jobs.ashbyhq.com/choco
+    enabled: true
+  - name: Omio
+    careers_url: https://jobs.smartrecruiters.com/omio
+    enabled: true
+  - name: Contentful
+    careers_url: https://job-boards.greenhouse.io/contentful
+    enabled: true
+  - name: SumUp
+    careers_url: https://job-boards.greenhouse.io/sumup
+    enabled: true
+  - name: Dataiku
+    careers_url: https://job-boards.greenhouse.io/dataiku
+    enabled: true
+  - name: Spotify
+    careers_url: https://jobs.lever.co/spotify
+    enabled: true
+  - name: FGS Global
+    careers_url: https://job-boards.greenhouse.io/fgsglobal
+    enabled: true
+  - name: BookBeat
+    careers_url: https://bookbeat.teamtailor.com
+    enabled: true
+  - name: Iberdrola
+    careers_url: https://iberdrola.wd3.myworkdayjobs.com/en-US/Iberdrola
+    enabled: true
+  - name: Edelman
+    careers_url: https://djeholdings.wd5.myworkdayjobs.com/edelman-careers-E200
+    enabled: true
+  - name: RTL
+    provider: successfactors
+    careers_url: https://jobsearch.createyourowncareer.com/RTL
+    enabled: true
+  - name: SoundCloud
+    careers_url: https://job-boards.greenhouse.io/soundcloud71   # slug found in the careers page's JS (ghSlug)
+    enabled: true
+  - name: Netflix
+    careers_url: https://netflix.eightfold.ai/careers?domain=netflix.com   # branded explore.jobs.netflix.net rejected by the provider; same data
+    max_pages: 50       # ~460 jobs worldwide, 10 per page; the location filter keeps Berlin/remote
+    enabled: true

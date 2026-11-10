@@ -10,6 +10,7 @@ export type Job = {
   posted?: string;
   deadline?: string;
   employment_type?: string;
+  seniority?: string;
   source?: string;
 };
 

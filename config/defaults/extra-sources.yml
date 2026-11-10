@@ -1,0 +1,33 @@
+# Sources career-ops has no provider for. Fetched by src/rss.mjs on every scan, then deduped
+# against data/seen like everything else. Per-person filtering happens later (each person's config).
+rss:
+  - name: Euro Remote Jobs
+    url: https://euroremotejobs.com/?feed=job_feed
+    location: "Europe (Remote)"      # used when an item carries no location
+
+# LinkedIn, public guest endpoints only (no login). Against LinkedIn's terms of service, so the volume is
+# kept small on purpose: 2 pages per query, ~4 s (jittered) between requests, descriptions only for jobs that
+# passed someone's free filters, at most LINKEDIN_JD_CAP per run (default 40; the workflow sets 60 with a 45 min wait budget). A 429/999 answer stops the
+# whole source for that run. Cards are cheap; the per-person filters decide what is worth a fetch.
+# Note: LinkedIn's remote filter is leaky outside Germany ("Worldwide"/"European Union" return local
+# jobs in other countries), so remote search is limited to Germany.
+linkedin:
+  enabled: true
+  recency_days: 3            # survives one missed night; dedup against data/seen does the rest
+  max_pages_per_query: 2
+  block_waits_minutes: [1, 3, 7, 15]   # a 429/999 is waited out and retried, not given up on (GitHub IPs may be throttled)
+  max_total_minutes: 40      # whole LinkedIn search; whatever was collected until then is kept
+  delay_seconds: 4           # 2 s got a 429 after ~30 requests (2026-10-11); a run makes ~50-60
+  # searches: come from each person's search.yml, merged at run time (src/search.mjs)
+
+# Career pages without a career-ops provider, read without a browser (src/pages.mjs).
+pages:
+  - name: Vinted
+    type: embedded-json          # job list inside the page's __NEXT_DATA__ (Greenhouse-shaped objects)
+    url: "https://careers.vinted.com/de/jobs?city%5B0%5D=Berlin&page={page}"
+    max_pages: 5
+    keep_location: "berlin|germany|deutschland|remote|europe|emea"   # the page returns every country
+  - name: WWF Deutschland
+    type: listing-jsonld         # Prescreen/Onlyfy: listing page -> detail pages with schema.org JobPosting
+    url: "https://wwf.onlyfy.jobs/"
+    link: "/job/"
