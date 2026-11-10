@@ -7,6 +7,31 @@ export class PrivacyError extends Error {
 
 export type Masker = { mask(text: string): string };
 
+// Ported from samjobs' anonymize.mjs. All matching runs on NFKC text without soft hyphens or zero-width characters,
+// so artefacts of text pasted from a PDF cannot hide a name from the masking or from the fail-closed check.
+const INVISIBLE = /[\u00AD\u200B-\u200D\u2060\uFEFF]/g;
+const normalize = (s: string): string => s.normalize('NFKC').replace(INVISIBLE, '');
+
+const EMAIL = /[\p{L}\p{N}._%+-]+@[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)+/gu;
+const URL_RE = /(?:https?:\/\/|www\.)\S+/giu;
+// Links without a scheme, such as linkedin.com/in/x. A fixed TLD list keeps Node.js, e.g. and 3.91 out.
+const TLDS = 'com|de|org|net|io|eu|co|uk|me|app|dev|info|berlin|fm|ly|at|ch|nl|fr|it|es|us|edu|gov|ai|tv|xyz|blog|page|site|online|cc';
+const DOMAIN = `(?:[\\p{L}\\p{N}-]+\\.)+(?:${TLDS})`;
+const BARE_DOMAIN = new RegExp(`(?<![\\p{L}\\p{N}@.-])${DOMAIN}(?![\\p{L}\\p{N}])(?:/[^\\s)>\\]"]*)?`, 'giu');
+const BARE_DOMAIN_ONLY = new RegExp(`^${DOMAIN}(?:/\\S*)?$`, 'iu');
+const PHONE = /\+?\d[\d\s()\/–-]{5,}\d/gu;
+
+const digitCount = (s: string): number => s.replace(/\D/g, '').length;
+/** Two numbers of about the same length joined by a dash: a year or salary range. Area codes start with 0. */
+function isNumberRange(s: string): boolean {
+  const m = /^(\d+)\s*[–-]\s*(\d+)$/.exec(s);
+  return !!m && !m[1]!.startsWith('0') && !m[2]!.startsWith('0') && Math.abs(m[1]!.length - m[2]!.length) <= 1;
+}
+function isPhone(match: string): boolean {
+  const s = match.trim();
+  return digitCount(s) >= 7 && !/^\d{4}-\d{2}-\d{2}$/.test(s) && !isNumberRange(s);
+}
+
 // Explicit prefix overrides content-based classification.
 export function classifyDetail(s: string): 'name' | 'email' | 'phone' | 'address' | 'link' {
   const lower = s.trim().toLowerCase();
@@ -15,9 +40,9 @@ export function classifyDetail(s: string): 'name' | 'email' | 'phone' | 'address
   if (lower.startsWith('email:')) return 'email';
   if (lower.startsWith('phone:')) return 'phone';
 
-  const val = s.trim();
-  if (/^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/.test(val)) return 'email';
-  if (/^(?:https?:\/\/|www\.)/i.test(val)) return 'link';
+  const val = normalize(s).trim();
+  if (/^[\p{L}\p{N}._%+-]+@[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)+$/u.test(val)) return 'email';
+  if (/^(?:https?:\/\/|www\.)/i.test(val) || BARE_DOMAIN_ONLY.test(val)) return 'link';
   if (/^\+?[\d\s()\-+]{7,}$/.test(val) && (val.match(/\d/g)?.length ?? 0) >= 7) return 'phone';
 
   return 'name';
@@ -41,9 +66,11 @@ function stripPrefix(raw: string): string {
   return raw.replace(/^(?:address|link|email|phone):\s*/i, '');
 }
 
-// Flexible whitespace so "Jane  Roe" (double space) matches the detail "Jane Roe".
-function detailPattern(stripped: string): string {
-  return escapeRegex(stripped).replace(/\s+/g, '\\s+');
+// Flexible whitespace so "Jane  Roe" (double space) matches the detail "Jane Roe". Names under 5 characters need
+// word boundaries ("Theo" must not eat "Theory"); longer ones also match inside words joined by a PDF paste.
+function detailPattern(stripped: string, kind: DetailKind): string {
+  const pat = escapeRegex(stripped).replace(/\s+/g, '\\s+');
+  return kind === 'name' && stripped.length < 5 ? `(?<![\\p{L}\\p{N}])${pat}(?![\\p{L}\\p{N}])` : pat;
 }
 
 interface CompiledDetail {
@@ -56,32 +83,32 @@ interface CompiledDetail {
 
 function compileDetail(raw: string, originalIndex: number): CompiledDetail {
   const kind = classifyDetail(raw);
-  const stripped = stripPrefix(raw);
-  const pat = detailPattern(stripped);
+  const stripped = normalize(stripPrefix(raw)).trim();
+  const pat = detailPattern(stripped, kind);
   return {
     originalIndex,
     strippedLen: stripped.length,
     placeholder: PLACEHOLDER[kind],
-    replaceRe: new RegExp(pat, 'gi'),
+    replaceRe: new RegExp(pat, 'giu'),
     // Non-global: .test() on a global RegExp advances lastIndex, causing missed matches on reuse.
-    checkRe: new RegExp(pat, 'i'),
+    checkRe: new RegExp(pat, 'iu'),
   };
 }
 
 function applyMask(text: string, compiled: readonly CompiledDetail[]): string {
-  let out = text;
+  let out = normalize(text);
 
   for (const { replaceRe, placeholder } of compiled) {
     out = out.replace(replaceRe, placeholder);
   }
 
   // Pattern-based passes run after detail substitution so a listed email/phone/link
-  // is already replaced and these passes only catch unlisted occurrences.
-  out = out.replace(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g, '[EMAIL]');
-  out = out.replace(/\+?[\d][\d\s()\-+]{5,}/g, (m) =>
-    (m.match(/\d/g)?.length ?? 0) >= 7 ? '[PHONE]' : m,
-  );
-  out = out.replace(/(?:https?:\/\/|www\.)\S+/gi, '[LINK]');
+  // is already replaced and these passes only catch unlisted occurrences. Links go before phones,
+  // so digits in a link do not become [PHONE] inside it.
+  out = out.replace(EMAIL, '[EMAIL]');
+  out = out.replace(URL_RE, '[LINK]');
+  out = out.replace(BARE_DOMAIN, '[LINK]');
+  out = out.replace(PHONE, (m) => (isPhone(m) ? '[PHONE]' : m));
 
   // Fail closed: every detail must be absent from the output.
   // Error names the index only — never the value — so it cannot leak personal data.
