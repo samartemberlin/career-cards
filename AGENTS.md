@@ -22,6 +22,7 @@ Node 24 runs `.ts` directly (type stripping). No build step.
 export PATH=~/.local/node24/bin:$PATH   # dev machine; CI uses the system node
 npm run typecheck                        # tsc --noEmit
 npm test                                 # node --test "test/**/*.test.ts"
+node --env-file=<secrets> tools/sample-boards.ts setup|capture   # sample boards only: bot's own boards, fixtures
 ```
 
 ## Workflow

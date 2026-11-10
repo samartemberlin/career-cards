@@ -1,0 +1,701 @@
+[
+ {
+  "method": "GET",
+  "path": "/boards/fa4e0000000000000000000c",
+  "query": {
+   "fields": "id,name,closed,idOrganization,prefs"
+  },
+  "status": 200,
+  "body": {
+   "id": "fa4e0000000000000000000c",
+   "name": "career-cards sample · Profiles",
+   "closed": false,
+   "idOrganization": "fa4e00000000000000000003",
+   "prefs": {
+    "permissionLevel": "private",
+    "hideVotes": false,
+    "voting": "disabled",
+    "comments": "members",
+    "invitations": "members",
+    "selfJoin": true,
+    "cardCovers": true,
+    "showCompleteStatus": true,
+    "cardCounts": false,
+    "isTemplate": false,
+    "cardAging": "regular",
+    "calendarFeedEnabled": false,
+    "hiddenPluginBoardButtons": [],
+    "switcherViews": [
+     {
+      "viewType": "Board",
+      "enabled": true
+     },
+     {
+      "viewType": "Table",
+      "enabled": true
+     },
+     {
+      "viewType": "Calendar",
+      "enabled": false
+     },
+     {
+      "viewType": "Dashboard",
+      "enabled": false
+     },
+     {
+      "viewType": "Timeline",
+      "enabled": false
+     },
+     {
+      "viewType": "Map",
+      "enabled": false
+     }
+    ],
+    "autoArchive": null,
+    "background": "blue",
+    "backgroundColor": "#0079BF",
+    "backgroundDarkColor": null,
+    "backgroundDarkImage": null,
+    "backgroundTile": false,
+    "backgroundBrightness": "dark",
+    "sharedSourceUrl": null,
+    "backgroundBottomColor": "#0079BF",
+    "backgroundTopColor": "#0079BF",
+    "canBePublic": true,
+    "canBeEnterprise": true,
+    "canBeOrg": true,
+    "canBePrivate": true,
+    "canInvite": true
+   }
+  }
+ },
+ {
+  "method": "GET",
+  "path": "/boards/fa4e0000000000000000000c/members",
+  "query": {
+   "fields": "id,username"
+  },
+  "status": 200,
+  "body": [
+   {
+    "id": "fa4e00000000000000000002",
+    "username": "samplebot"
+   }
+  ]
+ },
+ {
+  "method": "GET",
+  "path": "/boards/fa4e0000000000000000000c/lists",
+  "query": {
+   "filter": "all",
+   "fields": "id,name,closed,pos,idBoard"
+  },
+  "status": 200,
+  "body": [
+   {
+    "id": "fa4e00000000000000000440",
+    "name": "Originals",
+    "closed": false,
+    "pos": 16384,
+    "idBoard": "fa4e0000000000000000000c"
+   },
+   {
+    "id": "fa4e00000000000000000442",
+    "name": "Shared",
+    "closed": false,
+    "pos": 32768,
+    "idBoard": "fa4e0000000000000000000c"
+   },
+   {
+    "id": "fa4e0000000000000000044e",
+    "name": "Content editor",
+    "closed": false,
+    "pos": 49152,
+    "idBoard": "fa4e0000000000000000000c"
+   },
+   {
+    "id": "fa4e00000000000000000463",
+    "name": "Copywriter",
+    "closed": false,
+    "pos": 65536,
+    "idBoard": "fa4e0000000000000000000c"
+   },
+   {
+    "id": "fa4e00000000000000000473",
+    "name": "Old profile",
+    "closed": true,
+    "pos": 81920,
+    "idBoard": "fa4e0000000000000000000c"
+   }
+  ]
+ },
+ {
+  "method": "GET",
+  "path": "/boards/fa4e0000000000000000000c/cards/open",
+  "query": {
+   "fields": "id,name,desc,idList,idBoard,closed,pos,shortUrl",
+   "checklists": "all"
+  },
+  "status": 200,
+  "body": [
+   {
+    "id": "fa4e00000000000000000443",
+    "name": "CV (original)",
+    "desc": "# Alex Example\n\nContent editor in Berlin.\n\n## Experience\n- 2023–now: Editor at a small publishing house (about 20 employees)\n- 2021–2023: Editorial intern at a regional newspaper\n\n## Education\n- BA in German studies, Example University\n\n## Languages\nEnglish (C1), German (B2)\n",
+    "idList": "fa4e00000000000000000440",
+    "idBoard": "fa4e0000000000000000000c",
+    "closed": false,
+    "pos": 140737488355328,
+    "shortUrl": "https://trello.com/c/sample1063",
+    "checklists": []
+   },
+   {
+    "id": "fa4e00000000000000000441",
+    "name": "CV",
+    "desc": "# Alex Example\n\nContent editor in Berlin.\n\n## Experience\n- 2023–now: Editor at a small publishing house (about 20 employees)\n- 2021–2023: Editorial intern at a regional newspaper\n\n## Education\n- BA in German studies, Example University\n\n## Languages\nEnglish (C1), German (B2)\n",
+    "idList": "fa4e00000000000000000442",
+    "idBoard": "fa4e0000000000000000000c",
+    "closed": false,
+    "pos": 140737488355328,
+    "shortUrl": "https://trello.com/c/sample1064",
+    "checklists": []
+   },
+   {
+    "id": "fa4e00000000000000000444",
+    "name": "Personal details",
+    "desc": "Strings masked before any prompt.",
+    "idList": "fa4e00000000000000000442",
+    "idBoard": "fa4e0000000000000000000c",
+    "closed": false,
+    "pos": 140737488371712,
+    "shortUrl": "https://trello.com/c/sample1065",
+    "checklists": [
+     {
+      "id": "fa4e00000000000000000445",
+      "name": "Personal details",
+      "idBoard": "fa4e0000000000000000000c",
+      "idCard": "fa4e00000000000000000444",
+      "pos": 140737488355328,
+      "checkItems": [
+       {
+        "id": "fa4e00000000000000000447",
+        "name": "Alex Example",
+        "nameData": {
+         "emoji": {}
+        },
+        "pos": 140737488355328,
+        "state": "incomplete",
+        "due": null,
+        "dueReminder": null,
+        "idMember": null,
+        "idChecklist": "fa4e00000000000000000445"
+       },
+       {
+        "id": "fa4e00000000000000000446",
+        "name": "alex.example@example.com",
+        "nameData": {
+         "emoji": {}
+        },
+        "pos": 140737488371712,
+        "state": "incomplete",
+        "due": null,
+        "dueReminder": null,
+        "idMember": null,
+        "idChecklist": "fa4e00000000000000000445"
+       },
+       {
+        "id": "fa4e00000000000000000448",
+        "name": "+49 30 0000000",
+        "nameData": {
+         "emoji": {}
+        },
+        "pos": 140737488388096,
+        "state": "incomplete",
+        "due": null,
+        "dueReminder": null,
+        "idMember": null,
+        "idChecklist": "fa4e00000000000000000445"
+       },
+       {
+        "id": "fa4e00000000000000000449",
+        "name": "address: Examplestraße 1, 10115 Berlin",
+        "nameData": {
+         "emoji": {}
+        },
+        "pos": 140737488404480,
+        "state": "incomplete",
+        "due": null,
+        "dueReminder": null,
+        "idMember": null,
+        "idChecklist": "fa4e00000000000000000445"
+       },
+       {
+        "id": "fa4e0000000000000000044a",
+        "name": "https://example.com/alex",
+        "nameData": {
+         "emoji": {}
+        },
+        "pos": 140737488420864,
+        "state": "incomplete",
+        "due": null,
+        "dueReminder": null,
+        "idMember": null,
+        "idChecklist": "fa4e00000000000000000445"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "fa4e0000000000000000044c",
+    "name": "Rubric basics",
+    "desc": "Prefer Berlin or remote roles. English is fine, German B2 at most.",
+    "idList": "fa4e00000000000000000442",
+    "idBoard": "fa4e0000000000000000000c",
+    "closed": false,
+    "pos": 140737488388096,
+    "shortUrl": "https://trello.com/c/sample1066",
+    "checklists": []
+   },
+   {
+    "id": "fa4e0000000000000000044b",
+    "name": "Preferences",
+    "desc": "Scoring preferences.\n\n```yaml\nlanguages:\n  de: { read: B2, write: B1, speak: B1 }\nyears_experience: 3\npenalties:\n  german_c1_or_native: { points: 3 }\n```",
+    "idList": "fa4e00000000000000000442",
+    "idBoard": "fa4e0000000000000000000c",
+    "closed": false,
+    "pos": 140737488404480,
+    "shortUrl": "https://trello.com/c/sample1067",
+    "checklists": []
+   },
+   {
+    "id": "fa4e0000000000000000044d",
+    "name": "Profile",
+    "desc": "Sample profile: content editor roles.\n\n```yaml\nactive: true\n```",
+    "idList": "fa4e0000000000000000044e",
+    "idBoard": "fa4e0000000000000000000c",
+    "closed": false,
+    "pos": 140737488355328,
+    "shortUrl": "https://trello.com/c/sample1068",
+    "checklists": []
+   },
+   {
+    "id": "fa4e00000000000000000450",
+    "name": "Rubric",
+    "desc": "Score 0-10 how well a job fits a content editor with about three years of experience.\n\n| Role | Score |\n|---|---|\n| Content editor, Berlin | 8 |\n| Senior Content editor, Munich | 3 |\n",
+    "idList": "fa4e0000000000000000044e",
+    "idBoard": "fa4e0000000000000000000c",
+    "closed": false,
+    "pos": 140737488371712,
+    "shortUrl": "https://trello.com/c/sample1069",
+    "checklists": []
+   },
+   {
+    "id": "fa4e0000000000000000044f",
+    "name": "Search keywords",
+    "desc": "",
+    "idList": "fa4e0000000000000000044e",
+    "idBoard": "fa4e0000000000000000000c",
+    "closed": false,
+    "pos": 140737488388096,
+    "shortUrl": "https://trello.com/c/sample1070",
+    "checklists": [
+     {
+      "id": "fa4e00000000000000000451",
+      "name": "Search keywords",
+      "idBoard": "fa4e0000000000000000000c",
+      "idCard": "fa4e0000000000000000044f",
+      "pos": 140737488355328,
+      "checkItems": [
+       {
+        "id": "fa4e00000000000000000452",
+        "name": "content editor",
+        "nameData": {
+         "emoji": {}
+        },
+        "pos": 140737488355328,
+        "state": "incomplete",
+        "due": null,
+        "dueReminder": null,
+        "idMember": null,
+        "idChecklist": "fa4e00000000000000000451"
+       },
+       {
+        "id": "fa4e00000000000000000453",
+        "name": "redakteur",
+        "nameData": {
+         "emoji": {}
+        },
+        "pos": 140737488371712,
+        "state": "incomplete",
+        "due": null,
+        "dueReminder": null,
+        "idMember": null,
+        "idChecklist": "fa4e00000000000000000451"
+       },
+       {
+        "id": "fa4e00000000000000000455",
+        "name": "content manager",
+        "nameData": {
+         "emoji": {}
+        },
+        "pos": 140737488388096,
+        "state": "incomplete",
+        "due": null,
+        "dueReminder": null,
+        "idMember": null,
+        "idChecklist": "fa4e00000000000000000451"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "fa4e00000000000000000454",
+    "name": "Filters",
+    "desc": "",
+    "idList": "fa4e0000000000000000044e",
+    "idBoard": "fa4e0000000000000000000c",
+    "closed": false,
+    "pos": 140737488404480,
+    "shortUrl": "https://trello.com/c/sample1071",
+    "checklists": [
+     {
+      "id": "fa4e00000000000000000456",
+      "name": "Include titles",
+      "idBoard": "fa4e0000000000000000000c",
+      "idCard": "fa4e00000000000000000454",
+      "pos": 140737488355328,
+      "checkItems": [
+       {
+        "id": "fa4e00000000000000000458",
+        "name": "editor|redakteur — core role",
+        "nameData": {
+         "emoji": {}
+        },
+        "pos": 140737488355328,
+        "state": "incomplete",
+        "due": null,
+        "dueReminder": null,
+        "idMember": null,
+        "idChecklist": "fa4e00000000000000000456"
+       }
+      ]
+     },
+     {
+      "id": "fa4e00000000000000000457",
+      "name": "Exclude titles",
+      "idBoard": "fa4e0000000000000000000c",
+      "idCard": "fa4e00000000000000000454",
+      "pos": 140737488371712,
+      "checkItems": [
+       {
+        "id": "fa4e00000000000000000459",
+        "name": "senior|lead — too senior for now",
+        "nameData": {
+         "emoji": {}
+        },
+        "pos": 140737488355328,
+        "state": "incomplete",
+        "due": null,
+        "dueReminder": null,
+        "idMember": null,
+        "idChecklist": "fa4e00000000000000000457"
+       }
+      ]
+     },
+     {
+      "id": "fa4e0000000000000000045a",
+      "name": "Exclude companies",
+      "idBoard": "fa4e0000000000000000000c",
+      "idCard": "fa4e00000000000000000454",
+      "pos": 140737488388096,
+      "checkItems": [
+       {
+        "id": "fa4e0000000000000000045b",
+        "name": "Example Staffing GmbH — agency",
+        "nameData": {
+         "emoji": {}
+        },
+        "pos": 140737488355328,
+        "state": "incomplete",
+        "due": null,
+        "dueReminder": null,
+        "idMember": null,
+        "idChecklist": "fa4e0000000000000000045a"
+       }
+      ]
+     },
+     {
+      "id": "fa4e0000000000000000045c",
+      "name": "Exclude text",
+      "idBoard": "fa4e0000000000000000000c",
+      "idCard": "fa4e00000000000000000454",
+      "pos": 140737488404480,
+      "checkItems": [
+       {
+        "id": "fa4e0000000000000000045e",
+        "name": "unpaid — no unpaid work",
+        "nameData": {
+         "emoji": {}
+        },
+        "pos": 140737488355328,
+        "state": "incomplete",
+        "due": null,
+        "dueReminder": null,
+        "idMember": null,
+        "idChecklist": "fa4e0000000000000000045c"
+       }
+      ]
+     },
+     {
+      "id": "fa4e0000000000000000045d",
+      "name": "Exclude locations",
+      "idBoard": "fa4e0000000000000000000c",
+      "idCard": "fa4e00000000000000000454",
+      "pos": 140737488420864,
+      "checkItems": [
+       {
+        "id": "fa4e0000000000000000045f",
+        "name": "munich|münchen — not moving",
+        "nameData": {
+         "emoji": {}
+        },
+        "pos": 140737488355328,
+        "state": "incomplete",
+        "due": null,
+        "dueReminder": null,
+        "idMember": null,
+        "idChecklist": "fa4e0000000000000000045d"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "fa4e00000000000000000461",
+    "name": "Feedback",
+    "desc": "Job feedback for this profile arrives here as comments.",
+    "idList": "fa4e0000000000000000044e",
+    "idBoard": "fa4e0000000000000000000c",
+    "closed": false,
+    "pos": 140737488420864,
+    "shortUrl": "https://trello.com/c/sample1072",
+    "checklists": []
+   },
+   {
+    "id": "fa4e00000000000000000460",
+    "name": "My notes",
+    "desc": "A note card: the bot ignores cards with other titles.",
+    "idList": "fa4e0000000000000000044e",
+    "idBoard": "fa4e0000000000000000000c",
+    "closed": false,
+    "pos": 140737488437248,
+    "shortUrl": "https://trello.com/c/sample1073",
+    "checklists": []
+   },
+   {
+    "id": "fa4e00000000000000000462",
+    "name": "Profile",
+    "desc": "Sample profile: copywriter roles.\n\n```yaml\n{}\n```",
+    "idList": "fa4e00000000000000000463",
+    "idBoard": "fa4e0000000000000000000c",
+    "closed": false,
+    "pos": 140737488355328,
+    "shortUrl": "https://trello.com/c/sample1074",
+    "checklists": []
+   },
+   {
+    "id": "fa4e00000000000000000464",
+    "name": "Rubric",
+    "desc": "Score 0-10 how well a job fits a copywriter with about three years of experience.\n\n| Role | Score |\n|---|---|\n| Copywriter, Berlin | 8 |\n| Senior Copywriter, Munich | 3 |\n",
+    "idList": "fa4e00000000000000000463",
+    "idBoard": "fa4e0000000000000000000c",
+    "closed": false,
+    "pos": 140737488371712,
+    "shortUrl": "https://trello.com/c/sample1075",
+    "checklists": []
+   },
+   {
+    "id": "fa4e00000000000000000465",
+    "name": "Search keywords",
+    "desc": "",
+    "idList": "fa4e00000000000000000463",
+    "idBoard": "fa4e0000000000000000000c",
+    "closed": false,
+    "pos": 140737488388096,
+    "shortUrl": "https://trello.com/c/sample1076",
+    "checklists": [
+     {
+      "id": "fa4e00000000000000000466",
+      "name": "Search keywords",
+      "idBoard": "fa4e0000000000000000000c",
+      "idCard": "fa4e00000000000000000465",
+      "pos": 140737488355328,
+      "checkItems": [
+       {
+        "id": "fa4e00000000000000000467",
+        "name": "copywriter",
+        "nameData": {
+         "emoji": {}
+        },
+        "pos": 140737488355328,
+        "state": "incomplete",
+        "due": null,
+        "dueReminder": null,
+        "idMember": null,
+        "idChecklist": "fa4e00000000000000000466"
+       },
+       {
+        "id": "fa4e00000000000000000468",
+        "name": "texter",
+        "nameData": {
+         "emoji": {}
+        },
+        "pos": 140737488371712,
+        "state": "incomplete",
+        "due": null,
+        "dueReminder": null,
+        "idMember": null,
+        "idChecklist": "fa4e00000000000000000466"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "fa4e0000000000000000046a",
+    "name": "Filters",
+    "desc": "",
+    "idList": "fa4e00000000000000000463",
+    "idBoard": "fa4e0000000000000000000c",
+    "closed": false,
+    "pos": 140737488404480,
+    "shortUrl": "https://trello.com/c/sample1077",
+    "checklists": [
+     {
+      "id": "fa4e00000000000000000469",
+      "name": "Include titles",
+      "idBoard": "fa4e0000000000000000000c",
+      "idCard": "fa4e0000000000000000046a",
+      "pos": 140737488355328,
+      "checkItems": [
+       {
+        "id": "fa4e0000000000000000046b",
+        "name": "editor|redakteur — core role",
+        "nameData": {
+         "emoji": {}
+        },
+        "pos": 140737488355328,
+        "state": "incomplete",
+        "due": null,
+        "dueReminder": null,
+        "idMember": null,
+        "idChecklist": "fa4e00000000000000000469"
+       }
+      ]
+     },
+     {
+      "id": "fa4e0000000000000000046c",
+      "name": "Exclude titles",
+      "idBoard": "fa4e0000000000000000000c",
+      "idCard": "fa4e0000000000000000046a",
+      "pos": 140737488371712,
+      "checkItems": [
+       {
+        "id": "fa4e0000000000000000046e",
+        "name": "senior|lead — too senior for now",
+        "nameData": {
+         "emoji": {}
+        },
+        "pos": 140737488355328,
+        "state": "incomplete",
+        "due": null,
+        "dueReminder": null,
+        "idMember": null,
+        "idChecklist": "fa4e0000000000000000046c"
+       }
+      ]
+     },
+     {
+      "id": "fa4e0000000000000000046d",
+      "name": "Exclude companies",
+      "idBoard": "fa4e0000000000000000000c",
+      "idCard": "fa4e0000000000000000046a",
+      "pos": 140737488388096,
+      "checkItems": [
+       {
+        "id": "fa4e0000000000000000046f",
+        "name": "Example Staffing GmbH — agency",
+        "nameData": {
+         "emoji": {}
+        },
+        "pos": 140737488355328,
+        "state": "incomplete",
+        "due": null,
+        "dueReminder": null,
+        "idMember": null,
+        "idChecklist": "fa4e0000000000000000046d"
+       }
+      ]
+     },
+     {
+      "id": "fa4e00000000000000000470",
+      "name": "Exclude text",
+      "idBoard": "fa4e0000000000000000000c",
+      "idCard": "fa4e0000000000000000046a",
+      "pos": 140737488404480,
+      "checkItems": [
+       {
+        "id": "fa4e00000000000000000472",
+        "name": "unpaid — no unpaid work",
+        "nameData": {
+         "emoji": {}
+        },
+        "pos": 140737488355328,
+        "state": "incomplete",
+        "due": null,
+        "dueReminder": null,
+        "idMember": null,
+        "idChecklist": "fa4e00000000000000000470"
+       }
+      ]
+     },
+     {
+      "id": "fa4e00000000000000000471",
+      "name": "Exclude locations",
+      "idBoard": "fa4e0000000000000000000c",
+      "idCard": "fa4e0000000000000000046a",
+      "pos": 140737488420864,
+      "checkItems": [
+       {
+        "id": "fa4e00000000000000000474",
+        "name": "munich|münchen — not moving",
+        "nameData": {
+         "emoji": {}
+        },
+        "pos": 140737488355328,
+        "state": "incomplete",
+        "due": null,
+        "dueReminder": null,
+        "idMember": null,
+        "idChecklist": "fa4e00000000000000000471"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "fa4e00000000000000000475",
+    "name": "Profile",
+    "desc": "An archived profile column: ignored.\n\n```yaml\nactive: true\n```",
+    "idList": "fa4e00000000000000000473",
+    "idBoard": "fa4e0000000000000000000c",
+    "closed": false,
+    "pos": 140737488355328,
+    "shortUrl": "https://trello.com/c/sample1078",
+    "checklists": []
+   }
+  ]
+ }
+]
