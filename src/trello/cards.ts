@@ -153,6 +153,16 @@ export function jobLabels(r: Job & { facts?: Facts }): { name: string; color: st
   return out;
 }
 
+// --- run column name predicate -------------------------------------------
+
+// "Nov 10 · 01:00" (runColumnName output): Mon D · HH:MM
+const RUN_COLUMN_RE = /^[A-Z][a-z]{2} \d{1,2} · \d{2}:\d{2}$/u;
+
+/** True when a list name was produced by runColumnName. */
+export function isRunColumnName(name: string): boolean {
+  return RUN_COLUMN_RE.test(name);
+}
+
 // --- run summary card ----------------------------------------------------
 
 export const RUN_SUMMARY_PREFIX = 'ℹ️ Run';
