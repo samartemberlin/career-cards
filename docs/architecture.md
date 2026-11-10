@@ -17,7 +17,8 @@ run:  config cards → job keys → scan → dedup → filter → JD → filter 
 | `serve`: webhooks, `/trigger/run`, gate, caps, job start | planned (PR 4) |
 | `run`: one run end to end | planned (PR 3) |
 | Pipeline (ported from samjobs) | [src/pipeline/](../src/pipeline/) |
-| Trello: card formats, paced client | [cards.ts](../src/trello/cards.ts), [api.ts](../src/trello/api.ts), [client.ts](../src/trello/client.ts); fake board and scoped client planned (PR 2) |
+| Trello: card formats, paced client | [cards.ts](../src/trello/cards.ts), [api.ts](../src/trello/api.ts), [client.ts](../src/trello/client.ts); fake board planned (PR 2) |
+| Trello: scope guard | every Trello call is scoped to the user's three boards; writes into `Originals` throw — [scoped.ts](../src/trello/scoped.ts) |
 | Config schema | [schema.ts](../src/config/schema.ts) |
 | Bot: action catalogue, router output schema | [catalogue.ts](../src/bot/catalogue.ts); router and stages planned (PR 7, 8) |
 | Masking | [privacy.ts](../src/privacy.ts) |
@@ -58,3 +59,5 @@ No stage gets untrusted content, private data and a way out at once. Stage runne
 - Model calls run `claude` as a child with an explicit env, own cwd and fixed tool flags — no secret or tool leaks in. [llm.ts](../src/pipeline/llm.ts)
 - No prompt-injection classifier — containment by stage capabilities is the defence. planned (PR 7)
 - zod at data boundaries (config cards, model JSON) — one schema is both runtime check and type. [schema.ts](../src/config/schema.ts)
+- Every Trello call outside tools/ goes through `scopeClient` — a leaked token cannot touch boards the bot wasn't given. [scoped.ts](../src/trello/scoped.ts)
+- Writes to `Originals` on the Profiles board are blocked at the API layer — the read-only source of truth cannot be corrupted. [scoped.ts](../src/trello/scoped.ts)
