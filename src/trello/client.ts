@@ -58,7 +58,6 @@ export function createTrelloClient(o: {
   const window: number[] = [];
 
   async function pace(): Promise<void> {
-    // Drop entries older than 10 s from the window.
     const cutoff = () => now() - 10000;
     while (window.length > 0 && window[0]! <= cutoff()) window.shift();
 
@@ -68,7 +67,6 @@ export function createTrelloClient(o: {
       const waitUntil = window[0]! + 10000;
       const delay = waitUntil - now();
       if (delay > 0) await sleep(delay);
-      // Re-prune after sleeping.
       while (window.length > 0 && window[0]! <= now() - 10000) window.shift();
     }
     window.push(now());
@@ -120,7 +118,6 @@ export function createTrelloClient(o: {
       try {
         res = await fetchImpl(url, init);
       } catch (err) {
-        // Network / timeout error
         if (isIdempotent && attempt < MAX_RETRIES) {
           await sleep(BACKOFF_MS[attempt]!);
           continue;
@@ -205,7 +202,7 @@ export function createTrelloClient(o: {
 
       for (;;) {
         const page = await call('GET', `/boards/${boardId}/cards/all`, {
-          query: { fields: 'id,name,desc,idList,idBoard,closed,pos,shortUrl', filter: 'all', limit, before },
+          query: { fields: 'id,name,desc,idList,idBoard,closed,pos,shortUrl', limit, before },
           schema: z.array(TCardSchema),
         });
 

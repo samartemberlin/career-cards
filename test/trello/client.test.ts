@@ -75,17 +75,9 @@ test('sends auth in the header, never in the URL', async () => {
 test('paces to maxPer10s', async () => {
   // 81 calls: the 81st must start ≥ 10,000 ms after the 1st
   const responses = Array.from({ length: 81 }, () => okJson({ id: 'u', username: 'u' }));
-  const { fetchImpl, calls } = makeFetch(responses);
+  const { fetchImpl } = makeFetch(responses);
   const clock = makeClock();
-  const client = createTrelloClient({
-    key: 'k', token: 't',
-    fetchImpl,
-    sleep: clock.sleep,
-    now: clock.now,
-    maxPer10s: 80,
-  });
 
-  // The clock starts at 0. After each call, 1 ms passes (simulating minimal real time).
   // We track how much fake time has elapsed when each call starts.
   const startTimes: number[] = [];
   const origFetch = fetchImpl;
@@ -262,10 +254,10 @@ test('allCards pages with before = oldest id of the page', async () => {
   const cards = await client.allCards('b1');
   assert.equal(cards.length, 2003);
 
-  // First request: no before
+  // First request: no before; filter is in the path, not the query
   const url1 = new URL(String(calls[0]![0]));
   assert.ok(!url1.searchParams.has('before'), 'first request must not have before');
-  assert.equal(url1.searchParams.get('filter'), 'all');
+  assert.ok(url1.pathname.endsWith('/all'), 'allCards must request the /all filter path');
   assert.equal(url1.searchParams.get('limit'), '1000');
 
   // Second request: before = smallest id of page1
@@ -345,9 +337,12 @@ test('drops unknown fields and rejects a malformed card', async () => {
   await assert.rejects(
     () => client.cards('b1', { filter: 'all' }),
     (err: unknown) => {
-      // Error should name the path
       assert.ok(err instanceof Error);
-      assert.ok(err.message.length > 0);
+      // Zod error should name the path of the missing field (e.g. "[1]" and "id")
+      assert.ok(
+        err.message.includes('[1]') || err.message.includes('"id"') || err.message.toLowerCase().includes('id'),
+        `expected error to name the path, got: ${err.message}`,
+      );
       return true;
     },
   );
