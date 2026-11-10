@@ -36,9 +36,8 @@ export function jobCardTitle(r: {
 // --- description ---------------------------------------------------------
 
 /** Description with the key footer always intact; JD trimmed to fit Trello's limit.
- * The score lives only in the card title — it does not appear in the description. */
+ * The score lives only in the card title; the reason is shown here without it. Facts become labels (jobLabels). */
 export function jobCardDesc(r: Job & {
-  facts?: Facts;
   reason?: string;
   flags?: string[];
   title_en?: string;
@@ -51,6 +50,7 @@ export function jobCardDesc(r: Job & {
     `**Link:** ${r.url}`,
     `**Location:** ${r.location || '—'}  ·  **Posted:** ${r.posted || '—'}  ·  **Deadline:** ${r.deadline || '—'}`,
     '',
+    r.reason ? `**Why:** ${r.reason}` : '',
     r.flags?.length ? `**Flags:** ${r.flags.join(', ')}` : '',
     '',
     '---',

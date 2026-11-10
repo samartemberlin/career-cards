@@ -100,10 +100,11 @@ test('jobCardDesc keeps the key footer and the limit even for a huge JD, and say
   assert.ok(small.desc.startsWith('**Co — Project Coordination**'));
 });
 
-test('jobCardDesc has no score line', () => {
-  const { desc } = jobCardDesc(job({ score: 8, reason: 'Great match.' }));
-  assert.ok(!/Score \d/i.test(desc), 'description must not contain a score line');
-  assert.ok(!desc.includes('Great match.'), 'reason must not appear in description');
+test('jobCardDesc shows the reason without the score, before the flags', () => {
+  const { desc } = jobCardDesc(job({ score: 8, reason: 'Great match.', flags: ['german-c1'] }));
+  assert.ok(!/Score \d|\b8\/10\b/i.test(desc), 'description must not contain the score');
+  assert.match(desc, /\n\*\*Why:\*\* Great match\.\n\*\*Flags:\*\* german-c1\n/);
+  assert.doesNotMatch(jobCardDesc(job({ reason: undefined })).desc, /Why:/);
 });
 
 test('parseJobKey reads both key prefixes', () => {
