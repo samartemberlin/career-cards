@@ -1,0 +1,342 @@
+[
+ {
+  "method": "POST",
+  "path": "/cards",
+  "query": {},
+  "status": 200,
+  "body": {
+   "id": "fa4e00000000000000000011",
+   "agent": null,
+   "badges": {
+    "attachments": 0,
+    "fogbugz": "",
+    "checkItems": 0,
+    "checkItemsChecked": 0,
+    "checkItemsEarliestDue": null,
+    "comments": 0,
+    "description": true,
+    "due": null,
+    "dueComplete": false,
+    "lastUpdatedByAi": false,
+    "start": null,
+    "externalSource": null,
+    "attachmentsByType": {
+     "trello": {
+      "board": 0,
+      "card": 0
+     }
+    },
+    "location": false,
+    "votes": 0,
+    "maliciousAttachments": 0,
+    "viewingMemberVoted": false,
+    "subscribed": false
+   },
+   "checkItemStates": [],
+   "closed": false,
+   "dueComplete": false,
+   "dateLastActivity": "2026-11-10T22:09:06.161Z",
+   "desc": "Scanned 412 · new 37 · rejected 25 · scored 10 · cards 5",
+   "descData": {
+    "emoji": {}
+   },
+   "due": null,
+   "dueReminder": null,
+   "idBoard": "fa4e00000000000000000005",
+   "idChecklists": [],
+   "idList": "fa4e00000000000000000010",
+   "idMembers": [],
+   "idMembersVoted": [],
+   "idShort": 1,
+   "idAttachmentCover": null,
+   "labels": [],
+   "idLabels": [],
+   "lastSummaryChangeEventAt": null,
+   "manifest": null,
+   "manualCoverAttachment": false,
+   "name": "ℹ️ Run · Nov 9 · 01:00 · 5 cards",
+   "nodeId": "ari:cloud:trello::card/workspace/fa4e00000000000000000003/fa4e00000000000000000011",
+   "pinned": false,
+   "pos": 140737488355328,
+   "shortUrl": "https://trello.com/c/sample1001",
+   "start": null,
+   "subscribed": false,
+   "cover": {
+    "idAttachment": null,
+    "color": null,
+    "idUploadedBackground": null,
+    "size": "normal",
+    "brightness": "dark",
+    "yPosition": 0.5,
+    "idPlugin": null
+   },
+   "isTemplate": false,
+   "cardRole": null,
+   "mirrorSourceId": null,
+   "attachments": [],
+   "stickers": [],
+   "limits": {}
+  }
+ },
+ {
+  "method": "POST",
+  "path": "/cards/fa4e00000000000000000012/actions/comments",
+  "query": {},
+  "status": 200,
+  "body": {
+   "id": "fa4e00000000000000000013",
+   "idMemberCreator": "fa4e00000000000000000002",
+   "data": {
+    "idCard": "fa4e00000000000000000012",
+    "idAuthor": "fa4e00000000000000000002",
+    "text": "Sample comment: looks like a good fit.",
+    "textData": {
+     "emoji": {}
+    },
+    "card": {
+     "id": "fa4e00000000000000000012",
+     "name": "9 · Example Media GmbH — Content Editor",
+     "idShort": 2
+    },
+    "board": {
+     "id": "fa4e00000000000000000005",
+     "name": "career-cards sample · Jobs"
+    },
+    "list": {
+     "id": "fa4e00000000000000000010",
+     "name": "Nov 9 · 01:00"
+    }
+   },
+   "agenticIdentity": null,
+   "appCreator": {
+    "id": "fa4e00000000000000000004",
+    "authType": "appKeyToken"
+   },
+   "type": "commentCard",
+   "date": "2026-11-10T22:09:07.518Z",
+   "limits": {
+    "reactions": {
+     "perAction": {
+      "status": "ok",
+      "disableAt": 900,
+      "warnAt": 720
+     },
+     "uniquePerAction": {
+      "status": "ok",
+      "disableAt": 17,
+      "warnAt": 14
+     }
+    }
+   }
+  }
+ },
+ {
+  "method": "POST",
+  "path": "/cards/fa4e00000000000000000012/attachments",
+  "query": {},
+  "status": 200,
+  "body": {
+   "id": "fa4e00000000000000000014",
+   "aiSummary": null,
+   "bytes": 164,
+   "date": "2026-11-10T22:09:08.106Z",
+   "edgeColor": null,
+   "idMember": "fa4e00000000000000000002",
+   "isMalicious": false,
+   "isUpload": true,
+   "mimeType": "text/markdown",
+   "name": "job-description.md",
+   "previews": [],
+   "sourceView": null,
+   "pos": 140737488355328,
+   "fileName": "job-description.md",
+   "limits": {}
+  }
+ },
+ {
+  "method": "PUT",
+  "path": "/cards/fa4e00000000000000000019",
+  "query": {},
+  "status": 200,
+  "body": {
+   "id": "fa4e00000000000000000019",
+   "agent": null,
+   "badges": {
+    "attachments": 0,
+    "fogbugz": "",
+    "checkItems": 0,
+    "checkItemsChecked": 0,
+    "checkItemsEarliestDue": null,
+    "comments": 0,
+    "description": true,
+    "due": null,
+    "dueComplete": false,
+    "lastUpdatedByAi": false,
+    "start": null,
+    "externalSource": null,
+    "attachmentsByType": {
+     "trello": {
+      "board": 0,
+      "card": 0
+     }
+    },
+    "location": false,
+    "votes": 0,
+    "maliciousAttachments": 0,
+    "viewingMemberVoted": false,
+    "subscribed": false
+   },
+   "checkItemStates": [],
+   "closed": true,
+   "dueComplete": false,
+   "dateLastActivity": "2026-11-10T22:09:12.493Z",
+   "desc": "**Example Media GmbH — Content Editor**\n\n**Link:** https://jobs.example.com/sample-6\n**Location:** Berlin (Remote)  ·  **Posted:** 2026-11-07  ·  **Deadline:** —\n\n**Why:** Editing role in Berlin that matches the profile.\n\n---\nWe are looking for a Content Editor to plan, write and edit articles for our sample magazine.\n\n- Two years of editing\n- Good English, some German\n\n---\ncareer-cards-key: sample:job-6",
+   "descData": {
+    "emoji": {}
+   },
+   "due": null,
+   "dueReminder": null,
+   "idBoard": "fa4e00000000000000000005",
+   "idChecklists": [],
+   "idList": "fa4e00000000000000000010",
+   "idMembers": [],
+   "idMembersVoted": [],
+   "idShort": 7,
+   "idAttachmentCover": null,
+   "labels": [
+    {
+     "id": "fa4e0000000000000000000f",
+     "idBoard": "fa4e00000000000000000005",
+     "idOrganization": "fa4e00000000000000000003",
+     "name": "Berlin",
+     "nodeId": "ari:cloud:trello::label/workspace/fa4e00000000000000000003/fa4e0000000000000000000f",
+     "color": "green",
+     "uses": 6
+    },
+    {
+     "id": "fa4e0000000000000000000e",
+     "idBoard": "fa4e00000000000000000005",
+     "idOrganization": "fa4e00000000000000000003",
+     "name": "Remote",
+     "nodeId": "ari:cloud:trello::label/workspace/fa4e00000000000000000003/fa4e0000000000000000000e",
+     "color": "blue",
+     "uses": 3
+    }
+   ],
+   "idLabels": [
+    "fa4e0000000000000000000f",
+    "fa4e0000000000000000000e"
+   ],
+   "lastSummaryChangeEventAt": null,
+   "manifest": null,
+   "manualCoverAttachment": false,
+   "name": "9 · Example Media GmbH — Content Editor",
+   "nodeId": "ari:cloud:trello::card/workspace/fa4e00000000000000000003/fa4e00000000000000000019",
+   "pinned": false,
+   "pos": 140737488453632,
+   "shortUrl": "https://trello.com/c/sample1011",
+   "start": null,
+   "subscribed": false,
+   "cover": {
+    "idAttachment": null,
+    "color": null,
+    "idUploadedBackground": null,
+    "size": "normal",
+    "brightness": "dark",
+    "yPosition": 0.5,
+    "idPlugin": null
+   },
+   "isTemplate": false,
+   "cardRole": null,
+   "mirrorSourceId": null
+  }
+ },
+ {
+  "method": "POST",
+  "path": "/lists",
+  "query": {},
+  "status": 200,
+  "body": {
+   "limits": {},
+   "id": "fa4e00000000000000000010",
+   "name": "Nov 9 · 01:00",
+   "closed": false,
+   "color": null,
+   "idBoard": "fa4e00000000000000000005",
+   "pos": 16384,
+   "subscribed": false,
+   "softLimit": null,
+   "type": null,
+   "datasource": {
+    "filter": false
+   }
+  }
+ },
+ {
+  "method": "PUT",
+  "path": "/lists/fa4e00000000000000000024/closed",
+  "query": {},
+  "status": 200,
+  "body": {
+   "id": "fa4e00000000000000000024",
+   "name": "Oct 1 · 01:00",
+   "closed": true,
+   "color": null,
+   "idBoard": "fa4e00000000000000000005",
+   "pos": 131072,
+   "type": null,
+   "datasource": {
+    "filter": false
+   }
+  }
+ },
+ {
+  "method": "POST",
+  "path": "/labels",
+  "query": {},
+  "status": 200,
+  "body": {
+   "id": "fa4e0000000000000000000f",
+   "idBoard": "fa4e00000000000000000005",
+   "name": "Berlin",
+   "color": "green",
+   "uses": 0,
+   "limits": {}
+  }
+ },
+ {
+  "method": "POST",
+  "path": "/checklists",
+  "query": {},
+  "status": 200,
+  "body": {
+   "id": "fa4e00000000000000000445",
+   "name": "Personal details",
+   "idBoard": "fa4e0000000000000000000c",
+   "idCard": "fa4e00000000000000000444",
+   "pos": 140737488355328,
+   "checkItems": [],
+   "limits": {}
+  }
+ },
+ {
+  "method": "POST",
+  "path": "/checklists/fa4e00000000000000000445/checkItems",
+  "query": {},
+  "status": 200,
+  "body": {
+   "id": "fa4e00000000000000000447",
+   "name": "Alex Example",
+   "nameData": {
+    "emoji": {}
+   },
+   "pos": 140737488355328,
+   "state": "incomplete",
+   "due": null,
+   "dueReminder": null,
+   "idMember": null,
+   "idChecklist": "fa4e00000000000000000445",
+   "limits": {}
+  }
+ }
+]

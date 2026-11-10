@@ -1,0 +1,211 @@
+[
+ {
+  "method": "GET",
+  "path": "/boards/fa4e0000000000000000000d",
+  "query": {
+   "fields": "id,name,closed,idOrganization,prefs"
+  },
+  "status": 200,
+  "body": {
+   "id": "fa4e0000000000000000000d",
+   "name": "career-cards sample · System",
+   "closed": false,
+   "idOrganization": "fa4e00000000000000000003",
+   "prefs": {
+    "permissionLevel": "private",
+    "hideVotes": false,
+    "voting": "disabled",
+    "comments": "members",
+    "invitations": "members",
+    "selfJoin": true,
+    "cardCovers": true,
+    "showCompleteStatus": true,
+    "cardCounts": false,
+    "isTemplate": false,
+    "cardAging": "regular",
+    "calendarFeedEnabled": false,
+    "hiddenPluginBoardButtons": [],
+    "switcherViews": [
+     {
+      "viewType": "Board",
+      "enabled": true
+     },
+     {
+      "viewType": "Table",
+      "enabled": true
+     },
+     {
+      "viewType": "Calendar",
+      "enabled": false
+     },
+     {
+      "viewType": "Dashboard",
+      "enabled": false
+     },
+     {
+      "viewType": "Timeline",
+      "enabled": false
+     },
+     {
+      "viewType": "Map",
+      "enabled": false
+     }
+    ],
+    "autoArchive": null,
+    "background": "blue",
+    "backgroundColor": "#0079BF",
+    "backgroundDarkColor": null,
+    "backgroundDarkImage": null,
+    "backgroundTile": false,
+    "backgroundBrightness": "dark",
+    "sharedSourceUrl": null,
+    "backgroundBottomColor": "#0079BF",
+    "backgroundTopColor": "#0079BF",
+    "canBePublic": true,
+    "canBeEnterprise": true,
+    "canBeOrg": true,
+    "canBePrivate": true,
+    "canInvite": true
+   }
+  }
+ },
+ {
+  "method": "GET",
+  "path": "/boards/fa4e0000000000000000000d/members",
+  "query": {
+   "fields": "id,username"
+  },
+  "status": 200,
+  "body": [
+   {
+    "id": "fa4e00000000000000000002",
+    "username": "samplebot"
+   }
+  ]
+ },
+ {
+  "method": "GET",
+  "path": "/boards/fa4e0000000000000000000d/lists",
+  "query": {
+   "filter": "all",
+   "fields": "id,name,closed,pos,idBoard"
+  },
+  "status": 200,
+  "body": [
+   {
+    "id": "fa4e00000000000000000477",
+    "name": "Config",
+    "closed": false,
+    "pos": 16384,
+    "idBoard": "fa4e0000000000000000000d"
+   },
+   {
+    "id": "fa4e0000000000000000047f",
+    "name": "Runs",
+    "closed": false,
+    "pos": 32768,
+    "idBoard": "fa4e0000000000000000000d"
+   }
+  ]
+ },
+ {
+  "method": "GET",
+  "path": "/boards/fa4e0000000000000000000d/cards/open",
+  "query": {
+   "fields": "id,name,desc,idList,idBoard,closed,pos,shortUrl",
+   "checklists": "all"
+  },
+  "status": 200,
+  "body": [
+   {
+    "id": "fa4e00000000000000000476",
+    "name": "Settings",
+    "desc": "Settings for the sample user. Only the YAML block is read.\n\n```yaml\ntimezone: Europe/Berlin\nproviders: [claude, gemini]\nlocations: [berlin, remote-de]\nallowed_members: [samplebot]\n```\n\nNotes: providers are tried in order.",
+    "idList": "fa4e00000000000000000477",
+    "idBoard": "fa4e0000000000000000000d",
+    "closed": false,
+    "pos": 140737488355328,
+    "shortUrl": "https://trello.com/c/sample1079",
+    "checklists": []
+   },
+   {
+    "id": "fa4e00000000000000000478",
+    "name": "Sources",
+    "desc": "Sources added to or dropped from the defaults.",
+    "idList": "fa4e00000000000000000477",
+    "idBoard": "fa4e0000000000000000000d",
+    "closed": false,
+    "pos": 140737488371712,
+    "shortUrl": "https://trello.com/c/sample1080",
+    "checklists": [
+     {
+      "id": "fa4e00000000000000000479",
+      "name": "Add",
+      "idBoard": "fa4e0000000000000000000d",
+      "idCard": "fa4e00000000000000000478",
+      "pos": 140737488355328,
+      "checkItems": [
+       {
+        "id": "fa4e0000000000000000047a",
+        "name": "Example GmbH — https://example.com/careers",
+        "nameData": {
+         "emoji": {}
+        },
+        "pos": 140737488355328,
+        "state": "incomplete",
+        "due": null,
+        "dueReminder": null,
+        "idMember": null,
+        "idChecklist": "fa4e00000000000000000479"
+       }
+      ]
+     },
+     {
+      "id": "fa4e0000000000000000047b",
+      "name": "Drop",
+      "idBoard": "fa4e0000000000000000000d",
+      "idCard": "fa4e00000000000000000478",
+      "pos": 140737488371712,
+      "checkItems": [
+       {
+        "id": "fa4e0000000000000000047c",
+        "name": "Old Example AG",
+        "nameData": {
+         "emoji": {}
+        },
+        "pos": 140737488355328,
+        "state": "incomplete",
+        "due": null,
+        "dueReminder": null,
+        "idMember": null,
+        "idChecklist": "fa4e0000000000000000047b"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "fa4e0000000000000000047d",
+    "name": "Schedule",
+    "desc": "The nightly run is started by a Trello automation rule at 01:00. Edit that rule to change the time.",
+    "idList": "fa4e00000000000000000477",
+    "idBoard": "fa4e0000000000000000000d",
+    "closed": false,
+    "pos": 140737488388096,
+    "shortUrl": "https://trello.com/c/sample1081",
+    "checklists": []
+   },
+   {
+    "id": "fa4e0000000000000000047e",
+    "name": "✅ Nov 9 · 01:00 · scheduled · +5 cards",
+    "desc": "Scanned 412 · new 37 · scored 10 · cards 5",
+    "idList": "fa4e0000000000000000047f",
+    "idBoard": "fa4e0000000000000000000d",
+    "closed": false,
+    "pos": 140737488355328,
+    "shortUrl": "https://trello.com/c/sample1082",
+    "checklists": []
+   }
+  ]
+ }
+]

@@ -1,0 +1,177 @@
+[
+ {
+  "method": "GET",
+  "path": "/cards/fa4e00000000000000000058",
+  "query": {
+   "fields": "id,name,desc,idList,idBoard,closed,pos,shortUrl",
+   "list": "true",
+   "list_fields": "name"
+  },
+  "status": 200,
+  "body": {
+   "id": "fa4e00000000000000000058",
+   "name": "2 · Filler GmbH — Sample role 0051",
+   "desc": "Filler card.\n\n---\ncareer-cards-key: sample:filler-0051",
+   "idList": "fa4e00000000000000000024",
+   "idBoard": "fa4e00000000000000000005",
+   "closed": false,
+   "pos": 140737489174528,
+   "shortUrl": "https://trello.com/c/sample001",
+   "list": {
+    "id": "fa4e00000000000000000024",
+    "name": "Oct 1 · 01:00"
+   }
+  }
+ },
+ {
+  "method": "GET",
+  "path": "/cards/fa4e00000000000000000443",
+  "query": {
+   "fields": "id,name,desc,idList,idBoard,closed,pos,shortUrl",
+   "list": "true",
+   "list_fields": "name"
+  },
+  "status": 200,
+  "body": {
+   "id": "fa4e00000000000000000443",
+   "name": "CV (original)",
+   "desc": "# Alex Example\n\nContent editor in Berlin.\n\n## Experience\n- 2023–now: Editor at a small publishing house (about 20 employees)\n- 2021–2023: Editorial intern at a regional newspaper\n\n## Education\n- BA in German studies, Example University\n\n## Languages\nEnglish (C1), German (B2)\n",
+   "idList": "fa4e00000000000000000440",
+   "idBoard": "fa4e0000000000000000000c",
+   "closed": false,
+   "pos": 140737488355328,
+   "shortUrl": "https://trello.com/c/sample1063",
+   "list": {
+    "id": "fa4e00000000000000000440",
+    "name": "Originals"
+   }
+  }
+ },
+ {
+  "method": "GET",
+  "path": "/cards/fa4e00000000000000000012",
+  "query": {
+   "fields": "id,name,desc,idList,idBoard,closed,pos,shortUrl",
+   "list": "true",
+   "list_fields": "name"
+  },
+  "status": 200,
+  "body": {
+   "id": "fa4e00000000000000000012",
+   "name": "9 · Example Media GmbH — Content Editor",
+   "desc": "**Example Media GmbH — Content Editor**\n\n**Link:** https://jobs.example.com/sample-1\n**Location:** Berlin, Germany  ·  **Posted:** 2026-11-02  ·  **Deadline:** —\n\n**Why:** Editing role in Berlin that matches the profile.\n\n---\nWe are looking for a Content Editor to plan, write and edit articles for our sample magazine.\n\n- Two years of editing\n- Good English, some German\n\n---\ncareer-cards-key: sample:job-1",
+   "idList": "fa4e00000000000000000010",
+   "idBoard": "fa4e00000000000000000005",
+   "closed": false,
+   "pos": 140737488371712,
+   "shortUrl": "https://trello.com/c/sample1002",
+   "list": {
+    "id": "fa4e00000000000000000010",
+    "name": "Nov 9 · 01:00"
+   }
+  }
+ },
+ {
+  "method": "GET",
+  "path": "/lists/fa4e00000000000000000440",
+  "query": {
+   "fields": "id,name,closed,pos,idBoard"
+  },
+  "status": 200,
+  "body": {
+   "id": "fa4e00000000000000000440",
+   "name": "Originals",
+   "closed": false,
+   "pos": 16384,
+   "idBoard": "fa4e0000000000000000000c"
+  }
+ },
+ {
+  "method": "GET",
+  "path": "/checklists/fa4e00000000000000000445",
+  "query": {
+   "fields": "id,name,idCard,idBoard",
+   "checkItems": "all",
+   "checkItem_fields": "id,name,state,pos"
+  },
+  "status": 200,
+  "body": {
+   "id": "fa4e00000000000000000445",
+   "name": "Personal details",
+   "idCard": "fa4e00000000000000000444",
+   "idBoard": "fa4e0000000000000000000c",
+   "checkItems": [
+    {
+     "id": "fa4e00000000000000000447",
+     "name": "Alex Example",
+     "state": "incomplete",
+     "pos": 140737488355328,
+     "idChecklist": "fa4e00000000000000000445"
+    },
+    {
+     "id": "fa4e00000000000000000446",
+     "name": "alex.example@example.com",
+     "state": "incomplete",
+     "pos": 140737488371712,
+     "idChecklist": "fa4e00000000000000000445"
+    },
+    {
+     "id": "fa4e00000000000000000448",
+     "name": "+49 30 0000000",
+     "state": "incomplete",
+     "pos": 140737488388096,
+     "idChecklist": "fa4e00000000000000000445"
+    },
+    {
+     "id": "fa4e00000000000000000449",
+     "name": "address: Examplestraße 1, 10115 Berlin",
+     "state": "incomplete",
+     "pos": 140737488404480,
+     "idChecklist": "fa4e00000000000000000445"
+    },
+    {
+     "id": "fa4e0000000000000000044a",
+     "name": "https://example.com/alex",
+     "state": "incomplete",
+     "pos": 140737488420864,
+     "idChecklist": "fa4e00000000000000000445"
+    }
+   ]
+  }
+ },
+ {
+  "method": "GET",
+  "path": "/cards/fa4e00000000000000000444",
+  "query": {
+   "fields": "id,name,desc,idList,idBoard,closed,pos,shortUrl",
+   "list": "true",
+   "list_fields": "name"
+  },
+  "status": 200,
+  "body": {
+   "id": "fa4e00000000000000000444",
+   "name": "Personal details",
+   "desc": "Strings masked before any prompt.",
+   "idList": "fa4e00000000000000000442",
+   "idBoard": "fa4e0000000000000000000c",
+   "closed": false,
+   "pos": 140737488371712,
+   "shortUrl": "https://trello.com/c/sample1065",
+   "list": {
+    "id": "fa4e00000000000000000442",
+    "name": "Shared"
+   }
+  }
+ },
+ {
+  "method": "GET",
+  "path": "/cards/fa4e00000000000000000001",
+  "query": {
+   "fields": "id,name,desc,idList,idBoard,closed,pos,shortUrl",
+   "list": "true",
+   "list_fields": "name"
+  },
+  "status": 404,
+  "body": "The requested resource was not found."
+ }
+]
