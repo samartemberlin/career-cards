@@ -182,6 +182,16 @@ test('jobLabels: location and German level become labels; unknown German level g
   assert.equal(jobLabels({ key: 'k', url: 'u', company: 'Co', title: 'T', location: '', facts: fakeGerman('c1') })[0].color, 'red');
 });
 
+test('shortLocation: "Global Remote" and bare "global" are classified as Worldwide', () => {
+  assert.equal(shortLocation('Global Remote'), 'Worldwide');
+  assert.equal(shortLocation('global'), 'Worldwide');
+});
+
+test('jobCardDesc: empty-string location renders as —, not blank', () => {
+  const { desc } = jobCardDesc(job({ location: '' }));
+  assert.ok(desc.includes('**Location:** —'), 'empty location should show —');
+});
+
 test('RUN_SUMMARY_PREFIX and isRunSummaryTitle', () => {
   assert.equal(RUN_SUMMARY_PREFIX, 'ℹ️ Run');
   assert.ok(isRunSummaryTitle('ℹ️ Run 2026-11-10'));

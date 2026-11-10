@@ -49,7 +49,7 @@ export function jobCardDesc(r: Job & {
     en ? `*Original: ${r.title}*` : '',
     '',
     `**Link:** ${r.url}`,
-    `**Location:** ${r.location ?? '—'}  ·  **Posted:** ${r.posted ?? '—'}  ·  **Deadline:** ${r.deadline ?? '—'}`,
+    `**Location:** ${r.location || '—'}  ·  **Posted:** ${r.posted || '—'}  ·  **Deadline:** ${r.deadline || '—'}`,
     '',
     r.flags?.length ? `**Flags:** ${r.flags.join(', ')}` : '',
     '',
@@ -107,7 +107,7 @@ export function runColumnName(start: Date, timeZone: string): string {
 // --- location helper -----------------------------------------------------
 
 const REMOTE_RE = /remote|home ?office|work from/i;
-const WORLD_RE = /worldwide|anywhere|work from/i;
+const WORLD_RE = /worldwide|anywhere|global|work from/i;
 
 /** "Berlin, Berlin, Germany" → "Berlin"; "Anywhere in the World" → "Worldwide";
  *  "Europe (Remote)" → "Europe / Remote". */
