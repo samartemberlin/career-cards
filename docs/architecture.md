@@ -17,8 +17,9 @@ run:  config cards → job keys → scan → dedup → filter → JD → filter 
 | `serve`: webhooks, `/trigger/run`, gate, caps, job start | planned (PR 4) |
 | `run`: one run end to end | planned (PR 3) |
 | Pipeline (ported from samjobs) | [src/pipeline/](../src/pipeline/) |
-| Trello: card formats, paced client | [cards.ts](../src/trello/cards.ts), [api.ts](../src/trello/api.ts), [client.ts](../src/trello/client.ts); fake board planned (PR 2) |
+| Trello: card formats, paced client | [cards.ts](../src/trello/cards.ts), [api.ts](../src/trello/api.ts), [client.ts](../src/trello/client.ts) |
 | Trello: scope guard | every Trello call is scoped to the user's three boards; writes into `Originals` throw — [scoped.ts](../src/trello/scoped.ts) |
+| Trello: private-board check | boards must be private, open and have no unexpected members — [private.ts](../src/trello/private.ts) |
 | Config schema, config cards reader | [schema.ts](../src/config/schema.ts), [trello/config.ts](../src/trello/config.ts) |
 | Bot: action catalogue, router output schema | [catalogue.ts](../src/bot/catalogue.ts); router and stages planned (PR 7, 8) |
 | Masking | [privacy.ts](../src/privacy.ts) |

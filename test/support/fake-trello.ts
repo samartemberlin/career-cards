@@ -508,4 +508,24 @@ export class FakeTrello {
   attachmentsOn(cardId: string): string[] {
     return this._attachments.get(cardId) ?? [];
   }
+
+  /** Replace a board's permission level (affects board() responses). */
+  setBoardPermissionLevel(boardId: string, permissionLevel: string): void {
+    const b = this._boards.get(boardId);
+    if (!b) throw new Error(`FakeTrello.setBoardPermissionLevel: board ${boardId} not found`);
+    this._boards.set(boardId, { ...b, prefs: { permissionLevel } });
+  }
+
+  /** Mark a board closed or open (affects board() responses). */
+  setBoardClosed(boardId: string, closed: boolean): void {
+    const b = this._boards.get(boardId);
+    if (!b) throw new Error(`FakeTrello.setBoardClosed: board ${boardId} not found`);
+    this._boards.set(boardId, { ...b, closed });
+  }
+
+  /** Add a member to a board's member list (affects boardMembers() responses). */
+  addBoardMember(boardId: string, member: TMember): void {
+    const members = this._boardMembers.get(boardId) ?? [];
+    this._boardMembers.set(boardId, [...members, { id: member.id, username: member.username }]);
+  }
 }
