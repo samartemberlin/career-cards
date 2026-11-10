@@ -1,0 +1,4 @@
+{
+ "note": "real extractor reply for a German LinkedIn posting (Oct 2026), captured live",
+ "reply": "{\n  \"key\": \"probe\",\n  \"posting_lang\": \"de\",\n  \"title_en\": \"Construction Project Manager (m/f/d) – Commercial Real Estate (Office & Retail)\",\n  \"german\": {\n    \"level\": \"c1\",\n    \"spoken_heavy\": true,\n    \"evidence\": \"Sehr gute Deutschkenntnisse in Wort und Schrift\"\n  },\n  \"english_working_language\": null,\n  \"years\": {\n    \"min\": null,\n    \"max\": null,\n    \"evidence\": \"Mehrjährige Berufserfahrung in der eigenverantwortlichen Steuerung anspruchsvoller Bauprojekte\"\n  },\n  \"degree_field\": \"architecture or civil engineering\",\n  \"function\": \"Project Management\",\n  \"sector\": \"Real Estate / Construction\",\n  \"seniority\": \"Experienced\",\n  \"driving_licence\": null,\n  \"unpaid_internship\": false,\n  \"methodology\": [],\n  \"deadline\": null\n}"
+}
