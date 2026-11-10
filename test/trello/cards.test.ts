@@ -1,0 +1,201 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import type { Facts } from '../../src/pipeline/facts.ts';
+import {
+  jobCardTitle,
+  jobCardDesc,
+  jobLabels,
+  parseJobKey,
+  parseTitleScore,
+  runColumnName,
+  shortLocation,
+  isRunSummaryTitle,
+  RUN_SUMMARY_PREFIX,
+  TITLE_MAX,
+  DESC_LIMIT,
+} from '../../src/trello/cards.ts';
+
+const job = (o: Record<string, unknown> = {}) => ({
+  key: 'k',
+  company: 'Co',
+  title: 'Project Coordination',
+  url: 'https://example.com/jobs/1',
+  location: 'Berlin',
+  posted: '2026-10-09',
+  deadline: undefined as string | undefined,
+  jd: 'Job text.',
+  score: 7,
+  reason: 'Good fit.',
+  flags: [] as string[],
+  ...o,
+});
+
+// helpers for jobLabels
+const fakeGerman = (level: string | null) =>
+  ({ german: { level } } as unknown as Facts);
+
+test('TITLE_MAX is 90, DESC_LIMIT is 16384', () => {
+  assert.equal(TITLE_MAX, 90);
+  assert.equal(DESC_LIMIT, 16384);
+});
+
+test('jobCardTitle basic', () => {
+  assert.equal(jobCardTitle({ score: 8, company: 'ifa', title: 'PK' }), '8 · ifa — PK');
+});
+
+test('jobCardTitle is capped at 90 chars, keeps the score and a clipped company, never throws on short input', () => {
+  const t = jobCardTitle({
+    score: 9,
+    company: 'Wissenschaft im Dialog gGmbH',
+    title: 'Projektmanager*in für die Arbeitsbereiche Mentor*innen, Netzwerk und regionale Förderung im Projekt',
+  });
+  assert.ok(t.length <= 90, `length was ${t.length}`);
+  assert.ok(t.startsWith('9 · Wissenschaft im Dialog gGmbH — Projektmanager'));
+  assert.ok(t.includes('…'));
+
+  assert.ok(jobCardTitle({ score: 6, company: 'A'.repeat(60), title: 'T' }).length <= 90);
+  assert.equal(jobCardTitle({ score: 8, company: 'ifa', title: 'PK' }), '8 · ifa — PK');
+});
+
+test('jobCardTitle shows the English title with a [DE] mark; the German original goes first in the description', () => {
+  const r = job({
+    score: 8,
+    company: 'ifa',
+    title: 'Projektkoordination (m/w/d)',
+    title_en: 'Project Coordination (m/f/d)',
+  });
+  assert.equal(jobCardTitle(r), '8 · ifa — Project Coordination (m/f/d) [DE]');
+  assert.ok(jobCardTitle(r).length <= 90);
+  assert.ok(
+    jobCardDesc(r).desc.startsWith(
+      '**ifa — Project Coordination (m/f/d)**\n*Original: Projektkoordination (m/w/d)*',
+    ),
+  );
+  // same title means no [DE]
+  assert.equal(jobCardTitle({ score: 7, company: 'Co', title: 'Coordinator', title_en: 'Coordinator' }), '7 · Co — Coordinator');
+  assert.equal(jobCardTitle({ score: 7, company: 'Co', title: 'Coordinator' }), '7 · Co — Coordinator');
+});
+
+test('jobCardTitle no longer carries the location (it is a label now) and still fits 90 chars', () => {
+  const t = jobCardTitle({
+    score: 9,
+    company: 'Wissenschaft im Dialog gGmbH',
+    title: 'Projektmanager*in für die Arbeitsbereiche Mentor*innen, Netzwerk und regionale Förderung im Projekt',
+  });
+  assert.ok(t.length <= 90, `length was ${t.length}`);
+  assert.ok(!t.includes('(Berlin)'));
+  assert.ok(t.includes('…'));
+  assert.equal(jobCardTitle({ score: 5, company: 'Co', title: 'T' }), '5 · Co — T');
+});
+
+test('jobCardDesc keeps the key footer and the limit even for a huge JD, and says it was truncated', () => {
+  const big = jobCardDesc(job({ jd: 'x'.repeat(100000) }));
+  assert.ok(big.desc.length <= DESC_LIMIT, `length was ${big.desc.length}`);
+  assert.ok(big.truncated);
+  assert.ok(big.desc.endsWith('career-cards-key: k'));
+
+  const small = jobCardDesc(job({ flags: ['german-c1'] }));
+  assert.ok(!small.truncated);
+  assert.match(small.desc, /\*\*Flags:\*\* german-c1/);
+  assert.ok(small.desc.startsWith('**Co — Project Coordination**'));
+});
+
+test('jobCardDesc has no score line', () => {
+  const { desc } = jobCardDesc(job({ score: 8, reason: 'Great match.' }));
+  assert.ok(!/Score \d/i.test(desc), 'description must not contain a score line');
+  assert.ok(!desc.includes('Great match.'), 'reason must not appear in description');
+});
+
+test('parseJobKey reads both key prefixes', () => {
+  assert.equal(parseJobKey('body\n\n---\ncareer-cards-key: abc:123'), 'abc:123');
+  assert.equal(parseJobKey('body\n\n---\nsamjobs-key: xyz:456'), 'xyz:456');
+  assert.equal(parseJobKey('no key here'), null);
+  assert.equal(parseJobKey(''), null);
+});
+
+test('title over 90 chars is clipped and parseTitleScore still reads 8', () => {
+  // A very long title stuffed with multi-byte separators and emoji
+  const longTitle = '·'.repeat(10) + '—'.repeat(10) + '🔥'.repeat(10) + 'Software Engineer in Residence at a Wonderful Company doing Great Things';
+  const title = jobCardTitle({ score: 8, company: 'Co', title: longTitle });
+  assert.ok(title.length <= 90, `title length ${title.length} exceeds 90`);
+  assert.ok(title.includes('…'), 'clipped title should end with ellipsis');
+  assert.equal(parseTitleScore(title), 8);
+});
+
+test('parseTitleScore reads the leading integer 0-10', () => {
+  assert.equal(parseTitleScore('3 · Co — T'), 3);
+  assert.equal(parseTitleScore('10 · Co'), 10);
+  assert.equal(parseTitleScore('0 · Co'), 0);
+  for (const t of ['Co — T', '8.5 · Co', '11 · Co', '']) {
+    assert.equal(parseTitleScore(t), null, `expected null for "${t}"`);
+  }
+});
+
+test('runColumnName in Europe/Berlin across DST', () => {
+  // Spring forward: clocks go from 02:00 to 03:00 on 2026-03-29
+  assert.equal(runColumnName(new Date('2026-03-29T00:30:00Z'), 'Europe/Berlin'), 'Mar 29 · 01:30');
+  assert.equal(runColumnName(new Date('2026-03-29T01:30:00Z'), 'Europe/Berlin'), 'Mar 29 · 03:30');
+});
+
+test('runColumnName just before midnight', () => {
+  assert.equal(runColumnName(new Date('2026-11-10T22:59:00Z'), 'Europe/Berlin'), 'Nov 10 · 23:59');
+});
+
+test('shortLocation: compact, always says remote/worldwide when that is what the posting says', () => {
+  const cases: [string | null, string][] = [
+    ['Berlin, Berlin, Germany', 'Berlin'],
+    ['Berlin · Germany', 'Berlin'],
+    ['Berlin', 'Berlin'],
+    ['Remote', 'Remote'],
+    ['Europe (Remote)', 'Europe / Remote'],
+    ['Anywhere in the World', 'Worldwide'],
+    ['Worldwide', 'Worldwide'],
+    ['Berlin, Remote', 'Berlin / Remote'],
+    ['Home Office - Baden-Württemberg', 'Baden-Württemberg / Remote'],
+    ['Greater Munich Metropolitan Area', 'Greater Munich Metropolit…'],
+    ['', ''],
+    [null, ''],
+  ];
+  for (const [input, expected] of cases) {
+    assert.equal(shortLocation(input), expected, `shortLocation(${JSON.stringify(input)})`);
+  }
+});
+
+test('jobLabels: location and German level become labels; unknown German level gets none', () => {
+  const names = (location: string, germanLevel?: string | null) =>
+    jobLabels({
+      key: 'k', url: 'u', company: 'Co', title: 'T', location,
+      facts: germanLevel !== undefined ? fakeGerman(germanLevel) : undefined,
+    }).map((l) => l.name);
+
+  assert.deepEqual(names('Berlin, Berlin, Germany'), ['Berlin']);
+  assert.deepEqual(names('Berlin (Hybrid / Remote)'), ['Berlin', 'Remote']);
+  assert.deepEqual(names('Anywhere in the World'), ['Remote']);
+  assert.deepEqual(names('Munich'), ['Munich']);
+  assert.deepEqual(names(''), []);
+  assert.deepEqual(names('Berlin', 'none'), ['Berlin', 'English OK']);
+  assert.deepEqual(names('', 'b1'), ['German B1']);
+  assert.deepEqual(names('', 'b2'), ['German B2']);
+  assert.deepEqual(names('', 'c1'), ['German C1+']);
+  assert.deepEqual(names('', 'native'), ['German C1+']);
+  assert.deepEqual(names('', null), []);
+  assert.equal(jobLabels({ key: 'k', url: 'u', company: 'Co', title: 'T', location: '', facts: fakeGerman('c1') })[0].color, 'red');
+});
+
+test('shortLocation: "Global Remote" and bare "global" are classified as Worldwide', () => {
+  assert.equal(shortLocation('Global Remote'), 'Worldwide');
+  assert.equal(shortLocation('global'), 'Worldwide');
+});
+
+test('jobCardDesc: empty-string location renders as —, not blank', () => {
+  const { desc } = jobCardDesc(job({ location: '' }));
+  assert.ok(desc.includes('**Location:** —'), 'empty location should show —');
+});
+
+test('RUN_SUMMARY_PREFIX and isRunSummaryTitle', () => {
+  assert.equal(RUN_SUMMARY_PREFIX, 'ℹ️ Run');
+  assert.ok(isRunSummaryTitle('ℹ️ Run 2026-11-10'));
+  assert.ok(isRunSummaryTitle('ℹ️ Run'));
+  assert.ok(!isRunSummaryTitle('8 · Co — Title'));
+  assert.ok(!isRunSummaryTitle(''));
+});
