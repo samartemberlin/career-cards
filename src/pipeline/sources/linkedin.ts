@@ -4,12 +4,9 @@
 // jobs that survived free filters and a per-run cap. On any block signal (429/999) we stop at
 // once instead of retrying.
 import { htmlToText, decodeEntities } from '../html.ts';
-import type { Job } from '../keys.ts';
 import type { FetchLike } from '../jd.ts';
+import type { ScanRow, SourceError, SourceResult } from './types.ts';
 
-type ScanRow = Omit<Job, 'key'>;
-type SourceError = { company: string; error: string };
-type SourceResult = ScanRow[] & { errors: SourceError[] };
 
 const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
 const SEARCH = 'https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search';
@@ -153,7 +150,7 @@ export async function fetchLinkedinSearch(
     errors.push({ company: 'LinkedIn', error: `${e.message}; stopped after ${rows.length} jobs` });
     jdState.disabled = `search was blocked: ${e.message}`; // descriptions come from the same host, so they would be blocked too
   }
-  return Object.assign(rows, { errors }) as SourceResult;
+  return Object.assign(rows, { errors });
 }
 
 // ---- descriptions: one request per job, paced, capped per process -----------------------

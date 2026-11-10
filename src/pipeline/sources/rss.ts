@@ -2,12 +2,9 @@
 // Returns scanned-job rows in the same shape the pipeline builds from career-ops scan history.
 // Keys are assigned by the pipeline after scan.
 import { decodeEntities, htmlToText } from '../html.ts';
-import type { Job } from '../keys.ts';
 import type { FetchLike } from '../jd.ts';
+import type { ScanRow, SourceError, SourceResult } from './types.ts';
 
-type ScanRow = Omit<Job, 'key'>;
-type SourceError = { company: string; error: string };
-type SourceResult = ScanRow[] & { errors: SourceError[] };
 
 const tag = (xml: string, name: string): string => {
   const m = new RegExp(`<${name}[^>]*>([\\s\\S]*?)</${name}>`, 'i').exec(xml);
@@ -55,5 +52,5 @@ export async function fetchRssSources(
       errors.push({ company: s.name, error: msg });
     }
   }
-  return Object.assign(jobs, { errors }) as SourceResult;
+  return Object.assign(jobs, { errors });
 }
