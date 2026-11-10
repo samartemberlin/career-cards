@@ -78,7 +78,6 @@ export async function fetchJd(
   } = opts;
 
   if (job.key.startsWith('linkedin:')) {
-    // Guest endpoint, paced and capped (see linkedin.ts).
     const id = job.key.slice('linkedin:'.length);
     const text = await linkedinFetch(id);
     return text
