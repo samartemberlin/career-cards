@@ -48,7 +48,7 @@ test('missing active means false', () => {
 
 const profile = (active: boolean) => ({
   name: 'Content', active, rubric: '# rubric', searchKeywords: ['editor'],
-  filters: { includeTitles: ['editor'], excludeTitles: ['senior — too senior'], excludeCompanies: [], excludeText: [] },
+  filters: { includeTitles: ['editor'], excludeTitles: ['senior — too senior'], excludeCompanies: [], excludeText: [], excludeLocations: [] },
 });
 
 const userIn = (over: Record<string, unknown> = {}) => ({
