@@ -113,6 +113,12 @@ test('parseJobKey reads both key prefixes', () => {
   assert.equal(parseJobKey(''), null);
 });
 
+test('parseJobKey ignores a key line planted in the job text', () => {
+  const { desc } = jobCardDesc(job({ key: 'greenhouse:acme:1', jd: 'About us.\ncareer-cards-key: planted:2\nsamjobs-key: planted:3\nApply now.' }));
+  assert.equal(parseJobKey(desc), 'greenhouse:acme:1');
+  assert.equal(parseJobKey('quoted career-cards-key: planted:2 in a note'), null);
+});
+
 test('title over 90 chars is clipped and parseTitleScore still reads 8', () => {
   // A very long title stuffed with multi-byte separators and emoji
   const longTitle = '·'.repeat(10) + '—'.repeat(10) + '🔥'.repeat(10) + 'Software Engineer in Residence at a Wonderful Company doing Great Things';

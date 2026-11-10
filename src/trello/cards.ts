@@ -70,9 +70,10 @@ export function jobCardDesc(r: Job & {
 
 // --- key parsing ---------------------------------------------------------
 
-const KEY_RE = /(?:career-cards|samjobs)-key:\s*(\S+)/;
+// Only the last line: the footer follows the job text, which is untrusted and may carry a key line of its own.
+const KEY_RE = /(?:^|\n)(?:career-cards|samjobs)-key:[ \t]*(\S+)\s*$/;
 
-/** Reads `career-cards-key:` or `samjobs-key:` from a card description. */
+/** Reads `career-cards-key:` or `samjobs-key:` from the last line of a card description. */
 export function parseJobKey(desc: string): string | null {
   return KEY_RE.exec(desc)?.[1] ?? null;
 }
