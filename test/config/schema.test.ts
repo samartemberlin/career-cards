@@ -94,6 +94,7 @@ test('unknown keys fail and the message names the key', () => {
   assert.match(SettingsSchema.safeParse({ ...settingsIn, caps: { model_per_dya: 5 } }).error!.message, /model_per_dya/);
   assert.match(PreferencesSchema.safeParse({ years_experiance: 2 }).error!.message, /years_experiance/);
   assert.match(PreferencesSchema.safeParse({ penalties: { driving_license: { points: 1 } } }).error!.message, /driving_license/);
+  assert.match(PreferencesSchema.safeParse({ penalties: { years_over: { points: 1, tolarance: 1 } } }).error!.message, /tolarance/);
 });
 
 test('a board with no profile column says so, not that a profile must be active', () => {
