@@ -20,7 +20,7 @@ export const SettingsSchema = z.object({
   models: z.record(z.string(), z.string()).optional(),
   scoring_cap: z.number().int().positive().default(150),
   locations: z.array(z.string()),
-  labels: z.array(z.object({ name: z.string().min(1), color: z.string().min(1) })).optional(),
+  labels: z.array(z.object({ name: z.string().min(1), color: z.string().min(1) }).strict()).optional(),
   linkedin: z.boolean().default(false),
   allowed_members: z.array(z.string().min(1)).default([]),
   caps: z.object({
@@ -28,8 +28,8 @@ export const SettingsSchema = z.object({
     model_per_card_per_day: z.number().int().nonnegative().default(8),
     research_per_day: z.number().int().nonnegative().default(10),
     static_per_day: z.number().int().nonnegative().default(100),
-  }).default({}),
-});
+  }).strict().default({}),
+}).strict();
 export type Settings = z.infer<typeof SettingsSchema>;
 
 function isFormatterZone(tz: string): boolean {
@@ -81,12 +81,12 @@ export const ProfileSchema = z.object({
 export type Profile = z.infer<typeof ProfileSchema>;
 
 const LevelSchema = z.string();
-const PenaltySchema = z.object({ points: z.number(), cap: z.number().optional() });
+const PenaltySchema = z.object({ points: z.number(), cap: z.number().optional() }).strict();
 
 export const PreferencesSchema: z.ZodType<Preferences> = z.object({
   languages: z.object({
-    de: z.object({ read: LevelSchema.optional(), write: LevelSchema.optional(), speak: LevelSchema.optional() }).optional(),
-  }).optional(),
+    de: z.object({ read: LevelSchema.optional(), write: LevelSchema.optional(), speak: LevelSchema.optional() }).strict().optional(),
+  }).strict().optional(),
   years_experience: z.number().nonnegative().optional(),
   penalties: z.object({
     german_c1_or_native: PenaltySchema.optional(),
@@ -97,8 +97,8 @@ export const PreferencesSchema: z.ZodType<Preferences> = z.object({
     driving_licence: PenaltySchema.optional(),
     unpaid_internship: PenaltySchema.optional(),
     named_methodology_required: PenaltySchema.optional(),
-  }).optional(),
-});
+  }).strict().optional(),
+}).strict();
 
 export const UserConfigSchema = z.object({
   settings: SettingsSchema,

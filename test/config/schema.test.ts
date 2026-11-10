@@ -85,3 +85,13 @@ test('parseYamlBlock throws ConfigError without a yaml block or on bad yaml', ()
   assert.throws(() => parseYamlBlock('no block here'), ConfigError);
   assert.throws(() => parseYamlBlock('```yaml\na: [1\n```'), ConfigError);
 });
+
+test('unknown keys fail and the message names the key', () => {
+  const settings = SettingsSchema.safeParse({ ...settingsIn, allowed_member: ['alex'] });
+  assert.equal(settings.success, false);
+  assert.match(settings.error!.message, /allowed_member/);
+  assert.match(SettingsSchema.safeParse({ ...settingsIn, scoring_cpa: 10 }).error!.message, /scoring_cpa/);
+  assert.match(SettingsSchema.safeParse({ ...settingsIn, caps: { model_per_dya: 5 } }).error!.message, /model_per_dya/);
+  assert.match(PreferencesSchema.safeParse({ years_experiance: 2 }).error!.message, /years_experiance/);
+  assert.match(PreferencesSchema.safeParse({ penalties: { driving_license: { points: 1 } } }).error!.message, /driving_license/);
+});
