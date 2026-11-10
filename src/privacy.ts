@@ -18,7 +18,7 @@ export function classifyDetail(s: string): 'name' | 'email' | 'phone' | 'address
   const val = s.trim();
   if (/^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/.test(val)) return 'email';
   if (/^(?:https?:\/\/|www\.)/i.test(val)) return 'link';
-  if (/^\+?[\d\s()\-+.]{7,}$/.test(val) && (val.match(/\d/g)?.length ?? 0) >= 7) return 'phone';
+  if (/^\+?[\d\s()\-+]{7,}$/.test(val) && (val.match(/\d/g)?.length ?? 0) >= 7) return 'phone';
 
   return 'name';
 }
@@ -48,6 +48,7 @@ function detailPattern(stripped: string): string {
 
 interface CompiledDetail {
   originalIndex: number;
+  strippedLen: number;
   placeholder: string;
   replaceRe: RegExp;
   checkRe: RegExp;
@@ -59,6 +60,7 @@ function compileDetail(raw: string, originalIndex: number): CompiledDetail {
   const pat = detailPattern(stripped);
   return {
     originalIndex,
+    strippedLen: stripped.length,
     placeholder: PLACEHOLDER[kind],
     replaceRe: new RegExp(pat, 'gi'),
     // Non-global: .test() on a global RegExp advances lastIndex, causing missed matches on reuse.
@@ -76,7 +78,7 @@ function applyMask(text: string, compiled: readonly CompiledDetail[]): string {
   // Pattern-based passes run after detail substitution so a listed email/phone/link
   // is already replaced and these passes only catch unlisted occurrences.
   out = out.replace(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g, '[EMAIL]');
-  out = out.replace(/\+?[\d][\d\s()\-+.]{5,}/g, (m) =>
+  out = out.replace(/\+?[\d][\d\s()\-+]{5,}/g, (m) =>
     (m.match(/\d/g)?.length ?? 0) >= 7 ? '[PHONE]' : m,
   );
   out = out.replace(/(?:https?:\/\/|www\.)\S+/gi, '[LINK]');
@@ -97,7 +99,7 @@ export function buildMasker(details: string[]): Masker {
 
   const compiled = details
     .map((raw, i) => compileDetail(raw, i))
-    .sort((a, b) => stripPrefix(details[b.originalIndex]!).length - stripPrefix(details[a.originalIndex]!).length);
+    .sort((a, b) => b.strippedLen - a.strippedLen);
 
   return { mask: (text: string) => applyMask(text, compiled) };
 }
