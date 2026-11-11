@@ -1,8 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { scopeClient, scopeUserBoards, ScopeError, OriginalsWriteError, isOriginalsName } from '../../src/trello/scoped.ts';
 import type { UserBoards } from '../../src/trello/scoped.ts';
 import type { TrelloApi, TCard, TCardWithList, TList, TChecklist, TCheckItem, TBoard, TMember, TLabel } from '../../src/trello/api.ts';
+import { createTrelloClient } from '../../src/trello/client.ts';
+import { FakeTrello } from '../support/fake-trello.ts';
+import type { Recording } from '../../tools/sample/scrub.ts';
 
 // --- stub builder --------------------------------------------------------
 
@@ -469,4 +474,104 @@ test('updateCard without systemBoard set always throws ScopeError', async () => 
   // scopeClient without systemBoard
   const scoped = scopeClient(api, { boards: [SYSTEM_BOARD] });
   await assert.rejects(() => scoped.updateCard('card1', { name: 'x' }), ScopeError);
+});
+
+// --- updateCard over FakeTrello (integration) ----------------------------
+
+const REC_DIR = join(import.meta.dirname, '..', 'fixtures', 'trello');
+const loadRec = (name: string): Recording =>
+  JSON.parse(readFileSync(join(REC_DIR, `${name}.recording.json`), 'utf8')) as Recording;
+
+function firstBoardId(rec: Recording): string {
+  return (rec.find((e) => /^\/boards\/[^/]+$/.test(e.path) && e.method === 'GET' && e.status === 200)!.body as { id: string }).id;
+}
+
+function fakeClient(fake: FakeTrello) {
+  return createTrelloClient({ key: 'k', token: 't', fetchImpl: fake.fetch, sleep: async () => {} });
+}
+
+test('updateCard (scopeUserBoards): passes on a Runs card; throws on a Jobs card; Jobs card unchanged', async () => {
+  const sysRec = loadRec('system');
+  const jobsRec = loadRec('jobs');
+  const profilesRec = loadRec('profiles');
+  const fake = FakeTrello.fromRecordings(sysRec, jobsRec, profilesRec);
+  const rawApi = fakeClient(fake);
+
+  const boards: UserBoards = {
+    system: firstBoardId(sysRec),
+    jobs: firstBoardId(jobsRec),
+    profiles: firstBoardId(profilesRec),
+  };
+
+  // Find a card in the Runs list from the system recording
+  const sysLists = (sysRec.find((e) => /\/lists$/.test(e.path) && e.method === 'GET' && e.status === 200)!.body as { id: string; name: string }[]);
+  const runsListId = sysLists.find((l) => l.name === 'Runs')!.id;
+  const sysCards = (sysRec.find((e) => /\/cards\//.test(e.path) && e.method === 'GET' && e.status === 200)!.body as { id: string; idList: string; name: string }[]);
+  const runsCard = sysCards.find((c) => c.idList === runsListId)!;
+
+  // Find a Jobs board card
+  const jobsCards = (jobsRec.find((e) => /\/cards\//.test(e.path) && e.method === 'GET' && e.status === 200)!.body as { id: string; name: string }[]);
+  const jobCard = jobsCards[0]!;
+
+  const scoped = scopeUserBoards(rawApi, boards);
+
+  // updateCard on the Runs card succeeds
+  const updated = await scoped.updateCard(runsCard.id, { name: '✅ done', desc: 'career-cards-run: done' });
+  assert.equal(updated.id, runsCard.id, 'updateCard returned the updated card');
+
+  // updateCard on a Jobs card throws ScopeError; card is unchanged
+  await assert.rejects(() => scoped.updateCard(jobCard.id, { name: 'edited' }), ScopeError);
+  const jobsAfter = await rawApi.cards(boards.jobs, { filter: 'open' });
+  const stillJob = jobsAfter.find((c) => c.id === jobCard.id)!;
+  assert.equal(stillJob.name, jobCard.name, 'Jobs card must be unchanged after failed updateCard');
+});
+
+test('updateCard: card moved out of Runs between lookup and update throws ScopeError', async () => {
+  const sysRec = loadRec('system');
+  const jobsRec = loadRec('jobs');
+  const profilesRec = loadRec('profiles');
+  const fake = FakeTrello.fromRecordings(sysRec, jobsRec, profilesRec);
+  const rawApi = fakeClient(fake);
+
+  const boards: UserBoards = {
+    system: firstBoardId(sysRec),
+    jobs: firstBoardId(jobsRec),
+    profiles: firstBoardId(profilesRec),
+  };
+
+  const sysLists = (sysRec.find((e) => /\/lists$/.test(e.path) && e.method === 'GET' && e.status === 200)!.body as { id: string; name: string }[]);
+  const runsListId = sysLists.find((l) => l.name === 'Runs')!.id;
+  const configListId = sysLists.find((l) => l.name !== 'Runs')!.id;
+
+  // Create a new status card in Runs
+  const card = await rawApi.createCard({ idList: runsListId, name: '⏳ Nov 11', desc: '', pos: 'top' });
+
+  // Move it out of Runs before the updateCard call
+  fake.moveCard(card.id, configListId);
+
+  const scoped = scopeUserBoards(rawApi, boards);
+  await assert.rejects(() => scoped.updateCard(card.id, { name: '✅ Nov 11' }), ScopeError);
+});
+
+test('updateCard: System board card outside Runs (Settings list) throws ScopeError', async () => {
+  const sysRec = loadRec('system');
+  const jobsRec = loadRec('jobs');
+  const profilesRec = loadRec('profiles');
+  const fake = FakeTrello.fromRecordings(sysRec, jobsRec, profilesRec);
+  const rawApi = fakeClient(fake);
+
+  const boards: UserBoards = {
+    system: firstBoardId(sysRec),
+    jobs: firstBoardId(jobsRec),
+    profiles: firstBoardId(profilesRec),
+  };
+
+  // Find a card in the non-Runs list (Config) on the System board
+  const sysLists = (sysRec.find((e) => /\/lists$/.test(e.path) && e.method === 'GET' && e.status === 200)!.body as { id: string; name: string }[]);
+  const configListId = sysLists.find((l) => l.name !== 'Runs')!.id;
+  const sysCards = (sysRec.find((e) => /\/cards\//.test(e.path) && e.method === 'GET' && e.status === 200)!.body as { id: string; idList: string; name: string }[]);
+  const configCard = sysCards.find((c) => c.idList === configListId)!;
+
+  const scoped = scopeUserBoards(rawApi, boards);
+  await assert.rejects(() => scoped.updateCard(configCard.id, { name: 'edited' }), ScopeError);
 });
