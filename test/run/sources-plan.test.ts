@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadDefaults, buildScanPlan } from '../../src/run/sources-plan.ts';
+import type { Defaults } from '../../src/run/sources-plan.ts';
 import type { Sources, Settings, Profile } from '../../src/config/schema.ts';
 
 // --- helpers ----------------------------------------------------------------
@@ -135,7 +136,7 @@ describe('buildScanPlan', () => {
   it('Add with a default name fully replaces the entry (no stale fields kept)', () => {
     // A default entry may have extra fields (api, enabled, max_pages…). An Add must wipe them —
     // keeping stale fields alongside a new careers_url is a misconfiguration hazard.
-    const defaults: typeof loadDefaults extends () => infer R ? R : never = {
+    const defaults: Defaults = {
       portals: {
         tracked_companies: [
           { name: 'OldCo', careers_url: 'https://old.example.com', api: 'https://api.old.example.com', enabled: true },
