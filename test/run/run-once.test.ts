@@ -325,6 +325,36 @@ test('a secret in an error never reaches the status card or the log', async () =
   assert.equal(top.name, `❌ ${COLUMN} · scheduled · boom *** ***`);
 });
 
+test('a provider echoing its key in a quota error never reaches the status card', async () => {
+  const t = setup();
+  t.deps.call = {
+    retries: 0,
+    fetchImpl: async () => {
+      const body = '{"error":{"message":"Quota exceeded for key test-key-0000: requests per day"}}';
+      return { ok: false, status: 429, text: async () => body, json: async () => JSON.parse(body) };
+    },
+  };
+  const out = await run(t.deps);
+  assert.ok(out.stats.aborted, 'scoring was aborted');
+  const top = (await runCards(t))[0]!;
+  for (const text of [top.name, top.desc, out.report, ...t.sink]) assert.ok(!text.includes('test-key-0000'), text);
+});
+
+test('a source error clipped through a secret leaves no part of it', async () => {
+  const t = setup({
+    scan: async () => ({ jobs: [row(1)], bySource: { test: 1 }, errors: [{ company: 'Acme', error: `${'z'.repeat(295)} trello-token-0000` }] }),
+  });
+  const out = await run(t.deps);
+  const top = (await runCards(t))[0]!;
+  for (const text of [top.desc, out.report]) assert.ok(!/z tre/.test(text), text);
+});
+
+test('a long crash message clipped through a secret leaves no part of it in the log', async () => {
+  const t = setup({ scan: async () => { throw new Error(`boom ${'w'.repeat(990)} trello-token-0000`); } });
+  await run(t.deps);
+  for (const text of t.sink) assert.ok(!/w tre/.test(text), text);
+});
+
 test('a Sources Drop typo is a warning on a ✅ card', async () => {
   const t = setup({ defaults: { portals: {}, extra: {} } });
   const out = await run(t.deps);

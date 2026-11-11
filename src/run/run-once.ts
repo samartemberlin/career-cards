@@ -140,7 +140,9 @@ async function commentOnBadCards(
 
 /** Scan counts into stats. career-ops' failure message carries up to 2,000 chars of its output: the full text goes to
  *  the log (redacted, and clipped per line on the card), only its first line to the source errors and warnings. */
-function recordScan(out: ScanOutput, known: Set<string>, stats: RunStats, log: (s: string) => void): void {
+function recordScan(
+  out: ScanOutput, known: Set<string>, stats: RunStats, log: (s: string) => void, redact: (s: string) => string,
+): void {
   stats.scanned = out.jobs.length;
   for (const j of out.jobs) {
     const s = (stats.bySource[j.source ?? 'unknown'] ??= { returned: 0, new: 0 });
@@ -148,8 +150,10 @@ function recordScan(out: ScanOutput, known: Set<string>, stats: RunStats, log: (
     if (!known.has(j.key)) s.new++;
   }
   stats.sourceErrors = out.errors.map((e) => {
-    const short = clip(firstLine(e.error), SOURCE_ERROR_MAX);
-    if (short !== e.error.trim()) log(`${e.company}: ${clip(e.error, 1000)}`);
+    // Redacted before it is clipped, so a cut through a secret can't leave a prefix behind.
+    const error = redact(e.error);
+    const short = clip(firstLine(error), SOURCE_ERROR_MAX);
+    if (short !== error.trim()) log(`${e.company}: ${clip(error, 1000)}`);
     return { ...e, error: short };
   });
   for (const e of stats.sourceErrors) {
@@ -298,7 +302,7 @@ export async function runOnce(deps: RunDeps, opts: RunOpts): Promise<RunOutcome>
     const plan = buildScanPlan({ defaults: deps.defaults ?? loadDefaults(), sources: cfg.sources, profiles: active, settings });
     stats.warnings.push(...plan.warnings);
     const scanned = await deps.scan(plan);
-    recordScan(scanned, index.keys, stats, log);
+    recordScan(scanned, index.keys, stats, log, runLog.redact);
     const cap = Math.min(settings.scoring_cap, opts.cap ?? Infinity);
     const jobs = await processJobs(
       scanned.jobs, index.keys, combinedFilter(active, settings),
@@ -340,7 +344,7 @@ export async function runOnce(deps: RunDeps, opts: RunOpts): Promise<RunOutcome>
 
     return await finish('ok');
   } catch (e) {
-    if (!(e instanceof RunStop)) log(`run failed: ${clip(message(e), 1000)}`);
+    if (!(e instanceof RunStop)) log(`run failed: ${clip(runLog.redact(message(e)), 1000)}`);
     return failure(e);
   }
 }

@@ -269,6 +269,28 @@ test('statusTitle and statusDesc apply v.redact to free-text fields (reason, err
   assert.ok(desc.includes('***'), 'desc should contain *** placeholder');
 });
 
+test('statusDesc redacts and clips the scoring and facts abort reasons', () => {
+  const secret = 'provider-key-31337';
+  const redact = (s: string): string => s.split(secret).join('***');
+  const stats = emptyStats();
+  stats.aborted = `all providers failed: HTTP 401 {"error":"bad key ${secret}"} ${'x'.repeat(5000)}`;
+  stats.facts.aborted = `all providers failed: stderr says ${secret}`;
+  const desc = statusDesc(makeView({ state: 'ok', stats, redact }));
+  assert.ok(!desc.includes(secret), 'an abort reason exposes the secret');
+  assert.match(desc, /aborted: all providers failed: HTTP 401 \{"error":"bad key \*\*\*"\}/);
+  assert.match(desc, /aborted: all providers failed: stderr says \*\*\*/);
+  assert.ok(!desc.includes('x'.repeat(1000)), 'the abort reason is clipped');
+});
+
+test('statusDesc redacts a secret split across a clipped field', () => {
+  const secret = 'abcdefgh-secret-0000';
+  const redact = (s: string): string => s.split(secret).join('***');
+  const stats = emptyStats();
+  stats.aborted = `${'y'.repeat(290)} ${secret}`;
+  const desc = statusDesc(makeView({ state: 'ok', stats, redact }));
+  assert.ok(!desc.includes(secret.slice(0, 8)), 'a clipped prefix of the secret remains');
+});
+
 // ── findRunsList ──────────────────────────────────────────────────────────
 
 test('findRunsList creates Runs only when asked (FakeTrello from System recording with Runs renamed away)', async () => {

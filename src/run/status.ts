@@ -30,6 +30,9 @@ const MARKS: Record<RunState, string> = {
   skipped: '⏭️',
 };
 
+// Abort reasons carry every provider's error text, which can run to kilobytes.
+const ABORT_MAX = 300;
+
 function clip(s: string, n: number): string {
   return s.length <= n ? s : s.slice(0, n - 1) + '…';
 }
@@ -64,6 +67,9 @@ export function topRules(rules: Record<string, number>, n: number): [string, num
 function buildCountLines(v: StatusView): string[] {
   const s = v.stats;
   if (!s) return [];
+  const r = v.redact ?? ((t: string) => t);
+  // Redact before clipping: a clip through the middle of a secret would leave a prefix no redaction can find.
+  const abortText = (t: string): string => clip(r(t), ABORT_MAX);
 
   const lines: string[] = [];
 
@@ -85,13 +91,13 @@ function buildCountLines(v: StatusView): string[] {
   lines.push(`JD: ${s.jd.fetched} fetched · ${s.jd.missing} missing · ${s.jd.deferred} deferred`);
 
   let factsLine = `Facts: ${s.facts.done} done · ${s.facts.errors} errors`;
-  if (s.facts.aborted) factsLine += ` · aborted: ${s.facts.aborted}`;
+  if (s.facts.aborted) factsLine += ` · aborted: ${abortText(s.facts.aborted)}`;
   if (s.facts.tokens) factsLine += ` · tokens: ${s.facts.tokens}`;
   lines.push(factsLine);
 
   let scoredLine = `Scored: ${s.scored} · errors: ${s.scoreErrors} · deferred: ${s.deferred} · left: ${s.left}`;
   if (s.leftUnmasked) scoredLine += ` · not masked: ${s.leftUnmasked}`;
-  if (s.aborted) scoredLine += ` · aborted: ${s.aborted}`;
+  if (s.aborted) scoredLine += ` · aborted: ${abortText(s.aborted)}`;
   lines.push(scoredLine);
   if (s.shadow.jobs) lines.push(`Shadow penalties (not applied): ${s.shadow.jobs} jobs · ${s.shadow.points} points`);
 
@@ -106,7 +112,6 @@ function buildCountLines(v: StatusView): string[] {
   }
 
   if (v.error) {
-    const r = v.redact ?? ((s: string) => s);
     lines.push('', `Error: ${r(v.error)}`);
   }
 
@@ -149,7 +154,8 @@ export function statusDesc(v: StatusView): string {
     if (logLines.length) {
       parts.push('', `Log (last ${logLines.length} lines):`, ...logLines);
     }
-    return parts.join('\n');
+    // Every field is redacted where it is built; this pass also covers fields added later.
+    return r(parts.join('\n'));
   }
 
   // Try full content first.
