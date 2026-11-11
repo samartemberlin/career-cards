@@ -42,6 +42,11 @@ export class OriginalsWriteError extends Error {
   }
 }
 
+/** A guard refused the call: the bug is in the caller, so it must end the run, never become a count or a warning. */
+export function isGuardError(e: unknown): boolean {
+  return e instanceof ScopeError || e instanceof OriginalsWriteError || e instanceof ImmutableCardError;
+}
+
 /** Returns true for any list name that trims to "originals" (case-insensitive). */
 export function isOriginalsName(name: string): boolean {
   return name.trim().toLowerCase() === 'originals';

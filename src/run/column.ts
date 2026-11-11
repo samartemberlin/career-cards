@@ -3,7 +3,7 @@ import type { Settings } from '../config/schema.ts';
 import { createJobCard, createLabelResolver, archiveCards } from '../trello/writer.ts';
 import type { ScoredJob } from '../trello/writer.ts';
 import { jobLabels, isRunColumnName, RUN_SUMMARY_PREFIX } from '../trello/cards.ts';
-import { ScopeError, OriginalsWriteError, ImmutableCardError } from '../trello/scoped.ts';
+import { isGuardError } from '../trello/scoped.ts';
 import { topRules } from './status.ts';
 import type { RunStats } from './stats.ts';
 
@@ -42,9 +42,6 @@ export function runColumnPos(lists: TList[]): number | 'bottom' {
   const before = open[i - 1];
   return before ? (before.pos + run.pos) / 2 : run.pos / 2;
 }
-
-const isGuardError = (e: unknown): boolean =>
-  e instanceof ScopeError || e instanceof OriginalsWriteError || e instanceof ImmutableCardError;
 
 const message = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 

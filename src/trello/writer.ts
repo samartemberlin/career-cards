@@ -3,6 +3,7 @@ import type { Job } from '../pipeline/keys.ts';
 import type { ParsedScore } from '../pipeline/score.ts';
 import type { Facts } from '../pipeline/facts.ts';
 import { jobCardTitle, jobCardDesc } from './cards.ts';
+import { isGuardError } from './scoped.ts';
 
 export type ScoredJob = Job & Pick<ParsedScore, 'score' | 'reason' | 'flags' | 'title_en'> & { facts?: Facts };
 
@@ -104,6 +105,7 @@ export async function archiveCards(
       await api.setCardClosed(card.id, true);
       archived++;
     } catch (err) {
+      if (isGuardError(err)) throw err;
       log(`archive ${card.id} failed: ${err instanceof Error ? err.message : String(err)}`);
       failed++;
     }

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createTrelloClient } from '../../src/trello/client.ts';
-import { scopeClient, OriginalsWriteError } from '../../src/trello/scoped.ts';
+import { scopeClient, ImmutableCardError, OriginalsWriteError, ScopeError } from '../../src/trello/scoped.ts';
 import { FakeTrello } from '../support/fake-trello.ts';
 import { createLabelResolver, createJobCard, archiveCards } from '../../src/trello/writer.ts';
 import type { ScoredJob } from '../../src/trello/writer.ts';
@@ -192,6 +192,17 @@ test('archiveCards continues past a failure', async () => {
   assert.equal(result.archived, 2);
   assert.equal(result.failed, 1);
   assert.ok(logs.length > 0, 'failure logged');
+});
+
+test('archiveCards rethrows scope, Originals and immutable-card errors instead of counting them', async () => {
+  const errors = [new ScopeError('board-x'), new OriginalsWriteError({ cardId: 'c1' }), new ImmutableCardError('c1')];
+  for (const err of errors) {
+    let calls = 0;
+    const api = { setCardClosed: async () => { calls++; throw err; } } as unknown as TrelloApi;
+    const cards = [{ id: 'c1' }, { id: 'c2' }] as Parameters<typeof archiveCards>[1];
+    await assert.rejects(archiveCards(api, cards, noLog), (e: unknown) => e === err);
+    assert.equal(calls, 1, `${err.name} stops archiving`);
+  }
 });
 
 // ── Originals write guard ─────────────────────────────────────────────────

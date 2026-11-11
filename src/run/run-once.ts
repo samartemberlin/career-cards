@@ -14,7 +14,7 @@ import type { ConfigProblem, UserBoards } from '../trello/config.ts';
 import { loadJobIndex } from '../trello/job-index.ts';
 import { checkBoardsPrivate } from '../trello/private.ts';
 import { readOnlyClient } from '../trello/read-only.ts';
-import { ImmutableCardError, OriginalsWriteError, ScopeError, scopeUserBoards } from '../trello/scoped.ts';
+import { isGuardError, scopeUserBoards } from '../trello/scoped.ts';
 import { archiveRunCards, writeRunColumn } from './column.ts';
 import { createRunLog, secretsFromEnv } from './log.ts';
 import { isoDateIn, processJobs } from './process.ts';
@@ -86,8 +86,6 @@ class RunStop extends Error {
 const message = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 const firstLine = (s: string): string => s.split('\n').find((l) => l.trim())?.trim() ?? '';
 const clip = (s: string, n: number): string => (s.length <= n ? s : `${s.slice(0, n - 1)}…`);
-const isGuardError = (e: unknown): boolean =>
-  e instanceof ScopeError || e instanceof OriginalsWriteError || e instanceof ImmutableCardError;
 
 /** The Settings card's timezone when its YAML parses and names a zone Intl knows; else Europe/Berlin. The full
  *  config is read later, but the status card needs its column name before that. */
