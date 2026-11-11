@@ -4,6 +4,7 @@ import { mkdtempSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Job } from '../../src/pipeline/keys.ts';
+import { llmConfig } from '../../src/pipeline/llm.ts';
 import type { FetchJson, LlmConfig } from '../../src/pipeline/llm.ts';
 import { buildMessages, parseScore, scoreAll, scoreJob, shareOf } from '../../src/pipeline/score.ts';
 import type { ScoreResult } from '../../src/pipeline/score.ts';
@@ -165,4 +166,12 @@ test('shareOf splits what is left among the people still to come', () => {
   assert.equal(shareOf(0, 3), 0);
   assert.equal(shareOf(-5, 2), 0);
   assert.equal(shareOf(10, 0), 0);
+});
+
+test('scoreAll passes call options to the model', async () => {
+  const { keys, fetchImpl } = scorer();
+  const ctx = ctxOf(llmConfig({ LLM_BASE_URL: 'http://x', LLM_API_KEY: 'k', LLM_RPM: '0' }, { providers: [] }));
+  const r = await scoreAll(ctx, [job('a'), job('b')], { call: { fetchImpl }, log() {} });
+  assert.deepEqual(keys.sort(), ['a', 'b']);
+  assert.equal(r.results.length, 2);
 });
