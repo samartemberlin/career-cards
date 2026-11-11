@@ -130,3 +130,25 @@ test('scanAll skips LinkedIn when the plan has none', async () => {
   await scanAll({ ...PLAN, linkedin: null }, deps);
   assert.equal(called, false);
 });
+
+test('scanAll: a row dropped on company and title still claims its key', async () => {
+  const deps: ScanDeps = {
+    careerOps: async () => result([
+      row('https://jobs.example/a', 'Acme', 'Analyst', 'x'),
+      row('https://jobs.example/b', 'Acme', 'Analyst', 'x'),
+      row('https://jobs.example/b', 'Acme', 'Engineer', 'x'),
+    ]),
+    rss: async () => result([]),
+    pages: async () => result([]),
+    log: quiet,
+  };
+  const out = await scanAll({ ...PLAN, linkedin: null }, deps);
+  assert.deepEqual(out.jobs.map((j) => j.url), ['https://jobs.example/a']);
+});
+
+test('a career-ops dir that cannot start throws ScanFailed', async () => {
+  await assert.rejects(
+    runCareerOpsScan({}, { careerOpsDir: join(FAKE, 'missing'), env: ENV }),
+    (e: unknown) => e instanceof ScanFailed,
+  );
+});

@@ -43,7 +43,7 @@ function runNode(
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', (d: string) => { stdout += d; });
     const timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL'); }, timeoutMs);
-    child.on('error', (e) => { clearTimeout(timer); reject(e); });
+    child.on('error', (e) => { clearTimeout(timer); reject(new ScanFailed(`scan could not start: ${e.message}`)); });
     child.on('close', (code) => { clearTimeout(timer); resolve({ code, stdout, timedOut }); });
   });
 }
@@ -156,9 +156,11 @@ export async function scanAll(plan: ScanPlan, deps: ScanDeps): Promise<ScanOutpu
   for (const r of rows) {
     if (!r.url) continue;
     const key = jobKey(r.url);
-    const print = fingerprint(r.company, r.title);
-    if (keys.has(key) || prints.has(print)) continue;
+    if (keys.has(key)) continue;
+    // Key pass first, as if over the whole batch: a row dropped on its fingerprint still claims its key.
     keys.add(key);
+    const print = fingerprint(r.company, r.title);
+    if (prints.has(print)) continue;
     prints.add(print);
     jobs.push({ ...r, key });
     const src = r.source ?? 'unknown';
