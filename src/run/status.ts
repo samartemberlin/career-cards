@@ -55,7 +55,7 @@ export function statusTitle(v: StatusView): string {
 }
 
 /** Top N rules by count, highest first. */
-function topRules(rules: Record<string, number>, n: number): [string, number][] {
+export function topRules(rules: Record<string, number>, n: number): [string, number][] {
   return Object.entries(rules)
     .sort((a, b) => b[1] - a[1])
     .slice(0, n);
