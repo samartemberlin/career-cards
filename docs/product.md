@@ -46,10 +46,10 @@ Each user runs their own copy of this bot. Status: built = on `main` with tests;
 
 **Nightly run**
 1. A Trello automation rule POSTs to `/trigger/run` at the user's chosen time; `serve` starts `run`.
-2. `run` writes a `running` status card, validates config cards, loads every job key on the Jobs board.
+2. `run` takes the run lock (a held lock exits without running), validates config cards, loads every job key on the Jobs board.
 3. Scan, drop known keys, filter, fetch descriptions, filter again, extract facts, score up to the cap.
 4. Create a column named by start time: summary card, then job cards best first.
-5. Archive the cards of run columns the user archived. Mark the status card `✅` or `❌`.
+5. Archive the cards of run columns the user archived. Write one status card, `✅` or `❌`, on top of System › Runs.
 6. Jobs not scored (quota, cap) get no card and are picked up next run.
 
 **`@bot` command**
