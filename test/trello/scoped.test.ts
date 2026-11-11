@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { scopeClient, ScopeError, OriginalsWriteError, isOriginalsName } from '../../src/trello/scoped.ts';
+import { scopeClient, scopeUserBoards, ScopeError, OriginalsWriteError, isOriginalsName } from '../../src/trello/scoped.ts';
+import type { UserBoards } from '../../src/trello/scoped.ts';
 import type { TrelloApi, TCard, TCardWithList, TList, TChecklist, TCheckItem, TBoard, TMember, TLabel } from '../../src/trello/api.ts';
 
 // --- stub builder --------------------------------------------------------
@@ -403,4 +404,31 @@ test('OriginalsWriteError has listId when thrown for setListClosed', async () =>
     assert.ok(err instanceof OriginalsWriteError);
     assert.equal(err.listId, 'orig-list');
   }
+});
+
+// --- scopeUserBoards: required profilesBoard entry point -----------------
+
+const SYSTEM_BOARD = 'system-board';
+
+function makeUserBoards(): UserBoards {
+  return { jobs: JOBS_BOARD, profiles: PROFILES_BOARD, system: SYSTEM_BOARD };
+}
+
+test('scopeUserBoards restricts to the three boards', async () => {
+  const { api } = makeStub();
+  const scoped = scopeUserBoards(api, makeUserBoards());
+  // In-scope boards pass
+  await scoped.board(JOBS_BOARD);
+  await scoped.board(PROFILES_BOARD);
+  await scoped.board(SYSTEM_BOARD);
+  // Out-of-scope throws
+  await assert.rejects(() => scoped.board('other-board'), ScopeError);
+});
+
+test('scopeUserBoards: Originals guard is always active (profilesBoard is required)', async () => {
+  const { api } = makeStub({
+    cardResult: makeOriginalsCard,
+  });
+  const scoped = scopeUserBoards(api, makeUserBoards());
+  await assert.rejects(() => scoped.comment('card1', 'hello'), OriginalsWriteError);
 });

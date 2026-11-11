@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createTrelloClient } from '../../src/trello/client.ts';
+import { scopeUserBoards } from '../../src/trello/scoped.ts';
 import { FakeTrello } from '../support/fake-trello.ts';
 import { loadJobIndex } from '../../src/trello/job-index.ts';
 import type { Recording } from '../../tools/sample/scrub.ts';
@@ -97,4 +98,16 @@ test('a key planted in a job description middle is not read', async () => {
   const index = await loadJobIndex(api, bid);
   assert.ok(index.keys.has('real:footer-key'), 'footer key is indexed');
   assert.ok(!index.keys.has('planted:in-middle'), 'planted key in middle is not indexed');
+});
+
+test('loadJobIndex works through scopeUserBoards', async () => {
+  const jobs = load('jobs');
+  const fake = FakeTrello.fromRecordings(jobs);
+  const inner = createTrelloClient({ key: 'k', token: 't', fetchImpl: fake.fetch, sleep: async () => {} });
+  const bid = boardId(jobs);
+  // scopeUserBoards requires profilesBoard; use a fake profiles id
+  const api = scopeUserBoards(inner, { jobs: bid, profiles: 'fa4e000000000000000000ee', system: 'fa4e000000000000000000ef' });
+  const index = await loadJobIndex(api, bid);
+  assert.equal(index.keys.size, 1061);
+  assert.equal(index.toArchive.length, 1050);
 });

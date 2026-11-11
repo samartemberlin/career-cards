@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createTrelloClient } from '../../src/trello/client.ts';
+import { scopeUserBoards } from '../../src/trello/scoped.ts';
 import { checkBoardsPrivate } from '../../src/trello/private.ts';
 import type { PrivacyProblem } from '../../src/trello/private.ts';
 import { FakeTrello } from '../support/fake-trello.ts';
@@ -76,4 +77,12 @@ test('closed board is refused', async () => {
   assert.equal(closedProblems.length, 1);
   assert.equal(closedProblems[0]!.board, boards[0]);
   assert.equal(closedProblems[0]!.detail, 'board is closed');
+});
+
+test('checkBoardsPrivate works through scopeUserBoards', async () => {
+  const { fake, boards } = setup('jobs', 'profiles', 'system');
+  const inner = createTrelloClient({ key: 'k', token: 't', fetchImpl: fake.fetch, sleep: async () => {} });
+  const api = scopeUserBoards(inner, { jobs: boards[0]!, profiles: boards[1]!, system: boards[2]! });
+  const problems = await checkBoardsPrivate(api, boards, { allowedMembers: [], botUsername: 'samplebot' });
+  assert.deepEqual(problems, []);
 });

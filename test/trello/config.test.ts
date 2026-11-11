@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createTrelloClient } from '../../src/trello/client.ts';
+import { scopeUserBoards } from '../../src/trello/scoped.ts';
 import { ConfigInvalid, readUserConfig } from '../../src/trello/config.ts';
 import type { ConfigProblem, UserBoards } from '../../src/trello/config.ts';
 import { FakeTrello } from '../support/fake-trello.ts';
@@ -264,4 +265,12 @@ test('every problem has a card url when a card exists', async () => {
     }
     assert.match(p.card?.url ?? '', /^https:\/\/trello\.com\/c\//, `${p.where}: ${p.message}`);
   }
+});
+
+test('readUserConfig works through scopeUserBoards', async () => {
+  const { fake, boards } = setup();
+  const inner = createTrelloClient({ key: 'k', token: 't', fetchImpl: fake.fetch, sleep: async () => {} });
+  const api = scopeUserBoards(inner, boards);
+  const config = await readUserConfig(api, boards);
+  assert.ok(config.profiles.length > 0, 'at least one profile loaded');
 });

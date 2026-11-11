@@ -43,6 +43,9 @@ export type Scope = {
   profilesBoard?: string;
 };
 
+/** The three boards that make up a user's career-cards workspace. */
+export type UserBoards = { jobs: string; profiles: string; system: string };
+
 /** Wraps api so that every call is restricted to the given scope.
  *  Board-addressed calls throw ScopeError before any request.
  *  Id-addressed reads verify the board with one lookup.
@@ -173,4 +176,13 @@ export function scopeClient(api: TrelloApi, scope: Scope): TrelloApi {
       return api.createCard(c);
     },
   };
+}
+
+/** Entry point for src/: scopes the client to the user's three boards with Originals protection always on.
+ * Use this instead of scopeClient when profilesBoard is known — it cannot be accidentally omitted. */
+export function scopeUserBoards(api: TrelloApi, boards: UserBoards): TrelloApi {
+  return scopeClient(api, {
+    boards: [boards.jobs, boards.profiles, boards.system],
+    profilesBoard: boards.profiles,
+  });
 }
