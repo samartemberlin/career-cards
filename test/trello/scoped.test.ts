@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { scopeClient, scopeUserBoards, ScopeError, OriginalsWriteError, isOriginalsName } from '../../src/trello/scoped.ts';
+import { scopeClient, scopeUserBoards, ScopeError, ImmutableCardError, OriginalsWriteError, isOriginalsName } from '../../src/trello/scoped.ts';
 import type { UserBoards } from '../../src/trello/scoped.ts';
 import type { TrelloApi, TCard, TCardWithList, TList, TChecklist, TCheckItem, TBoard, TMember, TLabel } from '../../src/trello/api.ts';
 import { createTrelloClient } from '../../src/trello/client.ts';
@@ -450,30 +450,30 @@ test('updateCard succeeds for a card in the System board Runs list', async () =>
   assert.ok(result.id, 'updateCard returned a card');
 });
 
-test('updateCard on a card not in Runs throws ScopeError', async () => {
+test('updateCard on a card not in Runs throws ImmutableCardError', async () => {
   const { api } = makeStub({
     cardResult: () => makeCard({ id: 'card1', idBoard: SYSTEM_BOARD, idList: 'config-list', list: { id: 'config-list', name: 'Config' } }),
   });
   const scoped = scopeClient(api, { boards: [SYSTEM_BOARD], systemBoard: SYSTEM_BOARD });
-  await assert.rejects(() => scoped.updateCard('card1', { name: 'x' }), ScopeError);
+  await assert.rejects(() => scoped.updateCard('card1', { name: 'x' }), ImmutableCardError);
 });
 
-test('updateCard on a card outside the System board throws ScopeError', async () => {
+test('updateCard on a card outside the System board throws ImmutableCardError', async () => {
   const { api } = makeStub({
     // Card is in JOBS_BOARD, list named Runs — still must be rejected (wrong board)
     cardResult: () => makeCard({ id: 'card1', idBoard: JOBS_BOARD, idList: 'runs-list', list: { id: 'runs-list', name: 'Runs' } }),
   });
   const scoped = scopeClient(api, { boards: [JOBS_BOARD, SYSTEM_BOARD], systemBoard: SYSTEM_BOARD });
-  await assert.rejects(() => scoped.updateCard('card1', { name: 'x' }), ScopeError);
+  await assert.rejects(() => scoped.updateCard('card1', { name: 'x' }), ImmutableCardError);
 });
 
-test('updateCard without systemBoard set always throws ScopeError', async () => {
+test('updateCard without systemBoard set always throws ImmutableCardError', async () => {
   const { api } = makeStub({
     cardResult: () => makeCard({ id: 'card1', idBoard: SYSTEM_BOARD, idList: 'runs-list', list: { id: 'runs-list', name: 'Runs' } }),
   });
   // scopeClient without systemBoard
   const scoped = scopeClient(api, { boards: [SYSTEM_BOARD] });
-  await assert.rejects(() => scoped.updateCard('card1', { name: 'x' }), ScopeError);
+  await assert.rejects(() => scoped.updateCard('card1', { name: 'x' }), ImmutableCardError);
 });
 
 // --- updateCard over FakeTrello (integration) ----------------------------
@@ -519,14 +519,14 @@ test('updateCard (scopeUserBoards): passes on a Runs card; throws on a Jobs card
   const updated = await scoped.updateCard(runsCard.id, { name: '✅ done', desc: 'career-cards-run: done' });
   assert.equal(updated.id, runsCard.id, 'updateCard returned the updated card');
 
-  // updateCard on a Jobs card throws ScopeError; card is unchanged
-  await assert.rejects(() => scoped.updateCard(jobCard.id, { name: 'edited' }), ScopeError);
+  // updateCard on a Jobs card throws ImmutableCardError; card is unchanged
+  await assert.rejects(() => scoped.updateCard(jobCard.id, { name: 'edited' }), ImmutableCardError);
   const jobsAfter = await rawApi.cards(boards.jobs, { filter: 'open' });
   const stillJob = jobsAfter.find((c) => c.id === jobCard.id)!;
   assert.equal(stillJob.name, jobCard.name, 'Jobs card must be unchanged after failed updateCard');
 });
 
-test('updateCard: card moved out of Runs between lookup and update throws ScopeError', async () => {
+test('updateCard: card moved out of Runs between lookup and update throws ImmutableCardError', async () => {
   const sysRec = loadRec('system');
   const jobsRec = loadRec('jobs');
   const profilesRec = loadRec('profiles');
@@ -550,10 +550,10 @@ test('updateCard: card moved out of Runs between lookup and update throws ScopeE
   fake.moveCard(card.id, configListId);
 
   const scoped = scopeUserBoards(rawApi, boards);
-  await assert.rejects(() => scoped.updateCard(card.id, { name: '✅ Nov 11' }), ScopeError);
+  await assert.rejects(() => scoped.updateCard(card.id, { name: '✅ Nov 11' }), ImmutableCardError);
 });
 
-test('updateCard: System board card outside Runs (Settings list) throws ScopeError', async () => {
+test('updateCard: System board card outside Runs (Settings list) throws ImmutableCardError', async () => {
   const sysRec = loadRec('system');
   const jobsRec = loadRec('jobs');
   const profilesRec = loadRec('profiles');
@@ -573,5 +573,5 @@ test('updateCard: System board card outside Runs (Settings list) throws ScopeErr
   const configCard = sysCards.find((c) => c.idList === configListId)!;
 
   const scoped = scopeUserBoards(rawApi, boards);
-  await assert.rejects(() => scoped.updateCard(configCard.id, { name: 'edited' }), ScopeError);
+  await assert.rejects(() => scoped.updateCard(configCard.id, { name: 'edited' }), ImmutableCardError);
 });

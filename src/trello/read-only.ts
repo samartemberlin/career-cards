@@ -31,7 +31,7 @@ export function readOnlyClient(api: TrelloApi): TrelloApi {
     checklist: (id) => api.checklist(id),
     labels: (boardId) => api.labels(boardId),
 
-    // Writes — each returns a rejected Promise naming the method (async for consistent return type)
+    // Writes — async so the guard fires as a rejected Promise, not a synchronous throw
     createBoard: (_name, _idOrg) => deny('createBoard'),
     createLabel: (_boardId, _name, _color) => deny('createLabel'),
     createList: (_boardId, _name, _pos) => deny('createList'),

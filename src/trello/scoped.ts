@@ -16,6 +16,17 @@ export class ScopeError extends Error {
   }
 }
 
+/** Thrown when updateCard is called on a card that is not in the System board's Runs list.
+ *  Distinct from ScopeError (wrong board) so callers can tell the two apart. */
+export class ImmutableCardError extends Error {
+  readonly cardId: string;
+  constructor(cardId: string) {
+    super(`Card ${cardId} is not in the System board's Runs list and cannot be edited`);
+    this.name = 'ImmutableCardError';
+    this.cardId = cardId;
+  }
+}
+
 export class OriginalsWriteError extends Error {
   readonly cardId?: string;
   readonly listId?: string;
@@ -186,7 +197,7 @@ export function scopeClient(api: TrelloApi, scope: Scope): TrelloApi {
         c.idBoard !== scope.systemBoard ||
         c.list.name.trim().toLowerCase() !== 'runs'
       ) {
-        throw new ScopeError(cardId);
+        throw new ImmutableCardError(cardId);
       }
       return api.updateCard(cardId, update);
     },
