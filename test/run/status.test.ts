@@ -216,6 +216,19 @@ test('activeRun: an ok card is neither active nor stale', () => {
 
 // ── redact field on StatusView ────────────────────────────────────────────
 
+test('statusDesc redacts source errors containing a secret via v.redact', () => {
+  const secret = 'apikey99secret88';
+  const redact = (s: string): string => s.split(secret).join('***');
+  const stats = emptyStats();
+  stats.sourceErrors = [
+    { company: 'Acme', error: `fetch failed: https://api.example.com/jobs?key=${secret}&q=eng` },
+  ];
+  const v = makeView({ state: 'failed', stats, redact });
+  const desc = statusDesc(v);
+  assert.ok(!desc.includes(secret), 'source error must not expose the secret in the card desc');
+  assert.ok(desc.includes('***'), 'redacted placeholder must appear');
+});
+
 test('statusTitle and statusDesc apply v.redact to free-text fields (reason, error, problems)', () => {
   const secret = 'topsecrettoken99';
   const redact = (s: string): string => s.split(secret).join('***');

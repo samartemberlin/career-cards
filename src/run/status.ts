@@ -120,11 +120,12 @@ export function statusDesc(v: StatusView): string {
   const budget = DESC_LIMIT - CONTRACT_SEP.length - contract.length;
 
   const countLines = buildCountLines(v);
+  const r = v.redact ?? ((s: string) => s);
 
-  const allErrLines = (v.stats?.sourceErrors ?? []).map((e) => `${e.company}: ${e.error}`);
+  // Source-error text can contain provider URLs with keys in the query string — redact the full line.
+  const allErrLines = (v.stats?.sourceErrors ?? []).map((e) => r(`${e.company}: ${e.error}`));
 
   // Problems are never truncated — they appear between errors and the log excerpt.
-  const r = v.redact ?? ((s: string) => s);
   const problemLines: string[] = v.problems?.length
     ? ['', 'Problems:', ...v.problems.map((p) => `- ${r(p)}`)]
     : [];
