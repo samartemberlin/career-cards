@@ -1,4 +1,3 @@
-// Job card creation, label resolution, and archiving for the Jobs board.
 import type { TrelloApi, TCard } from './api.ts';
 import type { Job } from '../pipeline/keys.ts';
 import type { ParsedScore } from '../pipeline/score.ts';
