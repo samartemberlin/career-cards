@@ -133,3 +133,12 @@ test('fetch-jd gets no secret', async () => {
   assert.ok(names.includes('PATH'));
   for (const n of names) assert.ok(['PATH', 'HOME', 'LANG'].includes(n), `unexpected env ${n}`);
 });
+
+test('fetchJd: LinkedIn gets the run deadline', async () => {
+  let got: number | undefined;
+  await fetchJd(
+    { key: 'linkedin:1234567', url: 'https://www.linkedin.com/jobs/view/1234567' },
+    { linkedinFetch: async (_id, o) => { got = o.deadline; return longText; }, deadline: 12345 },
+  );
+  assert.equal(got, 12345);
+});

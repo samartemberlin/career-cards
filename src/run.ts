@@ -155,9 +155,10 @@ export async function main(
 
   // scanAll turns a thrown career-ops error (ScanFailed too) into a source error; the run reports it as ⚠️.
   const scan: RunDeps['scan'] = o.scan ?? ((plan, so) => scanAll(plan, {
-    careerOps: (portals) => runCareerOpsScan(portals, { env }),
+    careerOps: (portals, co) => runCareerOpsScan(portals, { env, deadline: co.deadline }),
     ...o.sources,
     log: so.log,
+    deadline: so.deadline,
   }));
 
   const opts: RunOpts = {
@@ -171,7 +172,7 @@ export async function main(
     trello,
     boards,
     scan,
-    fetchJd,
+    fetchJd: (job, jo) => fetchJd(job, { env, ...jo }),
     env,
     defaults,
     now: () => new Date(),

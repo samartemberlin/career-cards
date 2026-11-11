@@ -355,6 +355,20 @@ test('a long crash message clipped through a secret leaves no part of it in the 
   for (const text of t.sink) assert.ok(!/w tre/.test(text), text);
 });
 
+test('the scan and the description fetches share the run deadline', async () => {
+  const t = setup();
+  let scanDeadline = 0;
+  const jdDeadlines = new Set<number | undefined>();
+  const scan = t.deps.scan;
+  t.deps.scan = (plan, o) => { scanDeadline = o.deadline; return scan(plan, o); };
+  t.deps.fetchJd = async (_j, o) => { jdDeadlines.add(o?.deadline); return { jd: JD, meta: {} }; };
+  const before = Date.now();
+  await run(t.deps, { budgetMs: 20 * 60_000 });
+  const expected = before + 15 * 60_000;
+  assert.ok(Math.abs(scanDeadline - expected) < 5_000, `scan deadline ${scanDeadline - before} ms after start`);
+  assert.deepEqual([...jdDeadlines], [scanDeadline]);
+});
+
 test('a Sources Drop typo is a warning on a ✅ card', async () => {
   const t = setup({ defaults: { portals: {}, extra: {} } });
   const out = await run(t.deps);

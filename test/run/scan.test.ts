@@ -64,6 +64,19 @@ test('a scan past its timeout throws ScanFailed', async () => {
   assert.deepEqual(scanDirs(), before);
 });
 
+test('a scan stops at the run deadline', async () => {
+  const before = scanDirs();
+  await assert.rejects(
+    runCareerOpsScan({ note: 'FAKE_SCAN_HANG' }, { careerOpsDir: FAKE, env: ENV, deadline: Date.now() + 300 }),
+    (e: unknown) => e instanceof ScanFailed && /timed out/.test(e.message),
+  );
+  await assert.rejects(
+    runCareerOpsScan({ tracked_companies: [] }, { careerOpsDir: FAKE, env: ENV, deadline: Date.now() - 1 }),
+    (e: unknown) => e instanceof ScanFailed && /no time left/.test(e.message),
+  );
+  assert.deepEqual(scanDirs(), before);
+});
+
 const row = (url: string, company: string, title: string, source: string): ScanRow => ({ url, company, title, source });
 
 test('scanAll: LinkedIn throwing leaves the other sources\' jobs', async () => {
@@ -151,4 +164,34 @@ test('a career-ops dir that cannot start throws ScanFailed', async () => {
     runCareerOpsScan({}, { careerOpsDir: join(FAKE, 'missing'), env: ENV }),
     (e: unknown) => e instanceof ScanFailed,
   );
+});
+
+test('scanAll: career-ops gets the deadline and LinkedIn at most the minutes left', async () => {
+  const deadline = Date.now() + 10 * 60_000;
+  let careerOpsDeadline = 0;
+  let liMinutes: number | undefined;
+  await scanAll({ ...PLAN, linkedin: { ...PLAN.linkedin, max_total_minutes: 40 } }, {
+    careerOps: async (_p, o) => { careerOpsDeadline = o.deadline; return result([]); },
+    rss: async () => result([]),
+    pages: async () => result([]),
+    linkedin: async (cfg) => { liMinutes = cfg.max_total_minutes; return result([]); },
+    log: quiet,
+    deadline,
+  });
+  assert.equal(careerOpsDeadline, deadline);
+  assert.ok(liMinutes !== undefined && liMinutes <= 10 && liMinutes > 9, `LinkedIn got ${liMinutes} min`);
+});
+
+test('scanAll: past the deadline LinkedIn is not started', async () => {
+  let called = false;
+  const out = await scanAll(PLAN, {
+    careerOps: async () => result([]),
+    rss: async () => result([]),
+    pages: async () => result([]),
+    linkedin: async () => { called = true; return result([]); },
+    log: quiet,
+    deadline: Date.now() - 1,
+  });
+  assert.equal(called, false);
+  assert.deepEqual(out.errors, [{ company: 'LinkedIn', error: 'no time left in the run budget' }]);
 });

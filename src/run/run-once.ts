@@ -35,7 +35,7 @@ export type RunDeps = {
   trello: TrelloApi;
   boards: UserBoards;
   /** `log` is the run's redacting log. */
-  scan: (plan: ScanPlan, o: { log: (s: string) => void }) => Promise<ScanOutput>;
+  scan: (plan: ScanPlan, o: { log: (s: string) => void; deadline: number }) => Promise<ScanOutput>;
   fetchJd: ProcessDeps['fetchJd'];
   env: Env;
   call?: CallOpts;
@@ -302,7 +302,9 @@ export async function runOnce(deps: RunDeps, opts: RunOpts): Promise<RunOutcome>
     const active = activeProfiles(cfg);
     const plan = buildScanPlan({ defaults: deps.defaults ?? loadDefaults(), sources: cfg.sources, profiles: active, settings });
     stats.warnings.push(...plan.warnings);
-    const scanned = await deps.scan(plan, { log });
+    // One deadline for the scan, the description fetches, facts and scoring: whatever is not reached waits for the next run.
+    const deadline = t0 + budgetMs - SCORING_MARGIN_MS;
+    const scanned = await deps.scan(plan, { log, deadline });
     recordScan(scanned, index.keys, stats, log, runLog.redact);
     const cap = Math.min(settings.scoring_cap, opts.cap ?? Infinity);
     const jobs = await processJobs(
@@ -311,7 +313,7 @@ export async function runOnce(deps: RunDeps, opts: RunOpts): Promise<RunOutcome>
         fetchJd: deps.fetchJd, ctx, extractor: deps.extractor ?? loadExtractor(), log,
         ...(deps.call ? { call: deps.call } : {}), ...(cfg.preferences ? { preferences: cfg.preferences } : {}),
       },
-      { cap, deadline: t0 + budgetMs - SCORING_MARGIN_MS, today: isoDateIn(start, tz), dryRun: opts.dryRun },
+      { cap, deadline, today: isoDateIn(start, tz), dryRun: opts.dryRun },
       stats,
     );
 
