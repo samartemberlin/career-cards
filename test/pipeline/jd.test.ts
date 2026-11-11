@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { extractJobPosting, htmlToText, normalizeEmploymentType } from '../../src/pipeline/html.ts';
+import { join } from 'node:path';
 import { fetchJd } from '../../src/pipeline/jd.ts';
 import type { FetchLike } from '../../src/pipeline/jd.ts';
 
@@ -113,4 +114,22 @@ test('fetchJd: LinkedIn path uses injected linkedinFetch', async () => {
     { linkedinFetch: async () => null },
   );
   assert.equal(miss, null);
+});
+
+test('fetch-jd gets no secret', async () => {
+  const env = {
+    PATH: process.env.PATH, HOME: '/home/nobody', LANG: 'C.UTF-8',
+    TRELLO_TOKEN: 'trello-token-123456', GEMINI_API_KEY: 'gemini-key-123456', SHELL: '/bin/sh',
+  };
+  const r = await fetchJd(
+    { key: 'greenhouse:acme:1', url: 'https://x.org/1' },
+    {
+      careerOpsDir: join(import.meta.dirname, '..', 'fixtures', 'career-ops-fake'), env,
+      fetchImpl: async () => { throw new Error('should not be called'); },
+    },
+  );
+  assert.equal(r?.meta.source, 'ats-api');
+  const names = r!.jd.split(' ').filter((w) => /^[A-Z_]+$/.test(w));
+  assert.ok(names.includes('PATH'));
+  for (const n of names) assert.ok(['PATH', 'HOME', 'LANG'].includes(n), `unexpected env ${n}`);
 });

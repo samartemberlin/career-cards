@@ -7,6 +7,8 @@
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { careerOpsEnv } from './career-ops-env.ts';
+import type { ParentEnv } from './career-ops-env.ts';
 import type { Job } from './keys.ts';
 import { extractJobPosting, fromJobPosting, htmlToText } from './html.ts';
 import { fetchLinkedinJd } from './sources/linkedin.ts';
@@ -23,16 +25,17 @@ export type FetchLike = (
   init?: RequestInit,
 ) => Promise<{ ok: boolean; status: number; text: () => Promise<string> }>;
 
-type AtsFetch = (dir: string, url: string, timeoutMs?: number) => Promise<string | null>;
+type AtsFetch = (dir: string, url: string, env: Record<string, string>) => Promise<string | null>;
 type LinkedinFetch = (id: string) => Promise<string | null>;
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_CAREER_OPS_DIR = join(__dir, '..', '..', 'career-ops');
 
-function runFetchJd(careerOpsDir: string, url: string, timeoutMs = 30000): Promise<string | null> {
+function runFetchJd(careerOpsDir: string, url: string, env: Record<string, string>, timeoutMs = 30000): Promise<string | null> {
   return new Promise((resolve) => {
     const p = spawn(process.execPath, ['fetch-jd.mjs', url], {
       cwd: careerOpsDir,
+      env,
       stdio: ['ignore', 'pipe', 'ignore'],
     });
     let out = '';
@@ -63,6 +66,8 @@ export type FetchJdOpts = {
   atsFetch?: AtsFetch;
   careerOpsDir?: string;
   linkedinFetch?: LinkedinFetch;
+  /** Only PATH, HOME and LANG of it reach fetch-jd.mjs. */
+  env?: ParentEnv;
 };
 
 export async function fetchJd(
@@ -73,6 +78,7 @@ export async function fetchJd(
     fetchImpl = fetch as FetchLike,
     atsFetch = runFetchJd,
     careerOpsDir = DEFAULT_CAREER_OPS_DIR,
+    env = process.env,
     // LinkedIn guest endpoint, paced and capped; injectable for tests.
     linkedinFetch = (id: string): Promise<string | null> => fetchLinkedinJd(id),
   } = opts;
@@ -86,7 +92,7 @@ export async function fetchJd(
   }
 
   if (ATS_KEY.test(job.key)) {
-    const text = await atsFetch(careerOpsDir, job.url);
+    const text = await atsFetch(careerOpsDir, job.url, careerOpsEnv(env));
     if (text && text.length >= MIN_TEXT) {
       return { jd: text.slice(0, MAX_TEXT), meta: { source: 'ats-api' } };
     }

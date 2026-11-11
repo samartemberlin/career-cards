@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dump as dumpYaml } from 'js-yaml';
+import { careerOpsEnv } from '../pipeline/career-ops-env.ts';
 import { fetchRssSources } from '../pipeline/sources/rss.ts';
 import { fetchPageSources } from '../pipeline/sources/pages.ts';
 import { fetchLinkedinSearch } from '../pipeline/sources/linkedin.ts';
@@ -22,9 +23,6 @@ export const TMP_PREFIX = 'career-cards-scan-';
 
 // career-ops' scan-history-columns.mjs order; it reads rows by position, so the header must match.
 const HISTORY_COLUMNS = ['url', 'first_seen', 'portal', 'title', 'company', 'status', 'location', 'fingerprint', 'posted_at'];
-
-// career-ops is third-party code: it gets no Trello, model or other secret, only what it needs to run.
-const PASSED_ENV = ['PATH', 'HOME', 'LANG'];
 
 export class ScanFailed extends Error {}
 
@@ -87,12 +85,7 @@ export async function runCareerOpsScan(
     writeFileSync(historyFile, HISTORY_COLUMNS.join('\t') + '\n');
     writeFileSync(pipelineFile, '');
 
-    const env: Record<string, string> = {};
-    for (const name of PASSED_ENV) {
-      const v = parentEnv[name];
-      if (v !== undefined) env[name] = v;
-    }
-    Object.assign(env, {
+    const env = careerOpsEnv(parentEnv, {
       CAREER_OPS_DATA_DIR: tmp,
       CAREER_OPS_PORTALS: portalsFile,
       CAREER_OPS_PROFILE: SCAN_PROFILE,
