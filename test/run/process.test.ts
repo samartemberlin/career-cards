@@ -9,6 +9,7 @@ import { buildScoreContext } from '../../src/privacy.ts';
 import { llmConfig } from '../../src/pipeline/llm.ts';
 import type { FetchJdResult } from '../../src/pipeline/jd.ts';
 import type { ParsedFacts } from '../../src/pipeline/facts.ts';
+import type { Preferences } from '../../src/pipeline/prefs.ts';
 import type { Job } from '../../src/pipeline/keys.ts';
 import type { Profile, Settings } from '../../src/config/schema.ts';
 import { fakeLlm, fakeLlmEnv } from '../support/fake-llm.ts';
@@ -36,7 +37,8 @@ const JD = 'We plan events. '.repeat(20);
 
 type Setup = {
   score?: (key: string) => number | 'quota' | 'bad';
-  facts?: (key: string) => Partial<ParsedFacts>;
+  facts?: (key: string) => Partial<ParsedFacts> | 'quota';
+  preferences?: Preferences;
   jd?: (key: string) => FetchJdResult | null;
   opts?: Partial<ProcessOpts>;
 };
@@ -52,6 +54,7 @@ async function run(input: Job[], s: Setup = {}, known = new Set<string>()) {
   const deps: ProcessDeps = {
     fetchJd: async (j) => { fetched.push(j.key); return s.jd ? s.jd(j.key) : { jd: JD, meta: {} }; },
     ctx, extractor: 'Extract facts as JSON.', call: { fetchImpl: llm.fetchImpl, retries: 0 }, log: (m) => logs.push(m),
+    ...(s.preferences ? { preferences: s.preferences } : {}),
   };
   const stats: RunStats = emptyStats();
   const result = await processJobs(input, known, filter, deps,
@@ -164,6 +167,50 @@ describe('processJobs', () => {
     assert.equal(result[0]!.facts?.german.level, 'b2');
   });
 
+  it('a quota stop during facts still leaves every scored job in the output', async () => {
+    const { result, stats } = await run(jobs(4), { facts: () => 'quota' });
+    assert.equal(result.length, 4);
+    assert.equal(stats.scored, 4);
+    assert.match(stats.facts.aborted ?? '', /quota/);
+    assert.equal(stats.aborted, null);
+    assert.ok(result.every((r) => r.facts === undefined));
+  });
+
+  it('facts are requested only for scored jobs, after scoring', async () => {
+    const { result, requests } = await run(jobs(4), { score: (k) => (k === 'url:job1' ? 'bad' : 6), opts: { cap: 3 } });
+    assert.deepEqual(result.map((r) => r.key), ['url:job0', 'url:job2']);
+    const factsKeys = requests.filter((r) => !r.system.includes('You score job postings')).map((r) => /^key: (\S+)/m.exec(r.user)![1]);
+    assert.deepEqual(factsKeys.sort(), ['url:job0', 'url:job2']);
+    const firstFacts = requests.findIndex((r) => !r.system.includes('You score job postings'));
+    assert.ok(requests.slice(firstFacts).every((r) => !r.system.includes('You score job postings')));
+  });
+
+  it('facts tokens and models are counted apart from scoring', async () => {
+    const { stats } = await run(jobs(2));
+    assert.equal(stats.facts.tokens, 20);
+    assert.deepEqual(stats.facts.models, { 'custom:gemini-flash-lite-latest': 2 });
+    assert.equal(stats.tokens, 20);
+  });
+
+  it('shadow penalties are computed and logged, never applied', async () => {
+    const preferences: Preferences = { penalties: { driving_licence: { points: 2 } } };
+    const { result, stats, logs } = await run(jobs(2), {
+      preferences, score: () => 6, facts: (k) => ({ driving_licence: k === 'url:job0' }),
+    });
+    const hit = result.find((r) => r.key === 'url:job0')!;
+    assert.equal(hit.score, 6);
+    assert.equal(hit.shadow?.total, 2);
+    assert.equal(result.find((r) => r.key === 'url:job1')!.shadow?.total, 0);
+    assert.deepEqual(stats.shadow, { jobs: 1, points: 2 });
+    assert.ok(logs.some((l) => l.includes('shadow penalty url:job0: -2')));
+  });
+
+  it('without preferences no shadow is computed', async () => {
+    const { result, stats } = await run(jobs(1));
+    assert.equal(result[0]!.shadow, undefined);
+    assert.deepEqual(stats.shadow, { jobs: 0, points: 0 });
+  });
+
   it('a facts deadline fills a missing job deadline', async () => {
     const { result } = await run(jobs(2), { facts: (k) => ({ deadline: k === 'url:job0' ? '2026-12-01' : '2026-11-01' }) });
     assert.equal(result.find((r) => r.key === 'url:job0')!.deadline, '2026-12-01');
@@ -211,7 +258,8 @@ describe('processJobs without a masked context', () => {
     assert.deepEqual(result, []);
     assert.deepEqual(llm.requests, []);
     assert.equal(stats.scored, 0);
-    assert.equal(stats.left, 2);
+    assert.equal(stats.leftUnmasked, 2);
+    assert.equal(stats.left, 0);
     assert.ok(stats.aborted);
   });
 });

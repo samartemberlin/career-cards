@@ -1,12 +1,15 @@
 // One run's jobs, from scan rows to scored jobs: dedup against the board, free filters, descriptions, filters again,
-// facts, the per-run cap, scoring. Ported from samjobs' processPerson, without its files: the board is the state, and
-// a job that is not scored here (cap, quota, time, missing description) gets no card, so the next run sees it again.
+// the per-run cap, scoring, then facts for the scored jobs. Ported from samjobs' processPerson, without its files: the
+// board is the state, and a job not scored here (cap, quota, time, missing description) gets no card, so the next run
+// sees it again.
 import { extractAll } from '../pipeline/facts.ts';
 import type { Facts } from '../pipeline/facts.ts';
 import type { FetchJdResult } from '../pipeline/jd.ts';
 import type { Job } from '../pipeline/keys.ts';
 import type { CallOpts } from '../pipeline/llm.ts';
 import { scoreAll } from '../pipeline/score.ts';
+import { applyPenalties } from '../pipeline/prefs.ts';
+import type { Penalties, Preferences } from '../pipeline/prefs.ts';
 import type { MaskedContext } from '../privacy.ts';
 import type { ScoredJob } from '../trello/writer.ts';
 import { ruleId } from './stats.ts';
@@ -26,8 +29,12 @@ export type ProcessDeps = {
   ctx: MaskedContext | null;
   extractor: string;
   call?: CallOpts;
+  /** When given, penalties are computed for each scored job with facts and logged, never applied (shadow mode). */
+  preferences?: Preferences;
   log: (s: string) => void;
 };
+
+export type ProcessedJob = ScoredJob & { shadow?: Penalties };
 
 export type ProcessOpts = {
   cap: number;
@@ -62,7 +69,7 @@ export async function processJobs(
   deps: ProcessDeps,
   opts: ProcessOpts,
   stats: RunStats,
-): Promise<ScoredJob[]> {
+): Promise<ProcessedJob[]> {
   const { cap, deadline, today, dryRun, fetchConcurrency = 6, maxFetch = cap * 2, maxLinkedinJd = 40 } = opts;
   const { ctx, log } = deps;
   // Every rejection is logged with its evidence: a wrong one is otherwise invisible, since rejected jobs are never scored.
@@ -82,7 +89,7 @@ export async function processJobs(
   }
   if (dryRun) return [];
   if (!ctx) {
-    stats.left += survivors.length;
+    stats.leftUnmasked += survivors.length;
     stats.aborted ??= 'no masked scoring context: nothing scored';
     log(`${stats.aborted} (${survivors.length} jobs left for the next run)`);
     return [];
@@ -119,22 +126,6 @@ export async function processJobs(
   const batch = ready.slice(0, cap);
   stats.deferred += ready.length - batch.length;
 
-  let facts = new Map<string, Facts>();
-  try {
-    const r = await extractAll({ llm: ctx.llm, jobs: batch, extractor: deps.extractor, deadline, fetchImpl: deps.call?.fetchImpl, log });
-    facts = r.facts;
-    stats.facts.done += r.facts.size;
-    stats.facts.errors += r.errors.length;
-    stats.facts.aborted ??= r.aborted;
-  } catch (e) {
-    log(`facts failed: ${(e as Error).message}`);
-  }
-  for (const j of batch) {
-    const d = facts.get(j.key)?.deadline;
-    // A past facts deadline would put an expired date on the card; the posting still passed the EXPIRED check on its own data.
-    if (!j.deadline && d && d >= today) j.deadline = d;
-  }
-
   const res = await scoreAll(ctx, batch, { deadline, call: deps.call, log });
   stats.scored += res.results.length;
   stats.scoreErrors += res.errors.length;
@@ -144,13 +135,44 @@ export async function processJobs(
 
   const order = new Map(batch.map((j, i) => [j.key, i]));
   const byKey = new Map(batch.map((j) => [j.key, j]));
+  const scored = res.results.map((r) => byKey.get(r.key)!);
+
+  // Facts come after scoring and only for scored jobs: they feed labels, card fields and the shadow penalties,
+  // while the score is what the user waits for, so facts get whatever budget scoring left.
+  let facts = new Map<string, Facts>();
+  try {
+    const r = await extractAll({ llm: ctx.llm, jobs: scored, extractor: deps.extractor, deadline, fetchImpl: deps.call?.fetchImpl, log });
+    facts = r.facts;
+    stats.facts.done += r.facts.size;
+    stats.facts.errors += r.errors.length;
+    stats.facts.aborted ??= r.aborted;
+    stats.facts.tokens += r.tokens;
+    for (const [m, n] of Object.entries(r.models)) stats.facts.models[m] = (stats.facts.models[m] ?? 0) + n;
+  } catch (e) {
+    log(`facts failed: ${(e as Error).message}`);
+  }
+
   return res.results
-    .map((r): ScoredJob => {
+    .map((r): ProcessedJob => {
+      const j = byKey.get(r.key)!;
       const f = facts.get(r.key);
-      return {
-        ...byKey.get(r.key)!, score: r.score, reason: r.reason, flags: r.flags,
+      const due = f?.deadline;
+      // A past facts deadline would put an expired date on the card; the posting passed the EXPIRED check on its own data.
+      const fill = !j.deadline && due && due >= today ? { deadline: due } : {};
+      const out: ProcessedJob = {
+        ...j, ...fill, score: r.score, reason: r.reason, flags: r.flags,
         ...(r.title_en ? { title_en: r.title_en } : {}), ...(f ? { facts: f } : {}),
       };
+      if (f && deps.preferences) {
+        const p = applyPenalties(f, deps.preferences);
+        out.shadow = p;
+        if (p.total > 0) {
+          stats.shadow.jobs++;
+          stats.shadow.points += p.total;
+          log(`shadow penalty ${r.key}: -${p.total} (${Object.entries(p.parts).map(([k, v]) => `${k} ${v}`).join(', ')}), not applied to score ${r.score}`);
+        }
+      }
+      return out;
     })
     .sort((a, b) => b.score - a.score || order.get(a.key)! - order.get(b.key)!);
 }

@@ -86,11 +86,14 @@ function buildCountLines(v: StatusView): string[] {
 
   let factsLine = `Facts: ${s.facts.done} done · ${s.facts.errors} errors`;
   if (s.facts.aborted) factsLine += ` · aborted: ${s.facts.aborted}`;
+  if (s.facts.tokens) factsLine += ` · tokens: ${s.facts.tokens}`;
   lines.push(factsLine);
 
   let scoredLine = `Scored: ${s.scored} · errors: ${s.scoreErrors} · deferred: ${s.deferred} · left: ${s.left}`;
+  if (s.leftUnmasked) scoredLine += ` · not masked: ${s.leftUnmasked}`;
   if (s.aborted) scoredLine += ` · aborted: ${s.aborted}`;
   lines.push(scoredLine);
+  if (s.shadow.jobs) lines.push(`Shadow penalties (not applied): ${s.shadow.jobs} jobs · ${s.shadow.points} points`);
 
   lines.push(`Cards: ${s.cards.created} created · ${s.cards.failed} failed`);
   lines.push(`Archived: ${s.archived.archived} · failed: ${s.archived.failed} · left: ${s.archived.left}`);

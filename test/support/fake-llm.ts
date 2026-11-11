@@ -22,13 +22,18 @@ const reply = (content: string) => ({
   json: async () => ({ choices: [{ message: { content } }], usage: { total_tokens: 10 } }),
 });
 
+function quota() {
+  const body = '{"error":{"message":"Quota exceeded: requests per day"}}';
+  return { ok: false, status: 429, text: async () => body, json: async () => JSON.parse(body) };
+}
+
 /**
  * `score` decides each scoring reply: a number, `'quota'` (HTTP 429 with a daily-quota body) or `'bad'` (not JSON).
- * `facts` fills the facts reply; if it throws, the facts reply is not JSON, so that extraction fails.
+ * `facts` fills the facts reply, or `'quota'` answers it like `score`; if it throws, the facts reply is not JSON.
  */
 export function fakeLlm(o: {
   score: (key: string) => number | 'quota' | 'bad';
-  facts?: (key: string) => Partial<ParsedFacts>;
+  facts?: (key: string) => Partial<ParsedFacts> | 'quota';
 }): { fetchImpl: FetchJson; requests: { system: string; user: string }[] } {
   const requests: { system: string; user: string }[] = [];
   const fetchImpl: FetchJson = async (_url, init) => {
@@ -39,15 +44,14 @@ export function fakeLlm(o: {
     const key = /^key: (\S+)/m.exec(user)?.[1] ?? '';
     if (system.includes(SCORING_SYSTEM)) {
       const s = o.score(key);
-      if (s === 'quota') {
-        const body = '{"error":{"message":"Quota exceeded: requests per day"}}';
-        return { ok: false, status: 429, text: async () => body, json: async () => JSON.parse(body) };
-      }
+      if (s === 'quota') return quota();
       if (s === 'bad') return reply('not json');
       return reply(JSON.stringify({ key, score: s, reason: `fake reason for ${key}`, flags: [] }));
     }
     try {
-      return reply(JSON.stringify({ ...emptyFacts(key), ...o.facts?.(key) }));
+      const f = o.facts?.(key);
+      if (f === 'quota') return quota();
+      return reply(JSON.stringify({ ...emptyFacts(key), ...f }));
     } catch {
       return reply('not json');
     }

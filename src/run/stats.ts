@@ -12,12 +12,17 @@ export type RunStats = {
   rejectedPost: number;
   rules: Record<string, number>;
   jd: { fetched: number; missing: number; deferred: number };
-  facts: { done: number; errors: number; aborted: string | null };
+  facts: { done: number; errors: number; aborted: string | null; tokens: number; models: Record<string, number> };
   scored: number;
   scoreErrors: number;
   deferred: number;
+  /** Not attempted because scoring stopped early (quota, time budget). */
   left: number;
+  /** Not scored because the personal details could not be masked. */
+  leftUnmasked: number;
   aborted: string | null;
+  /** Preference penalties, computed but not applied to any score (shadow mode). */
+  shadow: { jobs: number; points: number };
   cards: { created: number; failed: number };
   archived: { archived: number; failed: number; left: number };
   models: Record<string, number>;
@@ -36,12 +41,14 @@ export function emptyStats(): RunStats {
     rejectedPost: 0,
     rules: {},
     jd: { fetched: 0, missing: 0, deferred: 0 },
-    facts: { done: 0, errors: 0, aborted: null },
+    facts: { done: 0, errors: 0, aborted: null, tokens: 0, models: {} },
     scored: 0,
     scoreErrors: 0,
     deferred: 0,
     left: 0,
+    leftUnmasked: 0,
     aborted: null,
+    shadow: { jobs: 0, points: 0 },
     cards: { created: 0, failed: 0 },
     archived: { archived: 0, failed: 0, left: 0 },
     models: {},
