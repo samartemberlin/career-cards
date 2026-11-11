@@ -326,8 +326,13 @@ export class FakeTrello {
       if ((m = /^\/cards\/([^/]+)$/.exec(path))) {
         const card = this._cards.get(m[1]!);
         if (!card) return notFound();
-        const { closed } = await readJson() as { closed?: boolean };
-        const updated = { ...card, ...(closed !== undefined && { closed }) };
+        const { closed, name, desc } = await readJson() as { closed?: boolean; name?: string; desc?: string };
+        const updated = {
+          ...card,
+          ...(closed !== undefined && { closed }),
+          ...(name !== undefined && { name }),
+          ...(desc !== undefined && { desc }),
+        };
         this._cards.set(card.id, updated);
         return ok(this._cardBody(updated, false));
       }

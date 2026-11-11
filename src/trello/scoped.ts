@@ -41,6 +41,8 @@ export type Scope = {
   boards: string[];
   /** If set, writes into any list named "Originals" on this board are blocked. */
   profilesBoard?: string;
+  /** If set, updateCard is allowed only for cards whose current list is named "Runs" on this board. */
+  systemBoard?: string;
 };
 
 /** The three boards that make up a user's career-cards workspace. */
@@ -175,6 +177,19 @@ export function scopeClient(api: TrelloApi, scope: Scope): TrelloApi {
       assertListNotOriginals(l);
       return api.createCard(c);
     },
+
+    updateCard: async (cardId, update) => {
+      const c = await api.card(cardId);
+      assertBoard(c.idBoard);
+      if (
+        scope.systemBoard === undefined ||
+        c.idBoard !== scope.systemBoard ||
+        c.list.name.trim().toLowerCase() !== 'runs'
+      ) {
+        throw new ScopeError(cardId);
+      }
+      return api.updateCard(cardId, update);
+    },
   };
 }
 
@@ -184,5 +199,6 @@ export function scopeUserBoards(api: TrelloApi, boards: UserBoards): TrelloApi {
   return scopeClient(api, {
     boards: [boards.jobs, boards.profiles, boards.system],
     profilesBoard: boards.profiles,
+    systemBoard: boards.system,
   });
 }

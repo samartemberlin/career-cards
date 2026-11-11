@@ -68,6 +68,7 @@ function makeStub(opts: StubOpts = {}): { api: TrelloApi; log: CallLog } {
     createList: async (boardId, name, pos) => { log.push({ method: 'createList', args: [boardId, name, pos] }); return makeList({ id: 'lst-new', name, idBoard: boardId }); },
     setListClosed: async (listId, closed) => { log.push({ method: 'setListClosed', args: [listId, closed] }); return makeList({ id: listId }); },
     createCard: async (c) => { log.push({ method: 'createCard', args: [c] }); return { id: 'card-new', name: c.name, desc: c.desc, idList: c.idList, idBoard: 'board1', closed: false, pos: typeof c.pos === 'number' ? c.pos : 0, shortUrl: 'https://trello.com/c/sample001' }; },
+    updateCard: async (cardId, update) => { log.push({ method: 'updateCard', args: [cardId, update] }); return { id: cardId, name: update.name ?? '', desc: update.desc ?? '', idList: 'list1', idBoard: 'board1', closed: false, pos: 0, shortUrl: 'https://trello.com/c/sample001' }; },
     setCardClosed: async (cardId, closed) => { log.push({ method: 'setCardClosed', args: [cardId, closed] }); return { id: cardId, name: '', desc: '', idList: 'list1', idBoard: 'board1', closed, pos: 0, shortUrl: 'https://trello.com/c/sample001' }; },
     comment: async (cardId, text) => { log.push({ method: 'comment', args: [cardId, text] }); return { id: 'act1' }; },
     attachText: async (cardId, name, text) => { log.push({ method: 'attachText', args: [cardId, name, text] }); return { id: 'att1' }; },
@@ -431,4 +432,41 @@ test('scopeUserBoards: Originals guard is always active (profilesBoard is requir
   });
   const scoped = scopeUserBoards(api, makeUserBoards());
   await assert.rejects(() => scoped.comment('card1', 'hello'), OriginalsWriteError);
+});
+
+// --- updateCard: restricted to System board Runs list --------------------
+
+test('updateCard succeeds for a card in the System board Runs list', async () => {
+  const { api } = makeStub({
+    cardResult: () => makeCard({ id: 'card1', idBoard: SYSTEM_BOARD, idList: 'runs-list', list: { id: 'runs-list', name: 'Runs' } }),
+  });
+  const scoped = scopeClient(api, { boards: [SYSTEM_BOARD], systemBoard: SYSTEM_BOARD });
+  const result = await scoped.updateCard('card1', { name: 'running ✅' });
+  assert.ok(result.id, 'updateCard returned a card');
+});
+
+test('updateCard on a card not in Runs throws ScopeError', async () => {
+  const { api } = makeStub({
+    cardResult: () => makeCard({ id: 'card1', idBoard: SYSTEM_BOARD, idList: 'config-list', list: { id: 'config-list', name: 'Config' } }),
+  });
+  const scoped = scopeClient(api, { boards: [SYSTEM_BOARD], systemBoard: SYSTEM_BOARD });
+  await assert.rejects(() => scoped.updateCard('card1', { name: 'x' }), ScopeError);
+});
+
+test('updateCard on a card outside the System board throws ScopeError', async () => {
+  const { api } = makeStub({
+    // Card is in JOBS_BOARD, list named Runs — still must be rejected (wrong board)
+    cardResult: () => makeCard({ id: 'card1', idBoard: JOBS_BOARD, idList: 'runs-list', list: { id: 'runs-list', name: 'Runs' } }),
+  });
+  const scoped = scopeClient(api, { boards: [JOBS_BOARD, SYSTEM_BOARD], systemBoard: SYSTEM_BOARD });
+  await assert.rejects(() => scoped.updateCard('card1', { name: 'x' }), ScopeError);
+});
+
+test('updateCard without systemBoard set always throws ScopeError', async () => {
+  const { api } = makeStub({
+    cardResult: () => makeCard({ id: 'card1', idBoard: SYSTEM_BOARD, idList: 'runs-list', list: { id: 'runs-list', name: 'Runs' } }),
+  });
+  // scopeClient without systemBoard
+  const scoped = scopeClient(api, { boards: [SYSTEM_BOARD] });
+  await assert.rejects(() => scoped.updateCard('card1', { name: 'x' }), ScopeError);
 });
