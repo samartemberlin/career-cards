@@ -98,22 +98,19 @@ export function createTrelloClient(o: {
       authorization: `OAuth oauth_consumer_key="${key}", oauth_token="${token}"`,
       accept: 'application/json',
     };
-    const init: RequestInit = {
-      method,
-      headers,
-      signal: AbortSignal.timeout(30000),
-    };
+    const baseInit: Omit<RequestInit, 'signal'> = { method, headers };
     if (opts.body !== undefined) {
       headers['content-type'] = 'application/json';
-      init.body = JSON.stringify(opts.body);
+      baseInit.body = JSON.stringify(opts.body);
     }
     if (opts.form) {
-      init.body = opts.form;
+      baseInit.body = opts.form;
     }
 
     const isIdempotent = IDEMPOTENT_METHODS.has(method);
 
     for (let attempt = 0; ; attempt++) {
+      const init: RequestInit = { ...baseInit, signal: AbortSignal.timeout(30000) };
       let res: Response;
       try {
         res = await fetchImpl(url, init);
