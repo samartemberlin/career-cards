@@ -215,3 +215,26 @@ test('isRunColumnName: true for runColumnName output, false otherwise', () => {
   assert.ok(!isRunColumnName('New · Sat 11 Oct'));
   assert.ok(!isRunColumnName('Nov 10 · 1:00'));  // single-digit hour not padded
 });
+
+test('runColumnName and isRunColumnName round-trip for all 12 months', () => {
+  // One UTC date per calendar month in Europe/Berlin (Berlin is UTC+1 in winter, UTC+2 in summer)
+  const cases: [string, string][] = [
+    ['2026-01-15T22:00:00Z', 'Jan 15 · 23:00'],
+    ['2026-02-15T22:00:00Z', 'Feb 15 · 23:00'],
+    ['2026-03-15T22:00:00Z', 'Mar 15 · 23:00'],
+    ['2026-04-15T20:00:00Z', 'Apr 15 · 22:00'],
+    ['2026-05-15T20:00:00Z', 'May 15 · 22:00'],
+    ['2026-06-15T20:00:00Z', 'Jun 15 · 22:00'],
+    ['2026-07-15T20:00:00Z', 'Jul 15 · 22:00'],
+    ['2026-08-15T20:00:00Z', 'Aug 15 · 22:00'],
+    ['2026-09-15T20:00:00Z', 'Sep 15 · 22:00'],
+    ['2026-10-15T20:00:00Z', 'Oct 15 · 22:00'],
+    ['2026-11-15T22:00:00Z', 'Nov 15 · 23:00'],
+    ['2026-12-15T22:00:00Z', 'Dec 15 · 23:00'],
+  ];
+  for (const [utc, expected] of cases) {
+    const name = runColumnName(new Date(utc), 'Europe/Berlin');
+    assert.equal(name, expected, `runColumnName for ${utc}`);
+    assert.ok(isRunColumnName(name), `isRunColumnName should accept "${name}"`);
+  }
+});

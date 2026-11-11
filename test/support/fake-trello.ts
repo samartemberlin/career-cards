@@ -45,6 +45,18 @@ export class FakeTrello {
     return `https://trello.com/c/fake${String(this._shortUrlSeq).padStart(4, '0')}`;
   }
 
+  /** Resolve 'top' / 'bottom' / number to a concrete pos relative to existing items. */
+  private _resolvePos(rawPos: string | number, existingPos: number[]): number {
+    if (typeof rawPos === 'number') return rawPos;
+    if (rawPos === 'top') {
+      const min = existingPos.length > 0 ? Math.min(...existingPos) : 16384;
+      return Math.max(1, min - 16384);
+    }
+    // 'bottom' or anything else
+    const max = existingPos.length > 0 ? Math.max(...existingPos) : 0;
+    return max + 16384;
+  }
+
   // ── fail queue and request log ────────────────────────────────────────────
   private _failQueue: FailEntry[] = [];
   public requests: { method: string; path: string }[] = [];
@@ -246,7 +258,9 @@ export class FakeTrello {
       if (path === '/lists') {
         const { idBoard, name, pos: rawPos } = await readJson() as { idBoard: string; name: string; pos: string | number };
         const id = this._genId();
-        const pos = typeof rawPos === 'number' ? rawPos : this._genPos();
+        const boardListIds = this._boardListIds.get(idBoard) ?? [];
+        const existingPos = boardListIds.map((lid) => this._lists.get(lid)?.pos ?? 0).filter((p) => p > 0);
+        const pos = this._resolvePos(rawPos, existingPos);
         const list: TList = { id, name, closed: false, pos, idBoard };
         this._lists.set(id, list);
         this._addToBoard('list', idBoard, id);
@@ -258,7 +272,12 @@ export class FakeTrello {
         const list = this._lists.get(idList);
         if (!list) return notFound();
         const id = this._genId();
-        const pos = typeof rawPos === 'number' ? rawPos : this._genPos();
+        const listCardIds = this._boardCardIds.get(list.idBoard) ?? [];
+        const existingPos = listCardIds
+          .map((cid) => this._cards.get(cid))
+          .filter((c): c is TCard => !!c && c.idList === idList)
+          .map((c) => c.pos);
+        const pos = this._resolvePos(rawPos, existingPos);
         const card: TCard = { id, name, desc, idList, idBoard: list.idBoard, closed: false, pos, shortUrl: this._genShortUrl() };
         this._cards.set(id, card);
         this._addToBoard('card', list.idBoard, id);
@@ -326,8 +345,13 @@ export class FakeTrello {
       if ((m = /^\/cards\/([^/]+)$/.exec(path))) {
         const card = this._cards.get(m[1]!);
         if (!card) return notFound();
-        const { closed } = await readJson() as { closed?: boolean };
-        const updated = { ...card, ...(closed !== undefined && { closed }) };
+        const { closed, name, desc } = await readJson() as { closed?: boolean; name?: string; desc?: string };
+        const updated = {
+          ...card,
+          ...(closed !== undefined && { closed }),
+          ...(name !== undefined && { name }),
+          ...(desc !== undefined && { desc }),
+        };
         this._cards.set(card.id, updated);
         return ok(this._cardBody(updated, false));
       }

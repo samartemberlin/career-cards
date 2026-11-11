@@ -1,6 +1,4 @@
 // Job card and run column formatting for Trello.
-// Ported from samjobs' views/trello.mjs (card functions only) and views/status.mjs (parseCardScore).
-// Board I/O, batch selection and list lifecycle are not ported.
 import type { Job } from '../pipeline/keys.ts';
 import type { Facts } from '../pipeline/facts.ts';
 
@@ -80,8 +78,7 @@ export function parseJobKey(desc: string): string | null {
 
 // --- score parsing -------------------------------------------------------
 
-/** The score encoded in a card title ("8 · Company — Title"): integer 0-10, else null.
- * Ported from samjobs' parseCardScore. */
+/** The score encoded in a card title ("8 · Company — Title"): integer 0-10, else null. */
 export function parseTitleScore(title: string): number | null {
   const m = /^\s*(\d{1,2})\s*·/.exec(title ?? '');
   const n = m ? Number(m[1]) : null;
@@ -90,11 +87,15 @@ export function parseTitleScore(title: string): number | null {
 
 // --- run column name -----------------------------------------------------
 
+// Fixed month abbreviations: Intl short-month output is ICU-version-dependent
+// (Node 24 returns "Sept" for September in en-GB). This guarantees the format is stable.
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
+
 /** "Nov 10 · 01:00" in the user's timezone. Handles DST correctly via Intl. */
 export function runColumnName(start: Date, timeZone: string): string {
   const fmt = new Intl.DateTimeFormat('en-GB', {
     timeZone,
-    month: 'short',
+    month: 'numeric',
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
@@ -102,7 +103,8 @@ export function runColumnName(start: Date, timeZone: string): string {
   });
   const parts = fmt.formatToParts(start);
   const get = (type: string): string => parts.find((p) => p.type === type)?.value ?? '';
-  return `${get('month')} ${get('day')} · ${get('hour')}:${get('minute')}`;
+  const month = MONTHS[parseInt(get('month'), 10) - 1]!;
+  return `${month} ${get('day')} · ${get('hour')}:${get('minute')}`;
 }
 
 // --- location helper -----------------------------------------------------
@@ -156,7 +158,8 @@ export function jobLabels(r: Job & { facts?: Facts }): { name: string; color: st
 // --- run column name predicate -------------------------------------------
 
 // "Nov 10 · 01:00" (runColumnName output): Mon D · HH:MM
-const RUN_COLUMN_RE = /^[A-Z][a-z]{2} \d{1,2} · \d{2}:\d{2}$/u;
+// Also accepts "Sept" for columns created before the ICU-stable fix.
+const RUN_COLUMN_RE = /^[A-Z][a-z]{2,3} \d{1,2} · \d{2}:\d{2}$/u;
 
 /** True when a list name was produced by runColumnName. */
 export function isRunColumnName(name: string): boolean {

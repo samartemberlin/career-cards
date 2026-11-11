@@ -125,8 +125,7 @@ test('write responses have the captured shape', async () => {
       // Pick an existing list from the jobs board.
       const jobsRec = load('jobs');
       const bid = boardId(jobsRec);
-      const lists = JSON.parse(readFileSync(join(DIR, 'jobs.recording.json'), 'utf8')) as Recording;
-      const listsEntry = lists.find((c) => c.path === `/boards/${bid}/lists`);
+      const listsEntry = jobsRec.find((c) => c.path === `/boards/${bid}/lists`);
       const listId = (listsEntry!.body as { id: string }[])[0]!.id;
       url.pathname = '/1/cards';
       init.body = JSON.stringify({ idList: listId, name: 'Test', desc: '', pos: 'bottom' });
@@ -264,4 +263,33 @@ test('failNext(…, 429, 2) then success', async () => {
     (r) => r.method === 'POST' && r.path.endsWith('/actions/comments'),
   );
   assert.equal(commentRequests.length, 3);
+});
+
+// ── pos 'top' and 'bottom' respect existing card positions ─────────────────
+
+test("pos 'top' and 'bottom' place cards relative to existing positions in a seeded list", async () => {
+  const sysRec = load('system');
+  const fake = FakeTrello.fromRecordings(sysRec);
+  const api = client(fake.fetch);
+
+  const bid = boardId(sysRec);
+  // Find the Runs list (seeded with real positions from the fixture)
+  const lists = await api.lists(bid, 'all');
+  const runsList = lists.find((l) => l.name === 'Runs')!;
+  assert.ok(runsList, 'Runs list must exist in the system fixture');
+
+  // Seed some cards with known positions so there is definitely an existing pos
+  fake.addCards(runsList.id, 2, (i) => ({ name: `Seed ${i}`, desc: '' }));
+
+  const allBefore = await api.cards(bid, { filter: 'open' });
+  const inRunsBefore = allBefore.filter((c) => c.idList === runsList.id);
+  const minPosBefore = Math.min(...inRunsBefore.map((c) => c.pos));
+  const maxPosBefore = Math.max(...inRunsBefore.map((c) => c.pos));
+
+  // Create a 'top' and a 'bottom' card
+  const top = await api.createCard({ idList: runsList.id, name: 'Top card', desc: '', pos: 'top' });
+  const bottom = await api.createCard({ idList: runsList.id, name: 'Bottom card', desc: '', pos: 'bottom' });
+
+  assert.ok(top.pos < minPosBefore, `'top' card pos ${top.pos} must be less than min existing pos ${minPosBefore}`);
+  assert.ok(bottom.pos > maxPosBefore, `'bottom' card pos ${bottom.pos} must be greater than max existing pos ${maxPosBefore}`);
 });

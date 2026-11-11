@@ -1,8 +1,8 @@
 import type { TCard, TChecklist, TList, TrelloApi } from './api.ts';
 import { ConfigError, ProfileMetaSchema, UserConfigSchema, hasYamlBlock, parseYamlBlock } from '../config/schema.ts';
 import type { UserConfig } from '../config/schema.ts';
-
-export type UserBoards = { jobs: string; profiles: string; system: string };
+import type { UserBoards } from './scoped.ts';
+export type { UserBoards } from './scoped.ts';
 export type CardRef = { id: string; name: string; url: string; board: 'profiles' | 'system' };
 export type ConfigProblem = { message: string; card?: CardRef; where: string };
 

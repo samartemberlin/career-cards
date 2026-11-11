@@ -312,6 +312,60 @@ test('allCards throws when before does not move', async () => {
   );
 });
 
+// --- timeout signal per attempt ------------------------------------------
+
+test('each retry attempt gets a fresh AbortSignal', async () => {
+  const signals: AbortSignal[] = [];
+
+  // A fetchImpl that captures the signal from each attempt and fails twice, then succeeds.
+  let callCount = 0;
+  const fetchImpl: FetchLike = async (_url, init) => {
+    if (init?.signal) signals.push(init.signal as AbortSignal);
+    callCount++;
+    if (callCount < 3) return statusResponse(503, 'unavailable');
+    return okJson({ id: 'u1', username: 'alice' });
+  };
+
+  const clock = makeClock();
+  const client = createTrelloClient({
+    key: 'k', token: 't',
+    fetchImpl,
+    sleep: clock.sleep,
+    now: clock.now,
+  });
+  await client.me();
+
+  assert.equal(signals.length, 3, 'three attempts, three signals');
+  // All signals must be distinct objects — a shared signal would be the same reference.
+  assert.notEqual(signals[0], signals[1], 'attempt 1 and 2 must have distinct signals');
+  assert.notEqual(signals[1], signals[2], 'attempt 2 and 3 must have distinct signals');
+  assert.notEqual(signals[0], signals[2], 'attempt 1 and 3 must have distinct signals');
+});
+
+test('a timed-out attempt is retried like a network error (GET)', async () => {
+  let callCount = 0;
+  // First call throws an AbortError (timeout); second succeeds.
+  const fetchImpl: FetchLike = async (_url, _init) => {
+    callCount++;
+    if (callCount === 1) {
+      const err = new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+      throw err;
+    }
+    return okJson({ id: 'u1', username: 'alice' });
+  };
+
+  const clock = makeClock();
+  const client = createTrelloClient({
+    key: 'k', token: 't',
+    fetchImpl,
+    sleep: clock.sleep,
+    now: clock.now,
+  });
+  const member = await client.me();
+  assert.equal(member.id, 'u1', 'GET should succeed after a timeout retry');
+  assert.equal(callCount, 2);
+});
+
 // --- schema validation tests ---------------------------------------------
 
 test('drops unknown fields and rejects a malformed card', async () => {
