@@ -3,8 +3,6 @@ import { DESC_LIMIT } from '../trello/cards.ts';
 import type { RunState, RunTrigger, RunStats } from './stats.ts';
 
 export const RUNS_LIST = 'Runs';
-// A running card older than this is considered abandoned and will be marked ❌.
-export const STALE_MS = 2 * 3600_000;
 
 export type StatusView = {
   state: RunState;
@@ -24,7 +22,6 @@ export type StatusView = {
 };
 
 const MARKS: Record<RunState, string> = {
-  running: '⏳',
   ok: '✅',
   failed: '❌',
   skipped: '⏭️',
@@ -41,9 +38,7 @@ function clip(s: string, n: number): string {
 export function statusTitle(v: StatusView): string {
   const mark = MARKS[v.state];
   let outcome: string;
-  if (v.state === 'running') {
-    outcome = 'running';
-  } else if (v.state === 'ok') {
+  if (v.state === 'ok') {
     const created = v.stats?.cards.created ?? 0;
     outcome = `+${created} cards`;
     if (v.stats?.warnings?.length) {
@@ -190,7 +185,7 @@ export function parseStatusCard(c: { name: string; desc: string }): { state: Run
   const start = new Date(m[1]!);
   if (isNaN(start.getTime())) return null;
   const state = m[2]!;
-  if (state !== 'running' && state !== 'ok' && state !== 'failed' && state !== 'skipped') return null;
+  if (state !== 'ok' && state !== 'failed' && state !== 'skipped') return null;
   return { state: state as RunState, start };
 }
 
@@ -207,35 +202,6 @@ export async function findRunsList(
   return api.createList(systemBoard, RUNS_LIST, 'bottom');
 }
 
-/** Cards in state 'running', newest start first. */
-export function runningCards(cards: TCard[]): { card: TCard; start: Date }[] {
-  const result: { card: TCard; start: Date }[] = [];
-  for (const card of cards) {
-    const parsed = parseStatusCard({ name: card.name, desc: card.desc });
-    if (parsed?.state === 'running') {
-      result.push({ card, start: parsed.start });
-    }
-  }
-  result.sort((a, b) => b.start.getTime() - a.start.getTime());
-  return result;
-}
-
-/** The first running card younger than STALE_MS, or null if all running cards are stale. */
-export function activeRun(
-  cards: TCard[],
-  now: Date,
-): { card: TCard; start: Date } | null {
-  return runningCards(cards).find((r) => now.getTime() - r.start.getTime() < STALE_MS) ?? null;
-}
-
-/** Running cards at or over the staleness threshold. */
-export function staleRuns(
-  cards: TCard[],
-  now: Date,
-): { card: TCard; start: Date }[] {
-  return runningCards(cards).filter((r) => now.getTime() - r.start.getTime() >= STALE_MS);
-}
-
 /** Creates a new status card at the top of the given list. */
 export async function createStatusCard(
   api: TrelloApi,
@@ -247,17 +213,5 @@ export async function createStatusCard(
     name: statusTitle(v),
     desc: statusDesc(v),
     pos: 'top',
-  });
-}
-
-/** Updates the name and description of an existing status card (must be in the System board's Runs list). */
-export async function updateStatusCard(
-  api: TrelloApi,
-  cardId: string,
-  v: StatusView,
-): Promise<TCard> {
-  return api.updateCard(cardId, {
-    name: statusTitle(v),
-    desc: statusDesc(v),
   });
 }

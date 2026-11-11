@@ -1,7 +1,7 @@
 import type { SourceError } from '../pipeline/sources/types.ts';
 
 export type RunTrigger = 'scheduled' | 'manual';
-export type RunState = 'running' | 'ok' | 'failed' | 'skipped';
+export type RunState = 'ok' | 'failed' | 'skipped';
 
 export type RunStats = {
   scanned: number;

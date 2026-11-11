@@ -1,7 +1,11 @@
 // CLI entrypoint: --cap can only lower the cap from Settings (never raise it).
 import { readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createTrelloClient } from './trello/client.ts';
 import type { TrelloApi } from './trello/api.ts';
+import { fileLock } from './run/lock.ts';
+import type { RunLock } from './run/lock.ts';
 import { runOnce } from './run/run-once.ts';
 import type { RunDeps, RunOpts } from './run/run-once.ts';
 import { scanAll, runCareerOpsScan } from './run/scan.ts';
@@ -103,6 +107,7 @@ export async function main(
     scan?: RunDeps['scan'];
     /** Replaces single sources of the real scan. */
     sources?: Partial<Omit<ScanDeps, 'log'>>;
+    lock?: RunLock;
     out?: (s: string) => void;
   } = {},
 ): Promise<number> {
@@ -171,6 +176,7 @@ export async function main(
   const deps: RunDeps = {
     trello,
     boards,
+    lock: o.lock ?? fileLock(env.RUN_LOCK_FILE ?? join(tmpdir(), `career-cards-run-${boards.system}.lock`)),
     scan,
     fetchJd: (job, jo) => fetchJd(job, { env, ...jo }),
     env,

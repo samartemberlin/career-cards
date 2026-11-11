@@ -21,7 +21,6 @@ const load = (name: string): Recording =>
 
 const SAMPLE_RUN_COLUMN = 'Nov 9 · 01:00';
 const ARCHIVED_RUN_COLUMN = 'Oct 1 · 01:00';
-const STATUS_URL = 'https://trello.com/c/status01';
 
 function setup(o: { failCardNo?: number } = {}) {
   const rec = load('jobs');
@@ -68,17 +67,17 @@ test('summaryTitle counts new, filtered and deferred', () => {
   assert.equal(summaryTitle(stats()), 'ℹ️ Run · 23 new · 412 filtered · 3 deferred');
 });
 
-test('summaryDesc has no key line and links the status card', () => {
-  const desc = summaryDesc(stats(), STATUS_URL);
+test('summaryDesc has no key line and points to System › Runs', () => {
+  const desc = summaryDesc(stats());
   assert.equal(parseJobKey(desc), null);
-  assert.ok(desc.includes(`Full status: ${STATUS_URL}`));
+  assert.ok(desc.includes('Full status: this run\'s card in System › Runs'));
   assert.ok(desc.includes('EXCLUDE_TITLE: 300'));
   assert.ok(desc.includes('**Scanned:** 900'));
 });
 
 test('summaryDesc lists at most 5 rules, most frequent first', () => {
   const rules = { A: 1, B: 7, C: 3, D: 9, E: 2, F: 5 };
-  const desc = summaryDesc(stats({ rules }), STATUS_URL);
+  const desc = summaryDesc(stats({ rules }));
   const listed = [...desc.matchAll(/^- (\w+): \d+$/gm)].map((m) => m[1]);
   assert.deepEqual(listed, ['D', 'B', 'F', 'C', 'E']);
 });
@@ -101,7 +100,7 @@ test('column goes left of the newest open run column', async () => {
   const { bid, api } = setup();
   const before = await api.lists(bid, 'open');
   const sample = before.find((l) => l.name === SAMPLE_RUN_COLUMN)!;
-  const r = await writeRunColumn(api, { board: bid, name: 'Nov 10 · 01:00', jobs: [makeJob(8)], stats: stats(), statusUrl: STATUS_URL, log: noLog });
+  const r = await writeRunColumn(api, { board: bid, name: 'Nov 10 · 01:00', jobs: [makeJob(8)], stats: stats(), log: noLog });
   const lists = (await api.lists(bid, 'open')).sort((a, b) => a.pos - b.pos);
   const created = lists.find((l) => l.id === r.listId)!;
   assert.ok(created.pos > 0 && created.pos < sample.pos, `pos ${created.pos} is left of ${sample.pos}`);
@@ -112,7 +111,7 @@ test('with no open run column it goes last', async () => {
   const { bid, fake, api } = setup();
   const sample = (await api.lists(bid, 'open')).find((l) => l.name === SAMPLE_RUN_COLUMN)!;
   fake.renameList(sample.id, 'Someday');
-  const r = await writeRunColumn(api, { board: bid, name: 'Nov 10 · 01:00', jobs: [makeJob(8)], stats: stats(), statusUrl: STATUS_URL, log: noLog });
+  const r = await writeRunColumn(api, { board: bid, name: 'Nov 10 · 01:00', jobs: [makeJob(8)], stats: stats(), log: noLog });
   const lists = (await api.lists(bid, 'open')).sort((a, b) => a.pos - b.pos);
   assert.equal(lists.at(-1)!.id, r.listId);
 });
@@ -122,7 +121,7 @@ test('with no open run column it goes last', async () => {
 test('summary first, then cards best first', async () => {
   const { bid, api } = setup();
   const jobs = [makeJob(9), makeJob(7, { facts: undefined }), makeJob(2)];
-  const r = await writeRunColumn(api, { board: bid, name: 'Nov 10 · 01:00', jobs, stats: stats(), statusUrl: STATUS_URL, log: noLog });
+  const r = await writeRunColumn(api, { board: bid, name: 'Nov 10 · 01:00', jobs, stats: stats(), log: noLog });
   assert.deepEqual({ created: r.created, failed: r.failed, summary: r.summary }, { created: 3, failed: 0, summary: true });
   const cards = (await api.cards(bid, { filter: 'open' })).filter((c) => c.idList === r.listId).sort((a, b) => a.pos - b.pos);
   assert.equal(cards.length, 4);
@@ -133,7 +132,7 @@ test('summary first, then cards best first', async () => {
 
 test('no jobs → no list created', async () => {
   const { bid, fake, api } = setup();
-  const r = await writeRunColumn(api, { board: bid, name: 'Nov 10 · 01:00', jobs: [], stats: stats(), statusUrl: STATUS_URL, log: noLog });
+  const r = await writeRunColumn(api, { board: bid, name: 'Nov 10 · 01:00', jobs: [], stats: stats(), log: noLog });
   assert.deepEqual(r, { listId: null, created: 0, failed: 0, summary: false });
   assert.ok(!fake.requests.some((q) => q.method === 'POST' && q.path === '/lists'));
 });
@@ -143,7 +142,7 @@ test('a failed card is counted and the rest are written', async () => {
   const { bid, api } = setup({ failCardNo: 3 });
   const logs: string[] = [];
   const jobs = [makeJob(9), makeJob(7), makeJob(2)];
-  const r = await writeRunColumn(api, { board: bid, name: 'Nov 10 · 01:00', jobs, stats: stats(), statusUrl: STATUS_URL, log: (s) => logs.push(s) });
+  const r = await writeRunColumn(api, { board: bid, name: 'Nov 10 · 01:00', jobs, stats: stats(), log: (s) => logs.push(s) });
   assert.deepEqual({ created: r.created, failed: r.failed }, { created: 2, failed: 1 });
   const cards = (await api.cards(bid, { filter: 'open' })).filter((c) => c.idList === r.listId).sort((a, b) => a.pos - b.pos);
   assert.deepEqual(cards.slice(1).map((c) => parseTitleScore(c.name)), [9, 2]);
@@ -152,14 +151,14 @@ test('a failed card is counted and the rest are written', async () => {
 
 test('a failed summary card is reported, the job cards are still written', async () => {
   const { bid, api } = setup({ failCardNo: 1 });
-  const r = await writeRunColumn(api, { board: bid, name: 'Nov 10 · 01:00', jobs: [makeJob(9), makeJob(7)], stats: stats(), statusUrl: STATUS_URL, log: noLog });
+  const r = await writeRunColumn(api, { board: bid, name: 'Nov 10 · 01:00', jobs: [makeJob(9), makeJob(7)], stats: stats(), log: noLog });
   assert.deepEqual({ created: r.created, failed: r.failed, summary: r.summary }, { created: 2, failed: 0, summary: false });
 });
 
 test('scope errors are rethrown', async () => {
   const { api } = setup();
   await assert.rejects(
-    writeRunColumn(api, { board: 'fa4e0000000000000000ff99', name: 'Nov 10 · 01:00', jobs: [makeJob(8)], stats: stats(), statusUrl: STATUS_URL, log: noLog }),
+    writeRunColumn(api, { board: 'fa4e0000000000000000ff99', name: 'Nov 10 · 01:00', jobs: [makeJob(8)], stats: stats(), log: noLog }),
     ScopeError,
   );
 });
@@ -169,7 +168,7 @@ test('Settings label colour wins', async () => {
   const { bid, api } = setup();
   await writeRunColumn(api, {
     board: bid, name: 'Nov 10 · 01:00', jobs: [makeJob(8, { location: 'Hamburg' })], stats: stats(),
-    statusUrl: STATUS_URL, labels: [{ name: 'Hamburg', color: 'purple' }], log: noLog,
+    labels: [{ name: 'Hamburg', color: 'purple' }], log: noLog,
   });
   const label = (await api.labels(bid)).find((l) => l.name === 'Hamburg');
   assert.equal(label?.color, 'purple');

@@ -4,8 +4,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   statusTitle, statusDesc, parseStatusCard,
-  findRunsList, activeRun, staleRuns,
-  RUNS_LIST, STALE_MS,
+  findRunsList,
+  RUNS_LIST,
 } from '../../src/run/status.ts';
 import type { StatusView } from '../../src/run/status.ts';
 import { DESC_LIMIT } from '../../src/trello/cards.ts';
@@ -30,7 +30,7 @@ const COLUMN = 'Nov 10 · 01:00';
 
 function makeView(overrides: Partial<StatusView> = {}): StatusView {
   return {
-    state: 'running',
+    state: 'ok',
     column: COLUMN,
     trigger: 'scheduled',
     start: START,
@@ -39,10 +39,6 @@ function makeView(overrides: Partial<StatusView> = {}): StatusView {
 }
 
 // ── statusTitle ───────────────────────────────────────────────────────────
-
-test('statusTitle: running', () => {
-  assert.equal(statusTitle(makeView({ state: 'running' })), '⏳ Nov 10 · 01:00 · scheduled · running');
-});
 
 test('statusTitle: ok with 23 cards', () => {
   const stats = emptyStats();
@@ -82,7 +78,7 @@ test('statusTitle: skipped starts with ⏭️', () => {
 
 // ── statusDesc round-trips ────────────────────────────────────────────────
 
-for (const state of ['running', 'ok', 'failed', 'skipped'] as const) {
+for (const state of ['ok', 'failed', 'skipped'] as const) {
   test(`statusDesc round-trips through parseStatusCard: ${state}`, () => {
     const start = new Date('2024-11-10T01:00:00.123Z');
     const v = makeView({ state, start });
@@ -167,60 +163,6 @@ test('parseStatusCard handles trailing whitespace in desc', () => {
   assert.ok(result !== null);
   assert.equal(result.state, 'ok');
   assert.equal(result.start.getTime(), start.getTime());
-});
-
-// ── activeRun and staleRuns ───────────────────────────────────────────────
-
-function makeRunningCard(id: string, start: Date): TCard {
-  const contract = `career-cards-run: ${start.toISOString()} running`;
-  return {
-    id,
-    name: '⏳ Nov 10 · 01:00 · scheduled · running',
-    desc: `\n\n${contract}`,
-    idList: 'list1',
-    idBoard: 'board1',
-    closed: false,
-    pos: 0,
-    shortUrl: `https://trello.com/c/${id}`,
-  };
-}
-
-test('activeRun: a running card 1 h 59 min old is active', () => {
-  const start = new Date('2024-11-10T01:00:00.000Z');
-  const now = new Date(start.getTime() + (2 * 60 - 1) * 60_000);
-  const result = activeRun([makeRunningCard('c1', start)], now);
-  assert.ok(result !== null, 'should be active');
-  assert.equal(result.card.id, 'c1');
-});
-
-test('activeRun: a running card 2 h 0 min old is stale (not active)', () => {
-  const start = new Date('2024-11-10T01:00:00.000Z');
-  const now = new Date(start.getTime() + STALE_MS);
-  const card = makeRunningCard('c1', start);
-
-  assert.equal(activeRun([card], now), null, 'should not be active at STALE_MS');
-
-  const stale = staleRuns([card], now);
-  assert.equal(stale.length, 1);
-  assert.equal(stale[0]!.card.id, 'c1');
-});
-
-test('activeRun: an ok card is neither active nor stale', () => {
-  const start = new Date('2024-11-10T01:00:00.000Z');
-  const now = new Date(start.getTime() + 60_000);
-  const contract = `career-cards-run: ${start.toISOString()} ok`;
-  const card: TCard = {
-    id: 'ok1',
-    name: '✅ Nov 10 · 01:00 · scheduled · +3 cards',
-    desc: `Run complete\n\n${contract}`,
-    idList: 'list1',
-    idBoard: 'board1',
-    closed: false,
-    pos: 0,
-    shortUrl: 'https://trello.com/c/ok1',
-  };
-  assert.equal(activeRun([card], now), null);
-  assert.equal(staleRuns([card], now).length, 0);
 });
 
 test('statusDesc lists the warnings, redacted', () => {
@@ -318,4 +260,8 @@ test('findRunsList creates Runs only when asked (FakeTrello from System recordin
   const found = await findRunsList(api, bid, { create: false });
   assert.ok(found !== null, 'should find the newly created Runs list');
   assert.equal(found.name, RUNS_LIST);
+});
+
+test('parseStatusCard: a ⏳ running card from before the bot stopped editing cards is not a status', () => {
+  assert.equal(parseStatusCard({ name: '⏳ x', desc: 'career-cards-run: 2024-11-10T01:00:00.000Z running' }), null);
 });
