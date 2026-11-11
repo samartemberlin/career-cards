@@ -34,7 +34,7 @@ Each user runs their own copy of this bot. Status: built = on `main` with tests;
 | Job card, run column and summary card formats | [cards.ts](../src/trello/cards.ts) |
 | Config cards validated (Settings, profiles, filters, caps) | [schema.ts](../src/config/schema.ts), read from Trello by [config.ts](../src/trello/config.ts); every problem reported at once with a link to its card |
 | Trello client (paced, with backoff and allCards paging) | [api.ts](../src/trello/api.ts), [client.ts](../src/trello/client.ts); [key loading](../src/trello/job-index.ts) built; scope guard built; private-board check built ([private.ts](../src/trello/private.ts)) |
-| Nightly run: run column, status card, `--dry-run` | planned (PR 3) |
+| Nightly run: run column, status card, `--dry-run` | [run-once.ts](../src/run/run-once.ts), CLI [run.ts](../src/run.ts) |
 | `@bot` catalogue and static commands | [catalogue.ts](../src/bot/catalogue.ts) |
 | Webhook service, gate, caps, `yes`/`no`, `open`/`why`/`last`/`run` | planned (PR 4) |
 | Deploy template, onboarding tool | planned (PR 5) |
