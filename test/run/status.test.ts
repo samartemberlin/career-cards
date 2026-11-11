@@ -134,7 +134,7 @@ test('top rules are the 5 most frequent, with counts', () => {
   assert.ok(desc.includes('TOO_JUNIOR: 5'), 'top rule 3 with count');
   assert.ok(desc.includes('LOCATION: 3'), 'top rule 4 with count');
   assert.ok(desc.includes('COMPANY_SKIP: 2'), 'top rule 5 with count');
-  assert.ok(!desc.split('\n').some(l => /EXTRA_RULE/.test(l) && !/Top rules/.test(l)), '6th rule excluded from count section');
+  assert.ok(!desc.includes('EXTRA_RULE'), '6th rule must not appear in the description');
 });
 
 // ── parseStatusCard ───────────────────────────────────────────────────────
@@ -210,6 +210,32 @@ test('activeRun: an ok card is neither active nor stale', () => {
   };
   assert.equal(activeRun([card], now), null);
   assert.equal(staleRuns([card], now).length, 0);
+});
+
+// ── findRunsList ──────────────────────────────────────────────────────────
+
+// ── redact field on StatusView ────────────────────────────────────────────
+
+test('statusTitle and statusDesc apply v.redact to free-text fields (reason, error, problems)', () => {
+  const secret = 'topsecrettoken99';
+  const redact = (s: string): string => s.split(secret).join('***');
+
+  const v = makeView({
+    state: 'failed',
+    trigger: 'manual',
+    reason: `connection failed: token=${secret}`,
+    error: `API rejected key ${secret}`,
+    problems: [`webhook bearer ${secret} bounced`],
+    redact,
+  });
+
+  const title = statusTitle(v);
+  const desc = statusDesc(v);
+
+  assert.ok(!title.includes(secret), 'title must not contain the secret');
+  assert.ok(!desc.includes(secret), 'desc must not contain the secret');
+  assert.ok(title.includes('***'), 'title should contain *** placeholder');
+  assert.ok(desc.includes('***'), 'desc should contain *** placeholder');
 });
 
 // ── findRunsList ──────────────────────────────────────────────────────────

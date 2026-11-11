@@ -4,7 +4,6 @@ export type RunLog = {
   redact(text: string): string;
 };
 
-/** Env variable names matching this pattern with values ≥ 8 chars are treated as secrets. */
 const SECRET_NAME_RE = /KEY|TOKEN|SECRET/;
 
 /** Returns the values of env vars whose names match /KEY|TOKEN|SECRET/ and whose values are ≥ 8 chars. */

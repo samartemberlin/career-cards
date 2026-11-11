@@ -18,6 +18,9 @@ export type StatusView = {
   error?: string;
   problems?: string[];
   log?: string[];
+  /** Applied to every caller-supplied text field (reason, error, problems) before it is written to the card.
+   *  Pass RunLog.redact here to enforce the secret-free guarantee at the boundary. */
+  redact?: (s: string) => string;
 };
 
 const MARKS: Record<RunState, string> = {
@@ -45,7 +48,8 @@ export function statusTitle(v: StatusView): string {
     }
   } else {
     // failed or skipped: show reason, clipped to 40 chars
-    outcome = clip(v.reason ?? v.state, 40);
+    const r = v.redact ?? ((s: string) => s);
+    outcome = clip(r(v.reason ?? v.state), 40);
   }
   return `${mark} ${v.column} · ${v.trigger} · ${outcome}`;
 }
@@ -99,7 +103,8 @@ function buildCountLines(v: StatusView): string[] {
   }
 
   if (v.error) {
-    lines.push('', `Error: ${v.error}`);
+    const r = v.redact ?? ((s: string) => s);
+    lines.push('', `Error: ${r(v.error)}`);
   }
 
   return lines;
@@ -119,8 +124,9 @@ export function statusDesc(v: StatusView): string {
   const allErrLines = (v.stats?.sourceErrors ?? []).map((e) => `${e.company}: ${e.error}`);
 
   // Problems are never truncated — they appear between errors and the log excerpt.
+  const r = v.redact ?? ((s: string) => s);
   const problemLines: string[] = v.problems?.length
-    ? ['', 'Problems:', ...v.problems.map((p) => `- ${p}`)]
+    ? ['', 'Problems:', ...v.problems.map((p) => `- ${r(p)}`)]
     : [];
 
   // Log lines clipped individually; only the last 40 are shown.
