@@ -6,6 +6,8 @@ import type { FetchLike } from '../jd.ts';
 import type { ScanRow, SourceError, SourceResult } from './types.ts';
 
 
+export type RssSource = { name: string; url: string; location?: string };
+
 const tag = (xml: string, name: string): string => {
   const m = new RegExp(`<${name}[^>]*>([\\s\\S]*?)</${name}>`, 'i').exec(xml);
   return m ? decodeEntities(m[1]!.replace(/^\s*<!\[CDATA\[|\]\]>\s*$/g, '')).trim() : '';
@@ -33,7 +35,7 @@ export function parseRssJobs(xml: string, source: { name: string; location?: str
 }
 
 export async function fetchRssSources(
-  sources: Array<{ name: string; url: string; location?: string }> | null | undefined,
+  sources: RssSource[] | null | undefined,
   opts: { fetchImpl?: FetchLike; log?: (msg: string) => void } = {},
 ): Promise<SourceResult> {
   const { fetchImpl = fetch as FetchLike, log = console.error } = opts;
