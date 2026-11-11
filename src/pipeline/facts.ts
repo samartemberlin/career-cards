@@ -79,10 +79,17 @@ export type ExtractAllOpts = {
   log?: (msg: string) => void;
 };
 
-/** Extract facts for each job. Jobs that fail are logged and left out; QuotaExhausted stops the rest cleanly. */
-export async function extractAll(opts: ExtractAllOpts): Promise<Map<string, Facts>> {
+export type ExtractAllResult = {
+  facts: Map<string, Facts>;
+  errors: { key: string; error: string }[];
+  aborted: string | null;
+};
+
+/** Extract facts for each job. Non-quota failures go into errors; QuotaExhausted or the deadline set aborted. */
+export async function extractAll(opts: ExtractAllOpts): Promise<ExtractAllResult> {
   const { llm, jobs, extractor, deadline = Infinity, concurrency = 3, fetchImpl, retries, log = console.log } = opts;
-  const out = new Map<string, Facts>();
+  const facts = new Map<string, Facts>();
+  const errors: { key: string; error: string }[] = [];
   let next = 0;
   let aborted: string | null = null;
   async function worker() {
@@ -94,16 +101,17 @@ export async function extractAll(opts: ExtractAllOpts): Promise<Map<string, Fact
         for (let i = 0; i < 2; i++) { // one repair retry on malformed output
           const meta = await callLLM(llm, msgs, { fetchImpl, retries });
           try {
-            out.set(job.key, { ...parseFacts(meta.text, job.key), extractor_v: EXTRACTOR_V, model: `${meta.provider}:${meta.model}` });
+            facts.set(job.key, { ...parseFacts(meta.text, job.key), extractor_v: EXTRACTOR_V, model: `${meta.provider}:${meta.model}` });
             break;
           } catch (e) { if (i) throw e; }
         }
       } catch (e) {
         const msg = (e as Error).message;
-        if (e instanceof QuotaExhausted) { aborted = msg; log(`facts stopped: ${msg}`); } else log(`facts failed ${job.key}: ${msg}`);
+        if (e instanceof QuotaExhausted) { aborted = msg; log(`facts stopped: ${msg}`); }
+        else { errors.push({ key: job.key, error: msg }); log(`facts failed ${job.key}: ${msg}`); }
       }
     }
   }
   await Promise.all(Array.from({ length: Math.min(concurrency, jobs.length) }, worker));
-  return out;
+  return { facts, errors, aborted };
 }

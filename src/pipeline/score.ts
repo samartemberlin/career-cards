@@ -72,6 +72,8 @@ export async function scoreJob(ctx: MaskedContext, job: Job, opts: CallOpts = {}
 }
 
 export type ScoreAllOpts = {
+  /** Passed as the third argument of every scoreJob call; use to inject a fetchImpl in tests. */
+  call?: CallOpts;
   concurrency?: number;
   /** Epoch ms after which no new job is started. */
   deadline?: number;
@@ -94,7 +96,7 @@ export type ScoreAllResult = {
 
 /** Score every job given (the caller passes only unscored ones). Stops cleanly on QuotaExhausted or the deadline. */
 export async function scoreAll(ctx: MaskedContext, jobs: Job[], opts: ScoreAllOpts = {}): Promise<ScoreAllResult> {
-  const { concurrency = 3, deadline = Infinity, log = console.log, onResult, outagePauseMs = 120000, outagePauses = 2 } = opts;
+  const { call = {}, concurrency = 3, deadline = Infinity, log = console.log, onResult, outagePauseMs = 120000, outagePauses = 2 } = opts;
   const results: ScoreResult[] = [], errors: { key: string; error: string }[] = [];
   let next = 0, tokens = 0, pauses = 0;
   let aborted: string | null = null;
@@ -104,7 +106,7 @@ export async function scoreAll(ctx: MaskedContext, jobs: Job[], opts: ScoreAllOp
       if (Date.now() > deadline) { aborted = 'time budget used up'; break; }
       const job = retry.shift() ?? jobs[next++]!;
       try {
-        const r = await scoreJob(ctx, job);
+        const r = await scoreJob(ctx, job, call);
         tokens += r.usage.total_tokens ?? 0;
         await onResult?.(r);
         results.push(r);

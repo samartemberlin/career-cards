@@ -54,29 +54,57 @@ const llm: LlmConfig = { name: 'facts-llm', apiKey: 'k', baseUrl: 'http://x', mo
 
 test('extractAll returns one entry per job, tagged with extractor version and model', async () => {
   const { calls, fetchImpl } = llmStub((key) => good({ key }));
-  const facts = await extractAll({ llm, jobs: [job('a'), job('b')], extractor: 'E', fetchImpl, log() {} });
-  assert.deepEqual([...facts.keys()].sort(), ['a', 'b']); assert.deepEqual(calls.sort(), ['a', 'b']);
-  assert.equal(facts.get('a')?.extractor_v, EXTRACTOR_V);
-  assert.equal(facts.get('a')?.model, 'facts-llm:m');
-  assert.equal(facts.get('b')?.german.level, 'c1');
+  const result = await extractAll({ llm, jobs: [job('a'), job('b')], extractor: 'E', fetchImpl, log() {} });
+  assert.deepEqual([...result.facts.keys()].sort(), ['a', 'b']); assert.deepEqual(calls.sort(), ['a', 'b']);
+  assert.equal(result.facts.get('a')?.extractor_v, EXTRACTOR_V);
+  assert.equal(result.facts.get('a')?.model, 'facts-llm:m');
+  assert.equal(result.facts.get('b')?.german.level, 'c1');
 });
 
 test('extractAll: a malformed reply is left out and logged; quota exhaustion stops cleanly', async () => {
   const log: string[] = [];
   const { calls, fetchImpl } = llmStub(() => 'no json here');
   const r = await extractAll({ llm, jobs: [job('a')], extractor: 'E', fetchImpl, log: (m) => log.push(m) });
-  assert.equal(r.size, 0); assert.equal(calls.length, 2); // one repair retry
+  assert.equal(r.facts.size, 0); assert.equal(calls.length, 2); // one repair retry
   assert.match(log[0] ?? '', /facts failed a/);
   let n = 0;
   const quota: FetchJson = async () => { n++; return { status: 429, ok: false, headers: new Headers(), text: async () => 'per day limit', json: async () => ({}) }; };
   const q = await extractAll({ llm, jobs: [job('a'), job('b')], extractor: 'E', fetchImpl: quota, concurrency: 1, retries: 0, log() {} });
-  assert.equal(q.size, 0); assert.equal(n, 1); // the second job was never tried
+  assert.equal(q.facts.size, 0); assert.equal(n, 1); // the second job was never tried
 });
 
 test('extractAll honours the deadline', async () => {
   const { calls, fetchImpl } = llmStub((key) => good({ key }));
   const r = await extractAll({ llm, jobs: [job('a')], extractor: 'E', fetchImpl, deadline: Date.now() - 1, log() {} });
-  assert.equal(r.size, 0); assert.equal(calls.length, 0);
+  assert.equal(r.facts.size, 0); assert.equal(calls.length, 0);
+});
+
+test('extractAll reports a malformed reply in errors', async () => {
+  const { calls, fetchImpl } = llmStub(() => 'not json here');
+  const r = await extractAll({ llm, jobs: [job('a')], extractor: 'E', fetchImpl, log() {} });
+  assert.equal(r.facts.size, 0);
+  assert.deepEqual(r.errors.map((e) => e.key), ['a']);
+  assert.match(r.errors[0]?.error ?? '', /not JSON/);
+  assert.equal(r.aborted, null);
+  assert.equal(calls.length, 2); // one repair retry
+});
+
+test('extractAll reports quota as aborted', async () => {
+  let n = 0;
+  const quota: FetchJson = async () => { n++; return { status: 429, ok: false, headers: new Headers(), text: async () => 'per day limit', json: async () => ({}) }; };
+  const r = await extractAll({ llm, jobs: [job('a'), job('b')], extractor: 'E', fetchImpl: quota, concurrency: 1, retries: 0, log() {} });
+  assert.ok(r.aborted, 'aborted should be set');
+  assert.equal(r.facts.size, 0);
+  assert.equal(r.errors.length, 0); // quota is not an error; job b was never tried
+  assert.equal(n, 1); // the second job was never tried
+});
+
+test("extractAll past the deadline is aborted 'time budget used up'", async () => {
+  const { calls, fetchImpl } = llmStub((key) => good({ key }));
+  const r = await extractAll({ llm, jobs: [job('a')], extractor: 'E', fetchImpl, deadline: Date.now() - 1, log() {} });
+  assert.equal(r.aborted, 'time budget used up');
+  assert.equal(r.facts.size, 0);
+  assert.equal(calls.length, 0);
 });
 
 test('captured real reply (German posting, "Sehr gute Deutschkenntnisse in Wort und Schrift") parses with its evidence', () => {
