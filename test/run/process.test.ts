@@ -165,8 +165,9 @@ describe('processJobs', () => {
   });
 
   it('a facts deadline fills a missing job deadline', async () => {
-    const { result } = await run(jobs(1), { facts: () => ({ deadline: '2026-12-01' }) });
-    assert.equal(result[0]!.deadline, '2026-12-01');
+    const { result } = await run(jobs(2), { facts: (k) => ({ deadline: k === 'url:job0' ? '2026-12-01' : '2026-11-01' }) });
+    assert.equal(result.find((r) => r.key === 'url:job0')!.deadline, '2026-12-01');
+    assert.equal(result.find((r) => r.key === 'url:job1')!.deadline, undefined);
   });
 
   it('results are sorted by score, ties in batch order', async () => {

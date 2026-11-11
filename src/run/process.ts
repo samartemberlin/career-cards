@@ -14,7 +14,6 @@ import type { RunStats } from './stats.ts';
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-/** `YYYY-MM-DD` of `d` in `timeZone`. */
 export function isoDateIn(d: Date, timeZone: string): string {
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(d);
   const get = (t: string) => parts.find((p) => p.type === t)!.value;
@@ -132,7 +131,8 @@ export async function processJobs(
   }
   for (const j of batch) {
     const d = facts.get(j.key)?.deadline;
-    if (!j.deadline && d) j.deadline = d;
+    // A past facts deadline would put an expired date on the card; the posting still passed the EXPIRED check on its own data.
+    if (!j.deadline && d && d >= today) j.deadline = d;
   }
 
   const res = await scoreAll(ctx, batch, { deadline, call: deps.call, log });
