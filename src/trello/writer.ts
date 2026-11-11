@@ -33,7 +33,14 @@ export function createLabelResolver(
   }
 
   return async (labels) => {
-    const byName = await cache();
+    let byName: Map<string, string>;
+    try {
+      byName = await cache();
+    } catch (err) {
+      log(`labels failed to load: ${err instanceof Error ? err.message : String(err)}`);
+      cacheP = undefined;
+      return [];
+    }
     const ids: string[] = [];
     for (const { name, color } of labels) {
       if (byName.has(name)) {

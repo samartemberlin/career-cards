@@ -113,6 +113,24 @@ test('a label failure leaves the card unlabelled, not missing', async () => {
   assert.ok(card.id, 'card still created with no labels');
 });
 
+test('label resolver retries loading labels after a failure (never caches a rejection)', async () => {
+  const { bid, fake, api } = setup();
+
+  // Make the first GET /labels fail with a non-retriable 400; subsequent calls succeed
+  fake.failNext('GET', /\/labels$/, 400);
+  const logs: string[] = [];
+  const resolver = createLabelResolver(api, bid, (s) => logs.push(s));
+
+  // First call: labels load fails → no ids, logs the error
+  const ids1 = await resolver([{ name: 'CacheTest', color: 'sky' }]);
+  assert.equal(ids1.length, 0, 'no ids when label load fails');
+  assert.ok(logs.length > 0, 'failure was logged');
+
+  // Second call: labels load now succeeds → creates and returns the label
+  const ids2 = await resolver([{ name: 'CacheTest', color: 'sky' }]);
+  assert.equal(ids2.length, 1, 'label id returned on retry');
+});
+
 // ── date handling ─────────────────────────────────────────────────────────
 
 test('free-text dates are not sent', async () => {
