@@ -100,24 +100,21 @@ export function buildScanPlan(o: {
 
   const { portals: droppedPortals, rss, pages, warnings } = applyDrop(defaults, sources.drop);
 
-  // Apply Add: items whose name matches an existing tracked_company replace it; others are appended.
+  // Apply Add: items whose name matches an existing tracked_company replace it entirely
+  // (a merge would keep stale fields such as an old API endpoint); others are appended.
   if (sources.add.length) {
     const companies = (droppedPortals.tracked_companies as NamedItem[] | undefined) ?? [];
     for (const entry of sources.add) {
       const idx = companies.findIndex((c) => nameMatch(c, entry.name));
-      if (idx >= 0) companies[idx] = { ...companies[idx], ...entry };
+      if (idx >= 0) companies[idx] = entry as unknown as NamedItem;
       else companies.push(entry as unknown as NamedItem);
     }
     droppedPortals.tracked_companies = companies;
   }
 
-  // Build per-profile searches.
-  const searches = profiles.filter((p) => p.active).map((p) => searchFromProfile(p, settings));
-
-  // Merge board keywords and tracked_companies from profiles into portals.
+  const searches = profiles.map((p) => searchFromProfile(p, settings));
   const portals = mergePortals(droppedPortals, searches as Parameters<typeof mergePortals>[1]);
 
-  // Build LinkedIn plan.
   let linkedin: LinkedInConfig | null = null;
   if (settings.linkedin) {
     if (!settings.linkedin_locations.length) {

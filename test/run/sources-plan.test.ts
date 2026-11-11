@@ -132,6 +132,33 @@ describe('buildScanPlan', () => {
     assert.equal(found[0]!.careers_url, newUrl);
   });
 
+  it('Add with a default name fully replaces the entry (no stale fields kept)', () => {
+    // A default entry may have extra fields (api, enabled, max_pages…). An Add must wipe them —
+    // keeping stale fields alongside a new careers_url is a misconfiguration hazard.
+    const defaults: typeof loadDefaults extends () => infer R ? R : never = {
+      portals: {
+        tracked_companies: [
+          { name: 'OldCo', careers_url: 'https://old.example.com', api: 'https://api.old.example.com', enabled: true },
+        ],
+        job_boards: [],
+      },
+      extra: {},
+    };
+    const plan = buildScanPlan({
+      defaults,
+      sources: { add: [{ name: 'OldCo', careers_url: 'https://new.example.com' }], drop: [] },
+      profiles: [makeProfile('alice', [])],
+      settings: makeSettings(),
+    });
+    const result = (plan.portals as { tracked_companies: Array<Record<string, unknown>> }).tracked_companies;
+    const found = result.find((c) => String(c.name).toLowerCase() === 'oldco');
+    assert.ok(found, 'OldCo should still be in tracked_companies');
+    assert.equal(found!.careers_url, 'https://new.example.com');
+    // stale fields must be gone
+    assert.equal(found!.api, undefined, 'stale api field must not survive a replacement');
+    assert.equal(found!.enabled, undefined, 'stale enabled field must not survive a replacement');
+  });
+
   // --- Board keywords / profiles ------------------------------------------
 
   it('board keywords of two active profiles are merged once each', () => {
