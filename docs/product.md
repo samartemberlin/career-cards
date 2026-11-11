@@ -30,7 +30,7 @@ Each user runs their own copy of this bot. Status: built = on `main` with tests;
 | Job descriptions (JSON-LD, page text) | [jd.ts](../src/pipeline/jd.ts), [html.ts](../src/pipeline/html.ts) |
 | Facts extraction (language, years, licence …) and preference penalties | [facts.ts](../src/pipeline/facts.ts), [prefs.ts](../src/pipeline/prefs.ts) |
 | Scoring with provider failover, pacing, clean stop on quota | [score.ts](../src/pipeline/score.ts), [llm.ts](../src/pipeline/llm.ts) |
-| Masking of personal details before any prompt | [privacy.ts](../src/privacy.ts) (the only builder of the scoring context); wiring into the run planned (PR 3) |
+| Masking of personal details before any prompt | [privacy.ts](../src/privacy.ts) (the only builder of the scoring context), wired into the run in [run-once.ts](../src/run/run-once.ts) |
 | Job card, run column and summary card formats | [cards.ts](../src/trello/cards.ts) |
 | Config cards validated (Settings, profiles, filters, caps) | [schema.ts](../src/config/schema.ts), read from Trello by [config.ts](../src/trello/config.ts); every problem reported at once with a link to its card |
 | Trello client (paced, with backoff and allCards paging) | [api.ts](../src/trello/api.ts), [client.ts](../src/trello/client.ts); [key loading](../src/trello/job-index.ts) built; scope guard built; private-board check built ([private.ts](../src/trello/private.ts)) |

@@ -223,6 +223,13 @@ test('activeRun: an ok card is neither active nor stale', () => {
   assert.equal(staleRuns([card], now).length, 0);
 });
 
+test('statusDesc lists the warnings, redacted', () => {
+  const stats = emptyStats();
+  stats.warnings = ['Sources › Drop: "Typo AG" matches no default source', 'key sk-secret-1234 rejected'];
+  const desc = statusDesc(makeView({ state: 'ok', stats, redact: (s) => s.split('sk-secret-1234').join('***') }));
+  assert.match(desc, /\nWarnings:\n- Sources › Drop: "Typo AG" matches no default source\n- key \*\*\* rejected/);
+});
+
 // ── findRunsList ──────────────────────────────────────────────────────────
 
 // ── redact field on StatusView ────────────────────────────────────────────

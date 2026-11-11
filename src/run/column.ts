@@ -61,11 +61,12 @@ export async function writeRunColumn(
     labels?: Settings['labels'];
     log: (s: string) => void;
   },
-): Promise<{ listId: string | null; created: number; failed: number }> {
-  if (o.jobs.length === 0) return { listId: null, created: 0, failed: 0 };
+): Promise<{ listId: string | null; created: number; failed: number; summary: boolean }> {
+  if (o.jobs.length === 0) return { listId: null, created: 0, failed: 0, summary: false };
 
   const list = await api.createList(o.board, o.name, runColumnPos(await api.lists(o.board, 'open')));
 
+  let summary = false;
   try {
     await api.createCard({
       idList: list.id,
@@ -73,6 +74,7 @@ export async function writeRunColumn(
       desc: summaryDesc(o.stats, o.statusUrl),
       pos: 'bottom',
     });
+    summary = true;
   } catch (e) {
     if (isGuardError(e)) throw e;
     o.log(`summary card for ${o.name} failed: ${message(e)}`);
@@ -95,7 +97,7 @@ export async function writeRunColumn(
       failed++;
     }
   }
-  return { listId: list.id, created, failed };
+  return { listId: list.id, created, failed, summary };
 }
 
 /** Archives cards in chunks, starting no chunk at or after the deadline; the rest are archived by the next run. */

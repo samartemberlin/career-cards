@@ -15,7 +15,7 @@ run:  config cards → job keys → scan → dedup → filter → JD → filter 
 | Component | Code |
 |---|---|
 | `serve`: webhooks, `/trigger/run`, gate, caps, job start | planned (PR 4) |
-| `run`: one run end to end | planned (PR 3) |
+| `run`: one run end to end | [run-once.ts](../src/run/run-once.ts) |
 | Pipeline (ported from samjobs) | [src/pipeline/](../src/pipeline/) |
 | Trello: card formats, paced client | [cards.ts](../src/trello/cards.ts), [api.ts](../src/trello/api.ts), [client.ts](../src/trello/client.ts) |
 | Trello: scope guard | every Trello call is scoped to the user's three boards; writes into `Originals` throw — [scoped.ts](../src/trello/scoped.ts) |
@@ -50,7 +50,7 @@ No stage gets untrusted content, private data and a way out at once. Stage runne
 - Memory is the key line on a card, open or archived — re-runs never duplicate, and no other state exists. [cards.ts](../src/trello/cards.ts)
 - Key derivation and the `samjobs-key:` prefix are kept — migrated history keeps deduplicating. [keys.ts](../src/pipeline/keys.ts)
 - No score in the description — one source of truth, visible on the board. [cards.ts](../src/trello/cards.ts)
-- Every scored job gets a card, no threshold — low scores stay visible at the bottom, never lost. planned (PR 3)
+- Every scored job gets a card, no threshold — low scores stay visible at the bottom, never lost. [process.ts](../src/run/process.ts)
 - List moves and title edits are not feedback; only `@bot feedback` is — users move cards for their own tracking. [catalogue.ts](../src/bot/catalogue.ts)
 - A Trello automation rule triggers the run — nothing polls, and the user edits the schedule in Trello. planned (PR 4)
 - One worker per user on their own Northflank — separation of data, tokens and quota; image stays cloud-neutral. planned (PR 5)

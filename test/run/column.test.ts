@@ -123,7 +123,7 @@ test('summary first, then cards best first', async () => {
   const { bid, api } = setup();
   const jobs = [makeJob(9), makeJob(7, { facts: undefined }), makeJob(2)];
   const r = await writeRunColumn(api, { board: bid, name: 'Nov 10 · 01:00', jobs, stats: stats(), statusUrl: STATUS_URL, log: noLog });
-  assert.deepEqual({ created: r.created, failed: r.failed }, { created: 3, failed: 0 });
+  assert.deepEqual({ created: r.created, failed: r.failed, summary: r.summary }, { created: 3, failed: 0, summary: true });
   const cards = (await api.cards(bid, { filter: 'open' })).filter((c) => c.idList === r.listId).sort((a, b) => a.pos - b.pos);
   assert.equal(cards.length, 4);
   assert.ok(isRunSummaryTitle(cards[0]!.name));
@@ -134,7 +134,7 @@ test('summary first, then cards best first', async () => {
 test('no jobs → no list created', async () => {
   const { bid, fake, api } = setup();
   const r = await writeRunColumn(api, { board: bid, name: 'Nov 10 · 01:00', jobs: [], stats: stats(), statusUrl: STATUS_URL, log: noLog });
-  assert.deepEqual(r, { listId: null, created: 0, failed: 0 });
+  assert.deepEqual(r, { listId: null, created: 0, failed: 0, summary: false });
   assert.ok(!fake.requests.some((q) => q.method === 'POST' && q.path === '/lists'));
 });
 
@@ -148,6 +148,12 @@ test('a failed card is counted and the rest are written', async () => {
   const cards = (await api.cards(bid, { filter: 'open' })).filter((c) => c.idList === r.listId).sort((a, b) => a.pos - b.pos);
   assert.deepEqual(cards.slice(1).map((c) => parseTitleScore(c.name)), [9, 2]);
   assert.ok(logs.some((l) => l.includes('greenhouse:acme:700')));
+});
+
+test('a failed summary card is reported, the job cards are still written', async () => {
+  const { bid, api } = setup({ failCardNo: 1 });
+  const r = await writeRunColumn(api, { board: bid, name: 'Nov 10 · 01:00', jobs: [makeJob(9), makeJob(7)], stats: stats(), statusUrl: STATUS_URL, log: noLog });
+  assert.deepEqual({ created: r.created, failed: r.failed, summary: r.summary }, { created: 2, failed: 0, summary: false });
 });
 
 test('scope errors are rethrown', async () => {

@@ -128,10 +128,12 @@ export function statusDesc(v: StatusView): string {
   // Source-error text can contain provider URLs with keys in the query string — redact the full line.
   const allErrLines = (v.stats?.sourceErrors ?? []).map((e) => r(`${e.company}: ${e.error}`));
 
-  // Problems are never truncated — they appear between errors and the log excerpt.
+  // Problems and warnings are never truncated — they appear between errors and the log excerpt.
   const problemLines: string[] = v.problems?.length
     ? ['', 'Problems:', ...v.problems.map((p) => `- ${r(p)}`)]
     : [];
+  const warnings = v.stats?.warnings ?? [];
+  if (warnings.length) problemLines.push('', 'Warnings:', ...warnings.map((w) => `- ${r(w)}`));
 
   // Log lines clipped individually; only the last 40 are shown.
   const rawLogLines = (v.log ?? [])
