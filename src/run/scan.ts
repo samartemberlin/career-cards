@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dump as dumpYaml } from 'js-yaml';
+import { careerOpsEnv } from '../pipeline/career-ops-env.ts';
 import { fetchRssSources } from '../pipeline/sources/rss.ts';
 import { fetchPageSources } from '../pipeline/sources/pages.ts';
 import { fetchLinkedinSearch } from '../pipeline/sources/linkedin.ts';
@@ -22,9 +23,6 @@ export const TMP_PREFIX = 'career-cards-scan-';
 
 // career-ops' scan-history-columns.mjs order; it reads rows by position, so the header must match.
 const HISTORY_COLUMNS = ['url', 'first_seen', 'portal', 'title', 'company', 'status', 'location', 'fingerprint', 'posted_at'];
-
-// career-ops is third-party code: it gets no Trello, model or other secret, only what it needs to run.
-const PASSED_ENV = ['PATH', 'HOME', 'LANG'];
 
 export class ScanFailed extends Error {}
 
@@ -74,10 +72,11 @@ function addedRows(historyFile: string): ScanRow[] {
  */
 export async function runCareerOpsScan(
   portals: Record<string, unknown>,
-  o: { careerOpsDir?: string; timeoutMs?: number; env?: Record<string, string | undefined> } = {},
+  o: { careerOpsDir?: string; timeoutMs?: number; deadline?: number; env?: Record<string, string | undefined> } = {},
 ): Promise<SourceResult> {
   const parentEnv = o.env ?? process.env;
-  const timeoutMs = o.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const timeoutMs = Math.min(o.timeoutMs ?? DEFAULT_TIMEOUT_MS, (o.deadline ?? Infinity) - Date.now());
+  if (timeoutMs <= 0) throw new ScanFailed('scan not started: no time left in the run budget');
   const tmp = mkdtempSync(join(tmpdir(), TMP_PREFIX));
   try {
     const portalsFile = join(tmp, 'portals.yml');
@@ -87,12 +86,7 @@ export async function runCareerOpsScan(
     writeFileSync(historyFile, HISTORY_COLUMNS.join('\t') + '\n');
     writeFileSync(pipelineFile, '');
 
-    const env: Record<string, string> = {};
-    for (const name of PASSED_ENV) {
-      const v = parentEnv[name];
-      if (v !== undefined) env[name] = v;
-    }
-    Object.assign(env, {
+    const env = careerOpsEnv(parentEnv, {
       CAREER_OPS_DATA_DIR: tmp,
       CAREER_OPS_PORTALS: portalsFile,
       CAREER_OPS_PROFILE: SCAN_PROFILE,
@@ -114,25 +108,34 @@ export async function runCareerOpsScan(
 export type ScanOutput = { jobs: Job[]; bySource: Record<string, number>; errors: SourceError[] };
 
 export type ScanDeps = {
-  careerOps: (portals: Record<string, unknown>) => Promise<SourceResult>;
+  careerOps: (portals: Record<string, unknown>, o: { deadline: number }) => Promise<SourceResult>;
   rss?: typeof fetchRssSources;
   pages?: typeof fetchPageSources;
   linkedin?: typeof fetchLinkedinSearch;
   log: (s: string) => void;
+  /** Epoch ms; the run's one deadline. */
+  deadline?: number;
 };
 
 const message = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
 /** Runs every source side by side; a source that throws becomes one SourceError and the others still count. */
 export async function scanAll(plan: ScanPlan, deps: ScanDeps): Promise<ScanOutput> {
-  const { rss = fetchRssSources, pages = fetchPageSources, linkedin = fetchLinkedinSearch, log } = deps;
+  const { rss = fetchRssSources, pages = fetchPageSources, linkedin = fetchLinkedinSearch, log, deadline = Infinity } = deps;
   const sources: [string, () => Promise<SourceResult>][] = [
-    ['career-ops', () => deps.careerOps(plan.portals)],
+    ['career-ops', () => deps.careerOps(plan.portals, { deadline })],
     ['RSS', () => rss(plan.rss, { log })],
     ['pages', () => pages(plan.pages, { log })],
   ];
   const li = plan.linkedin;
-  if (li) sources.push(['LinkedIn', () => linkedin(li, { log })]);
+  if (li) {
+    // LinkedIn's own time budget can be longer than what is left of the run's.
+    sources.push(['LinkedIn', async () => {
+      const minutesLeft = (deadline - Date.now()) / 60_000;
+      if (minutesLeft <= 0) throw new Error('no time left in the run budget');
+      return linkedin({ ...li, max_total_minutes: Math.min(li.max_total_minutes ?? 40, minutesLeft) }, { log });
+    }]);
+  }
 
   const settled = await Promise.allSettled(sources.map(([, run]) => run()));
   const rows: ScanRow[] = [];

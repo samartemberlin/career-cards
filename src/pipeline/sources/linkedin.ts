@@ -169,6 +169,8 @@ type FetchLinkedinJdOpts = {
   cap?: number;
   gapMs?: number;
   maxWaitMin?: number;
+  /** Epoch ms after which a block is not waited out. */
+  deadline?: number;
   random?: () => number;
   log?: (msg: string) => void;
 };
@@ -186,6 +188,7 @@ export async function fetchLinkedinJd(id: string, opts: FetchLinkedinJdOpts = {}
     cap = 40,
     gapMs = 2000,
     maxWaitMin = 20,
+    deadline = Infinity,
     random = Math.random,
     log = console.error,
   } = opts;
@@ -196,7 +199,7 @@ export async function fetchLinkedinJd(id: string, opts: FetchLinkedinJdOpts = {}
   const budgetLeft = maxWaitMin * 60000 - jdState.waitedMs;
   const trackedSleep = async (ms: number): Promise<void> => { jdState.waitedMs += ms; await sleep(ms); };
   try {
-    const html = await getPatient(POSTING + id, { fetchImpl, sleep: trackedSleep, deadline: Date.now() + Math.max(0, budgetLeft), random, log });
+    const html = await getPatient(POSTING + id, { fetchImpl, sleep: trackedSleep, deadline: Math.min(deadline, Date.now() + Math.max(0, budgetLeft)), random, log });
     jdState.last = Date.now();
     const text = parseJobPosting(html);
     return text.length >= 200 ? text : null;

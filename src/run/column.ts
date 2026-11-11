@@ -3,7 +3,7 @@ import type { Settings } from '../config/schema.ts';
 import { createJobCard, createLabelResolver, archiveCards } from '../trello/writer.ts';
 import type { ScoredJob } from '../trello/writer.ts';
 import { jobLabels, isRunColumnName, RUN_SUMMARY_PREFIX } from '../trello/cards.ts';
-import { ScopeError, OriginalsWriteError, ImmutableCardError } from '../trello/scoped.ts';
+import { isGuardError } from '../trello/scoped.ts';
 import { topRules } from './status.ts';
 import type { RunStats } from './stats.ts';
 
@@ -17,8 +17,9 @@ export function summaryTitle(s: RunStats): string {
   return `${RUN_SUMMARY_PREFIX} · ${s.scored} new · ${filtered(s)} filtered · ${deferred(s)} deferred`;
 }
 
-/** Headline counts and a link to the status card. Carries no key line, so memory and archiving skip this card. */
-export function summaryDesc(s: RunStats, statusUrl: string): string {
+/** Headline counts. Carries no key line, so memory and archiving skip this card. The status card can't be linked: it is
+ *  written after the column, once the run's counts are final. */
+export function summaryDesc(s: RunStats): string {
   const lines = [
     `**Scanned:** ${s.scanned}`,
     `**New:** ${s.scored}`,
@@ -29,7 +30,7 @@ export function summaryDesc(s: RunStats, statusUrl: string): string {
   if (top.length) {
     lines.push('', '**Top rules:**', ...top.map(([r, n]) => `- ${r}: ${n}`));
   }
-  lines.push('', `Full status: ${statusUrl}`);
+  lines.push('', 'Full status: this run\'s card in System › Runs');
   return lines.join('\n');
 }
 
@@ -43,9 +44,6 @@ export function runColumnPos(lists: TList[]): number | 'bottom' {
   return before ? (before.pos + run.pos) / 2 : run.pos / 2;
 }
 
-const isGuardError = (e: unknown): boolean =>
-  e instanceof ScopeError || e instanceof OriginalsWriteError || e instanceof ImmutableCardError;
-
 const message = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
 /** Creates the run column: the summary card, then one card per job in the given order (callers pass best first).
@@ -57,7 +55,6 @@ export async function writeRunColumn(
     name: string;
     jobs: ScoredJob[];
     stats: RunStats;
-    statusUrl: string;
     labels?: Settings['labels'];
     log: (s: string) => void;
   },
@@ -71,7 +68,7 @@ export async function writeRunColumn(
     await api.createCard({
       idList: list.id,
       name: summaryTitle(o.stats),
-      desc: summaryDesc(o.stats, o.statusUrl),
+      desc: summaryDesc(o.stats),
       pos: 'bottom',
     });
     summary = true;

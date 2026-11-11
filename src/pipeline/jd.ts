@@ -7,6 +7,8 @@
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { careerOpsEnv } from './career-ops-env.ts';
+import type { ParentEnv } from './career-ops-env.ts';
 import type { Job } from './keys.ts';
 import { extractJobPosting, fromJobPosting, htmlToText } from './html.ts';
 import { fetchLinkedinJd } from './sources/linkedin.ts';
@@ -23,16 +25,17 @@ export type FetchLike = (
   init?: RequestInit,
 ) => Promise<{ ok: boolean; status: number; text: () => Promise<string> }>;
 
-type AtsFetch = (dir: string, url: string, timeoutMs?: number) => Promise<string | null>;
-type LinkedinFetch = (id: string) => Promise<string | null>;
+type AtsFetch = (dir: string, url: string, env: Record<string, string>, timeoutMs?: number) => Promise<string | null>;
+type LinkedinFetch = (id: string, o: { deadline?: number }) => Promise<string | null>;
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_CAREER_OPS_DIR = join(__dir, '..', '..', 'career-ops');
 
-function runFetchJd(careerOpsDir: string, url: string, timeoutMs = 30000): Promise<string | null> {
+function runFetchJd(careerOpsDir: string, url: string, env: Record<string, string>, timeoutMs = 30000): Promise<string | null> {
   return new Promise((resolve) => {
     const p = spawn(process.execPath, ['fetch-jd.mjs', url], {
       cwd: careerOpsDir,
+      env,
       stdio: ['ignore', 'pipe', 'ignore'],
     });
     let out = '';
@@ -46,11 +49,11 @@ function runFetchJd(careerOpsDir: string, url: string, timeoutMs = 30000): Promi
   });
 }
 
-async function getHtml(url: string, fetchImpl: FetchLike): Promise<string> {
+async function getHtml(url: string, fetchImpl: FetchLike, timeoutMs: number): Promise<string> {
   const res = await fetchImpl(url, {
     headers: { 'user-agent': 'Mozilla/5.0 (career-cards)', 'accept-language': 'de,en;q=0.8' },
     redirect: 'follow',
-    signal: AbortSignal.timeout(25000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return (await res.text()).slice(0, MAX_HTML);
@@ -63,6 +66,10 @@ export type FetchJdOpts = {
   atsFetch?: AtsFetch;
   careerOpsDir?: string;
   linkedinFetch?: LinkedinFetch;
+  /** Only PATH, HOME and LANG of it reach fetch-jd.mjs. */
+  env?: ParentEnv;
+  /** Epoch ms: no request runs past it. */
+  deadline?: number;
 };
 
 export async function fetchJd(
@@ -73,27 +80,30 @@ export async function fetchJd(
     fetchImpl = fetch as FetchLike,
     atsFetch = runFetchJd,
     careerOpsDir = DEFAULT_CAREER_OPS_DIR,
+    env = process.env,
+    deadline = Infinity,
     // LinkedIn guest endpoint, paced and capped; injectable for tests.
-    linkedinFetch = (id: string): Promise<string | null> => fetchLinkedinJd(id),
+    linkedinFetch = (id: string, o: { deadline?: number }): Promise<string | null> => fetchLinkedinJd(id, o),
   } = opts;
+  const timeout = (ms: number): number => Math.max(1, Math.min(ms, deadline - Date.now()));
 
   if (job.key.startsWith('linkedin:')) {
     const id = job.key.slice('linkedin:'.length);
-    const text = await linkedinFetch(id);
+    const text = await linkedinFetch(id, { deadline });
     return text
       ? { jd: text.slice(0, MAX_TEXT), meta: { source: 'linkedin' } }
       : null;
   }
 
   if (ATS_KEY.test(job.key)) {
-    const text = await atsFetch(careerOpsDir, job.url);
+    const text = await atsFetch(careerOpsDir, job.url, careerOpsEnv(env), timeout(30000));
     if (text && text.length >= MIN_TEXT) {
       return { jd: text.slice(0, MAX_TEXT), meta: { source: 'ats-api' } };
     }
   }
 
   let html: string;
-  try { html = await getHtml(job.url, fetchImpl); } catch { return null; }
+  try { html = await getHtml(job.url, fetchImpl, timeout(25000)); } catch { return null; }
 
   const jp = extractJobPosting(html);
   if (jp) {

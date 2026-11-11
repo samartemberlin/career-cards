@@ -7,14 +7,14 @@ import { llmConfig, providerProblems } from '../pipeline/llm.ts';
 import type { CallOpts, Env } from '../pipeline/llm.ts';
 import { buildScoreContext, PrivacyError } from '../privacy.ts';
 import type { MaskedContext } from '../privacy.ts';
-import type { TCard, TList, TrelloApi } from '../trello/api.ts';
+import type { TCard, TrelloApi } from '../trello/api.ts';
 import { runColumnName } from '../trello/cards.ts';
 import { ConfigInvalid, readUserConfig } from '../trello/config.ts';
 import type { ConfigProblem, UserBoards } from '../trello/config.ts';
 import { loadJobIndex } from '../trello/job-index.ts';
 import { checkBoardsPrivate } from '../trello/private.ts';
 import { readOnlyClient } from '../trello/read-only.ts';
-import { ImmutableCardError, OriginalsWriteError, ScopeError, scopeUserBoards } from '../trello/scoped.ts';
+import { isGuardError, scopeUserBoards } from '../trello/scoped.ts';
 import { archiveRunCards, writeRunColumn } from './column.ts';
 import { createRunLog, secretsFromEnv } from './log.ts';
 import { isoDateIn, processJobs } from './process.ts';
@@ -25,16 +25,18 @@ import { buildScanPlan, loadDefaults } from './sources-plan.ts';
 import type { Defaults, ScanPlan } from './sources-plan.ts';
 import { emptyStats } from './stats.ts';
 import type { RunState, RunStats, RunTrigger } from './stats.ts';
-import {
-  activeRun, createStatusCard, findRunsList, runningCards, staleRuns, statusDesc, updateStatusCard, STALE_MS,
-} from './status.ts';
+import type { RunLock } from './lock.ts';
+import { createStatusCard, findRunsList, statusDesc } from './status.ts';
 import type { StatusView } from './status.ts';
 
 export type RunDeps = {
   /** The raw client; runOnce scopes it to `boards`. */
   trello: TrelloApi;
   boards: UserBoards;
-  scan: (plan: ScanPlan) => Promise<ScanOutput>;
+  /** One run at a time; not taken by a dry run. */
+  lock: RunLock;
+  /** `log` is the run's redacting log. */
+  scan: (plan: ScanPlan, o: { log: (s: string) => void; deadline: number }) => Promise<ScanOutput>;
   fetchJd: ProcessDeps['fetchJd'];
   env: Env;
   call?: CallOpts;
@@ -70,7 +72,7 @@ const ARCHIVE_MARGIN_MS = 60_000;
 const COMMENT_MAX = 2000;
 const SOURCE_ERROR_MAX = 300;
 const SKIP_REASON = 'another run in progress';
-const EXIT: Record<RunState, 0 | 1 | 3> = { ok: 0, failed: 1, skipped: 3, running: 1 };
+const EXIT: Record<RunState, 0 | 1 | 3> = { ok: 0, failed: 1, skipped: 3 };
 
 /** A planned stop: the run fails with this reason and these problems on the status card. */
 class RunStop extends Error {
@@ -86,8 +88,6 @@ class RunStop extends Error {
 const message = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 const firstLine = (s: string): string => s.split('\n').find((l) => l.trim())?.trim() ?? '';
 const clip = (s: string, n: number): string => (s.length <= n ? s : `${s.slice(0, n - 1)}…`);
-const isGuardError = (e: unknown): boolean =>
-  e instanceof ScopeError || e instanceof OriginalsWriteError || e instanceof ImmutableCardError;
 
 /** The Settings card's timezone when its YAML parses and names a zone Intl knows; else Europe/Berlin. The full
  *  config is read later, but the status card needs its column name before that. */
@@ -102,18 +102,6 @@ function timezoneOf(systemCards: TCard[]): string {
   } catch {
     return DEFAULT_TZ;
   }
-}
-
-function abandonedView(r: { card: TCard; start: Date }, tz: string): StatusView {
-  const m = /^\S+ (.+) · (scheduled|manual) · /u.exec(r.card.name);
-  return {
-    state: 'failed',
-    column: m?.[1] ?? runColumnName(r.start, tz),
-    trigger: (m?.[2] as RunTrigger | undefined) ?? 'scheduled',
-    start: r.start,
-    reason: 'abandoned',
-    problems: [`still running after ${STALE_MS / 3_600_000} hours; marked failed by a later run`],
-  };
 }
 
 function problemText(p: ConfigProblem): string {
@@ -142,7 +130,9 @@ async function commentOnBadCards(
 
 /** Scan counts into stats. career-ops' failure message carries up to 2,000 chars of its output: the full text goes to
  *  the log (redacted, and clipped per line on the card), only its first line to the source errors and warnings. */
-function recordScan(out: ScanOutput, known: Set<string>, stats: RunStats, log: (s: string) => void): void {
+function recordScan(
+  out: ScanOutput, known: Set<string>, stats: RunStats, log: (s: string) => void, redact: (s: string) => string,
+): void {
   stats.scanned = out.jobs.length;
   for (const j of out.jobs) {
     const s = (stats.bySource[j.source ?? 'unknown'] ??= { returned: 0, new: 0 });
@@ -150,8 +140,10 @@ function recordScan(out: ScanOutput, known: Set<string>, stats: RunStats, log: (
     if (!known.has(j.key)) s.new++;
   }
   stats.sourceErrors = out.errors.map((e) => {
-    const short = clip(firstLine(e.error), SOURCE_ERROR_MAX);
-    if (short !== e.error.trim()) log(`${e.company}: ${clip(e.error, 1000)}`);
+    // Redacted before it is clipped, so a cut through a secret can't leave a prefix behind.
+    const error = redact(e.error);
+    const short = clip(firstLine(error), SOURCE_ERROR_MAX);
+    if (short !== error.trim()) log(`${e.company}: ${clip(error, 1000)}`);
     return { ...e, error: short };
   });
   for (const e of stats.sourceErrors) {
@@ -159,8 +151,8 @@ function recordScan(out: ScanOutput, known: Set<string>, stats: RunStats, log: (
   }
 }
 
-/** One run end to end. Never throws: every failure ends in the returned outcome, and once the ⏳ status card is
- *  written, on that card too. */
+/** One run end to end. Never throws: every failure ends in the returned outcome and, past the lock, in a ❌ status card.
+ *  The status card is created once, at the end; the bot never edits a card. */
 export async function runOnce(deps: RunDeps, opts: RunOpts): Promise<RunOutcome> {
   const start = deps.now();
   // scoreAll and archiveRunCards compare their deadlines with Date.now(), so the budget runs on the real clock.
@@ -179,7 +171,7 @@ export async function runOnce(deps: RunDeps, opts: RunOpts): Promise<RunOutcome>
 
   const view = (state: RunState, extra: Partial<StatusView> = {}): StatusView => ({
     state, column, trigger: opts.trigger, start, stats, problems, log: runLog.lines(), redact: runLog.redact,
-    ...(state === 'running' ? {} : { durationMs: Date.now() - t0 }), ...extra,
+    durationMs: Date.now() - t0, ...extra,
   });
 
   const outcome = (v: StatusView, exitCode: 0 | 1 | 3 = EXIT[v.state]): RunOutcome => ({
@@ -189,15 +181,15 @@ export async function runOnce(deps: RunDeps, opts: RunOpts): Promise<RunOutcome>
 
   async function finish(state: RunState, extra: Partial<StatusView> = {}): Promise<RunOutcome> {
     log(`run ${column}: ${state}${extra.reason ? ` (${extra.reason})` : ''}`);
-    const v = view(state, extra);
-    if (!statusCard) return outcome(v);
+    if (opts.dryRun) return outcome(view(state, extra));
     try {
-      await updateStatusCard(api, statusCard.id, v);
+      const runs = await findRunsList(api, deps.boards.system, { create: true });
+      statusCard = await createStatusCard(api, runs!.id, view(state, extra));
     } catch (e) {
-      log(`status card update failed: ${firstLine(message(e))}`);
+      log(`status card could not be written: ${firstLine(message(e))}`);
       return outcome(view(state, extra), 1);
     }
-    return outcome(v);
+    return outcome(view(state, extra));
   }
 
   function failure(e: unknown): Promise<RunOutcome> {
@@ -211,54 +203,34 @@ export async function runOnce(deps: RunDeps, opts: RunOpts): Promise<RunOutcome>
 
   log(`run ${column} (${opts.trigger}${opts.dryRun ? ', dry run' : ''})`);
 
-  // Steps 2-3: the Runs list, the time zone, other runs, our ⏳ card. Before that card exists a failure has no card.
-  let runs: TList | null = null;
-  try {
-    runs = await findRunsList(api, deps.boards.system, { create: !opts.dryRun });
-    const systemCards = await api.cards(deps.boards.system, { filter: 'open' });
-    tz = timezoneOf(systemCards);
-    column = runColumnName(start, tz);
-    if (!opts.dryRun && runs) {
-      const runsId = runs.id;
-      const runCards = systemCards.filter((c) => c.idList === runsId);
-      for (const r of staleRuns(runCards, start)) {
-        try {
-          await updateStatusCard(api, r.card.id, abandonedView(r, tz));
-          log(`marked the run started ${r.start.toISOString()} as abandoned`);
-        } catch (e) {
-          if (isGuardError(e)) throw e;
-          log(`could not mark the run started ${r.start.toISOString()} as abandoned: ${firstLine(message(e))}`);
-        }
-      }
-      const active = activeRun(runCards, start);
-      if (active) {
-        log(`the run started ${active.start.toISOString()} is still running`);
-        const v = view('skipped', { reason: SKIP_REASON });
-        statusCard = await createStatusCard(api, runsId, v);
-        return outcome(v);
-      }
-      statusCard = await createStatusCard(api, runsId, view('running'));
+  // A dry run writes nothing, so it needs no lock. A held lock writes no card either: a skipped run is only noise.
+  let locked = false;
+  if (!opts.dryRun) {
+    try {
+      locked = await deps.lock.acquire();
+    } catch (e) {
+      log(`run lock failed: ${firstLine(message(e))}`);
+      return failure(new RunStop('run lock failed'));
     }
-  } catch (e) {
-    log(`run could not start: ${firstLine(message(e))}`);
-    return failure(e);
+    if (!locked) {
+      log(`run ${column}: skipped (${SKIP_REASON})`);
+      return outcome(view('skipped', { reason: SKIP_REASON }));
+    }
   }
 
   try {
-    if (statusCard && runs) {
-      // Two runs can pass the check above at once; the one with the earlier start (then the lower id) goes on.
-      const ours = statusCard;
-      const runsId = runs.id;
-      const others = (await api.cards(deps.boards.system, { filter: 'open' }))
-        .filter((c) => c.idList === runsId && c.id !== ours.id);
-      const earlier = runningCards(others).find((r) =>
-        start.getTime() - r.start.getTime() < STALE_MS &&
-        (r.start < start || (r.start.getTime() === start.getTime() && r.card.id < ours.id)));
-      if (earlier) {
-        log(`the run started ${earlier.start.toISOString()} started first`);
-        return await finish('skipped', { reason: SKIP_REASON });
-      }
-    }
+    return await body();
+  } catch (e) {
+    if (!(e instanceof RunStop)) log(`run failed: ${clip(runLog.redact(message(e)), 1000)}`);
+    return await failure(e);
+  } finally {
+    if (locked) await deps.lock.release().catch((e: unknown) => log(`run lock release failed: ${firstLine(message(e))}`));
+  }
+
+  async function body(): Promise<RunOutcome> {
+    const systemCards = await api.cards(deps.boards.system, { filter: 'open' });
+    tz = timezoneOf(systemCards);
+    column = runColumnName(start, tz);
 
     let cfg: UserConfig;
     try {
@@ -299,8 +271,10 @@ export async function runOnce(deps: RunDeps, opts: RunOpts): Promise<RunOutcome>
     const active = activeProfiles(cfg);
     const plan = buildScanPlan({ defaults: deps.defaults ?? loadDefaults(), sources: cfg.sources, profiles: active, settings });
     stats.warnings.push(...plan.warnings);
-    const scanned = await deps.scan(plan);
-    recordScan(scanned, index.keys, stats, log);
+    // One deadline for the scan, the description fetches, facts and scoring: whatever is not reached waits for the next run.
+    const deadline = t0 + budgetMs - SCORING_MARGIN_MS;
+    const scanned = await deps.scan(plan, { log, deadline });
+    recordScan(scanned, index.keys, stats, log, runLog.redact);
     const cap = Math.min(settings.scoring_cap, opts.cap ?? Infinity);
     const jobs = await processJobs(
       scanned.jobs, index.keys, combinedFilter(active, settings),
@@ -308,11 +282,11 @@ export async function runOnce(deps: RunDeps, opts: RunOpts): Promise<RunOutcome>
         fetchJd: deps.fetchJd, ctx, extractor: deps.extractor ?? loadExtractor(), log,
         ...(deps.call ? { call: deps.call } : {}), ...(cfg.preferences ? { preferences: cfg.preferences } : {}),
       },
-      { cap, deadline: t0 + budgetMs - SCORING_MARGIN_MS, today: isoDateIn(start, tz), dryRun: opts.dryRun },
+      { cap, deadline, today: isoDateIn(start, tz), dryRun: opts.dryRun },
       stats,
     );
 
-    if (opts.dryRun || !statusCard) {
+    if (opts.dryRun) {
       const passed = stats.fresh - stats.rejectedPre;
       dryLines = [
         'Dry run: nothing written, no description fetched, no model called.',
@@ -325,7 +299,7 @@ export async function runOnce(deps: RunDeps, opts: RunOpts): Promise<RunOutcome>
     if (jobs.length) {
       try {
         const r = await writeRunColumn(api, {
-          board: deps.boards.jobs, name: column, jobs, stats, statusUrl: statusCard.shortUrl, log,
+          board: deps.boards.jobs, name: column, jobs, stats, log,
           ...(settings.labels ? { labels: settings.labels } : {}),
         });
         stats.cards = { created: r.created, failed: r.failed };
@@ -341,8 +315,5 @@ export async function runOnce(deps: RunDeps, opts: RunOpts): Promise<RunOutcome>
     stats.archived = await archiveRunCards(api, index.toArchive, { deadline: t0 + budgetMs - ARCHIVE_MARGIN_MS, log });
 
     return await finish('ok');
-  } catch (e) {
-    if (!(e instanceof RunStop)) log(`run failed: ${clip(message(e), 1000)}`);
-    return failure(e);
   }
 }

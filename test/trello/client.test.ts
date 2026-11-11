@@ -366,31 +366,15 @@ test('a timed-out attempt is retried like a network error (GET)', async () => {
   assert.equal(callCount, 2);
 });
 
-// --- updateCard body test ------------------------------------------------
+// --- no card edits -------------------------------------------------------
 
-test('updateCard sends name and desc in the body, never in the URL', async () => {
-  let capturedUrl: URL | undefined;
-  let capturedBody: unknown;
-
-  const fetchImpl: FetchLike = async (url, init) => {
-    capturedUrl = url;
-    capturedBody = init?.body !== undefined ? JSON.parse(String(init.body)) : undefined;
-    return okJson({
-      id: 'crd1', name: 'new name', desc: 'new desc',
-      idList: 'lst1', idBoard: 'brd1', closed: false, pos: 0,
-      shortUrl: 'https://trello.com/c/sample001',
-    });
-  };
-
-  const clock = makeClock();
-  const client = createTrelloClient({ key: 'k', token: 't', fetchImpl, sleep: clock.sleep, now: clock.now });
-  await client.updateCard('crd1', { name: 'new name', desc: 'new desc' });
-
-  assert.ok(capturedUrl, 'fetchImpl was called');
-  const urlStr = String(capturedUrl);
-  assert.ok(!urlStr.includes('name='), 'name must not appear in the URL');
-  assert.ok(!urlStr.includes('desc='), 'desc must not appear in the URL');
-  assert.deepEqual(capturedBody, { name: 'new name', desc: 'new desc' }, 'name and desc must be in the JSON body');
+test('the client has no method that edits a card: cards are only created, archived, commented on or given attachments', () => {
+  const client = createTrelloClient({ key: 'k', token: 't', fetchImpl: async () => okJson({}) });
+  assert.deepEqual(Object.keys(client).sort(), [
+    'addCheckItem', 'allCards', 'attachText', 'board', 'boardMembers', 'card', 'cards', 'checklist', 'comment',
+    'createBoard', 'createCard', 'createChecklist', 'createLabel', 'createList', 'labels', 'list', 'lists', 'me',
+    'myOrganizations', 'organizationMembers', 'setCardClosed', 'setListClosed',
+  ].sort(), 'a new client method: if it edits a card, it must not exist');
 });
 
 // --- schema validation tests ---------------------------------------------

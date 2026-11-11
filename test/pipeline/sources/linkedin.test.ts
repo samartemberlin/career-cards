@@ -128,6 +128,18 @@ test('descriptions: a block is waited out up to the budget, then switched off fo
   resetLinkedinJdBudget();
 });
 
+test('descriptions: a block is not waited out past the run deadline', async () => {
+  resetLinkedinJdBudget();
+  const waits: number[] = [];
+  const r = await fetchLinkedinJd('1', {
+    fetchImpl: async () => res(429), sleep: async (ms) => { waits.push(ms); }, maxWaitMin: 20, random: () => 0.5, log() {},
+    deadline: Date.now() + 1000,
+  });
+  assert.equal(r, null);
+  assert.ok(!waits.some((w) => w >= 60000), `waited ${waits.join(', ')} ms`);
+  resetLinkedinJdBudget();
+});
+
 test('a search block also switches descriptions off (same host, same block)', async () => {
   resetLinkedinJdBudget();
   await fetchLinkedinSearch(

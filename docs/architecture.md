@@ -9,7 +9,7 @@ Trello automation ─POST /trigger/run─┐
 Trello webhook (@bot comment) ───────┴─▶ serve (always on, stateless)
                                           ├─ gate → static verb or router → stage → reply comment
                                           └─ starts ─▶ run (job, one run, then exits)
-run:  config cards → job keys → scan → dedup → filter → JD → filter → facts → score → run column → status card
+run:  lock → config cards → job keys → scan → dedup → filter → JD → filter → facts → score → run column → status card
 ```
 
 | Component | Code |
@@ -54,6 +54,7 @@ No stage gets untrusted content, private data and a way out at once. Stage runne
 - List moves and title edits are not feedback; only `@bot feedback` is — users move cards for their own tracking. [catalogue.ts](../src/bot/catalogue.ts)
 - A Trello automation rule triggers the run — nothing polls, and the user edits the schedule in Trello. planned (PR 4)
 - One worker per user on their own Northflank — separation of data, tokens and quota; image stays cloud-neutral. planned (PR 5)
+- One run at a time is a lock outside Trello, since no card is ever edited: a lock file locally, the platform's job concurrency when deployed (PR 4/5). [lock.ts](../src/run/lock.ts)
 - A broken config card fails the run before scanning, no stale fallback — the user sees the exact card. [schema.ts](../src/config/schema.ts)
 - Masking with placeholders replaces samjobs' employer rewriting — users score on their own accounts; employers matter for fit. [privacy.ts](../src/privacy.ts)
 - Router output is a strict zod union of catalogue ids with closed args — a forged action fails validation. [catalogue.ts](../src/bot/catalogue.ts)
@@ -61,4 +62,4 @@ No stage gets untrusted content, private data and a way out at once. Stage runne
 - Model calls run `claude` as a child with an explicit env, own cwd and fixed tool flags — no secret or tool leaks in. [llm.ts](../src/pipeline/llm.ts)
 - No prompt-injection classifier — containment by stage capabilities is the defence. planned (PR 7)
 - zod at data boundaries (config cards, model JSON) — one schema is both runtime check and type. [schema.ts](../src/config/schema.ts)
-- Every Trello call in `src/` goes through `scopeUserBoards` — the guard prevents our own code (and model-driven actions) from writing to boards or lists outside the allowed scope; only status cards in System › Runs are ever edited; a leaked token bypasses it entirely. [scoped.ts](../src/trello/scoped.ts)
+- Every Trello call in `src/` goes through `scopeUserBoards` — the guard prevents our own code (and model-driven actions) from writing to boards or lists outside the allowed scope; no call can edit a card (cards are created, archived, commented on); a leaked token bypasses it entirely. [scoped.ts](../src/trello/scoped.ts)

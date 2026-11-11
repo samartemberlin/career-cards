@@ -1,7 +1,11 @@
 // CLI entrypoint: --cap can only lower the cap from Settings (never raise it).
 import { readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createTrelloClient } from './trello/client.ts';
 import type { TrelloApi } from './trello/api.ts';
+import { fileLock } from './run/lock.ts';
+import type { RunLock } from './run/lock.ts';
 import { runOnce } from './run/run-once.ts';
 import type { RunDeps, RunOpts } from './run/run-once.ts';
 import { scanAll, runCareerOpsScan } from './run/scan.ts';
@@ -98,7 +102,14 @@ export function resolveBoards(env: Env, file?: string): UserBoards {
 export async function main(
   argv: string[],
   env: Env,
-  o: { trello?: TrelloApi; scan?: RunDeps['scan']; out?: (s: string) => void } = {},
+  o: {
+    trello?: TrelloApi;
+    scan?: RunDeps['scan'];
+    /** Replaces single sources of the real scan. */
+    sources?: Partial<Omit<ScanDeps, 'log'>>;
+    lock?: RunLock;
+    out?: (s: string) => void;
+  } = {},
 ): Promise<number> {
   const out = o.out ?? ((s: string) => process.stdout.write(s + '\n'));
 
@@ -147,14 +158,13 @@ export async function main(
 
   const defaults = loadDefaults();
 
-  // scanAll already turns any thrown error from careerOps (including ScanFailed) into a
-  // source error entry via Promise.allSettled; the run reports it as ⚠️ and continues.
-  const scanDeps: ScanDeps = {
-    careerOps: (portals) => runCareerOpsScan(portals, { env: env as Record<string, string | undefined> }),
-    log: out,
-  };
-
-  const scan = o.scan ?? ((plan) => scanAll(plan, scanDeps));
+  // scanAll turns a thrown career-ops error (ScanFailed too) into a source error; the run reports it as ⚠️.
+  const scan: RunDeps['scan'] = o.scan ?? ((plan, so) => scanAll(plan, {
+    careerOps: (portals, co) => runCareerOpsScan(portals, { env, deadline: co.deadline }),
+    ...o.sources,
+    log: so.log,
+    deadline: so.deadline,
+  }));
 
   const opts: RunOpts = {
     trigger: parsed.trigger,
@@ -166,8 +176,9 @@ export async function main(
   const deps: RunDeps = {
     trello,
     boards,
+    lock: o.lock ?? fileLock(env.RUN_LOCK_FILE ?? join(tmpdir(), `career-cards-run-${boards.system}.lock`)),
     scan,
-    fetchJd,
+    fetchJd: (job, jo) => fetchJd(job, { env, ...jo }),
     env,
     defaults,
     now: () => new Date(),

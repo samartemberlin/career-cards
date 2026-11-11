@@ -45,6 +45,8 @@ type Setup = {
   defaults?: Defaults;
   /** Called before every request reaches the fake; `init.body` is the JSON the client sent. */
   onRequest?: (method: string, path: string, init: RequestInit | undefined) => void;
+  /** Another run holds the lock, or acquiring it throws. */
+  lock?: 'held' | 'broken';
 };
 
 function setup(s: Setup = {}) {
@@ -63,9 +65,20 @@ function setup(s: Setup = {}) {
   const scans: unknown[] = [];
   const fetched: string[] = [];
   const sink: string[] = [];
+  const lock = {
+    acquired: 0, released: 0,
+    acquire: async () => {
+      if (s.lock === 'broken') throw new Error('lock file unwritable');
+      if (s.lock === 'held') return false;
+      lock.acquired++;
+      return true;
+    },
+    release: async () => { lock.released++; },
+  };
   const deps: RunDeps = {
     trello: client(fetchImpl),
     boards,
+    lock,
     scan: async (plan) => {
       scans.push(plan);
       return s.scan ? s.scan() : { jobs: rows, bySource: { test: rows.length }, errors: [] };
@@ -81,7 +94,7 @@ function setup(s: Setup = {}) {
   const lists = (rec: Recording) => body<{ id: string; name: string }[]>(rec, '/lists');
   const cards = (rec: Recording) => body<{ id: string; name: string; checklists?: { id: string }[] }[]>(rec, '/cards/open');
   return {
-    fake, deps, llm, scans, fetched, sink, boards,
+    fake, deps, llm, scans, fetched, sink, boards, lock,
     // A second client for the test's own reads and the user's edits; it is not the run's client.
     user: client(fake.fetch),
     runsList: lists(recs.system).find((l) => l.name === 'Runs')!.id,
@@ -119,22 +132,39 @@ test('one run: a column named Nov 10 · 01:00, summary first, cards best first',
   assert.deepEqual(out.stats.cards, { created: 3, failed: 0 });
 });
 
-test('status card: ⏳ written first, then ✅ … · scheduled · +3 cards, on top of Runs', async () => {
+test('status card: written once, at the end, as ✅ … · scheduled · +3 cards on top of Runs', async () => {
   const posted: string[] = [];
-  const t = setup({
+  const t: ReturnType<typeof setup> = setup({
     onRequest: (method, path, init) => {
-      if (method === 'POST' && path === '/cards') posted.push((JSON.parse(String(init!.body)) as { name: string }).name);
+      if (method !== 'POST' || path !== '/cards') return;
+      const card = JSON.parse(String(init!.body)) as { name: string; idList: string };
+      if (card.idList === t.runsList) posted.push(card.name);
     },
   });
   const out = await run(t.deps);
-  assert.equal(posted[0], `⏳ ${COLUMN} · scheduled · running`);
+  assert.deepEqual(posted, [`✅ ${COLUMN} · scheduled · +3 cards`]);
   const top = (await runCards(t))[0]!;
-  assert.equal(top.name, `✅ ${COLUMN} · scheduled · +3 cards`);
+  assert.equal(top.name, posted[0]);
   assert.equal(parseStatusCard(top)?.state, 'ok');
   assert.equal(parseStatusCard(top)?.start.toISOString(), NOW.toISOString());
   assert.equal(out.statusUrl, top.shortUrl);
   assert.equal(out.report, top.desc);
   assert.match(top.desc, /Cards: 3 created · 0 failed/);
+});
+
+test('no card is ever changed: the only card update a run sends archives it', async () => {
+  const puts: { path: string; body: unknown }[] = [];
+  const t = setup({
+    onRequest: (method, path, init) => {
+      if (method === 'PUT') puts.push({ path, body: JSON.parse(String(init?.body ?? '{}')) });
+    },
+  });
+  const out = await run(t.deps);
+  assert.equal(out.stats.archived.archived, 1050);
+  const cardPuts = puts.filter((p) => p.path.startsWith('/cards/'));
+  assert.equal(cardPuts.length, 1050);
+  for (const p of cardPuts) assert.deepEqual(p.body, { closed: true }, p.path);
+  assert.deepEqual(puts.filter((p) => !p.path.startsWith('/cards/')), []);
 });
 
 test('known keys get no card, from both key-line formats', async () => {
@@ -239,7 +269,7 @@ test('no prompt carries a personal detail', async () => {
   assert.ok(t.llm.requests.some((r) => r.user.includes('[USER]') || r.system.includes('[USER]')));
 });
 
-test('a crash after ⏳ marks ❌ and exits 1', async () => {
+test('a crash writes one ❌ card, exits 1 and frees the lock', async () => {
   const t = setup({ scan: async () => { throw new Error('scanner exploded\nsecond line'); } });
   const out = await run(t.deps);
   assert.equal(out.state, 'failed');
@@ -248,6 +278,22 @@ test('a crash after ⏳ marks ❌ and exits 1', async () => {
   assert.equal(top.name, `❌ ${COLUMN} · scheduled · scanner exploded`);
   assert.match(top.desc, /Error: scanner exploded\n/);
   assert.equal(parseStatusCard(top)?.state, 'failed');
+  assert.deepEqual([t.lock.acquired, t.lock.released], [1, 1]);
+});
+
+test('a status card that cannot be written: exit 1, the lock is still freed', async () => {
+  const t: ReturnType<typeof setup> = setup({
+    onRequest: (method, path, init) => {
+      if (method !== 'POST' || path !== '/cards') return;
+      if ((JSON.parse(String(init!.body)) as { idList: string }).idList === t.runsList) t.fake.failNext('POST', /^\/cards$/, 400);
+    },
+  });
+  const out = await run(t.deps);
+  assert.equal(out.state, 'ok');
+  assert.equal(out.exitCode, 1);
+  assert.equal(out.statusUrl, null);
+  assert.ok(t.sink.some((l) => l.startsWith('status card could not be written')));
+  assert.deepEqual([t.lock.acquired, t.lock.released], [1, 1]);
 });
 
 test('quota stops scoring: scored jobs are carded, the rest left', async () => {
@@ -273,46 +319,26 @@ test('cap lowers scoring_cap', async () => {
   assert.equal((await columnCards(t, COLUMN)).length, 2);
 });
 
-test('a ⏳ card under 2 h blocks the run', async () => {
-  const t = setup();
-  t.fake.addCards(t.runsList, 1, () => ({ name: '⏳ Nov 10 · 00:30 · manual · running', desc: 'career-cards-run: 2026-11-09T23:30:00.000Z running' }));
+test('a held lock: exit 3, nothing scanned, no Trello request at all', async () => {
+  const t = setup({ lock: 'held' });
+  const before = t.fake.requests.length;
   const out = await run(t.deps);
   assert.equal(out.state, 'skipped');
   assert.equal(out.exitCode, 3);
   assert.equal(t.scans.length, 0);
-  const cards = await runCards(t);
-  assert.equal(cards[0]!.name, `⏭️ ${COLUMN} · scheduled · another run in progress`);
-  assert.ok(cards.some((c) => c.name === '⏳ Nov 10 · 00:30 · manual · running'));
+  assert.equal(t.fake.requests.length, before);
+  assert.equal(t.lock.released, 0);
+  assert.ok(t.sink.some((l) => l.includes('skipped (another run in progress)')));
 });
 
-test('a ⏳ card over 2 h old is abandoned', async () => {
-  const t = setup();
-  t.fake.addCards(t.runsList, 1, () => ({ name: '⏳ Nov 9 · 22:00 · manual · running', desc: 'career-cards-run: 2026-11-09T21:00:00.000Z running' }));
+test('a lock that cannot be taken: ❌ card, exit 1, nothing scanned', async () => {
+  const t = setup({ lock: 'broken' });
   const out = await run(t.deps);
-  assert.equal(out.state, 'ok');
-  const cards = await runCards(t);
-  const old = cards.find((c) => c.name.includes('Nov 9 · 22:00'))!;
-  assert.equal(old.name, '❌ Nov 9 · 22:00 · manual · abandoned');
-  assert.equal(parseStatusCard(old)?.state, 'failed');
-  assert.equal(cards[0]!.name, `✅ ${COLUMN} · scheduled · +3 cards`);
-});
-
-test('the later of two simultaneous runs skips itself', async () => {
-  let inserted = false;
-  const t: ReturnType<typeof setup> = setup({
-    onRequest: (method, path, init) => {
-      if (inserted || method !== 'POST' || path !== '/cards') return;
-      if (!(JSON.parse(String(init!.body)) as { name: string }).name.startsWith('⏳')) return;
-      inserted = true;
-      t.fake.addCards(t.runsList, 1, () => ({ name: '⏳ Nov 10 · 00:59 · manual · running', desc: 'career-cards-run: 2026-11-09T23:59:00.000Z running' }));
-    },
-  });
-  const out = await run(t.deps);
-  assert.ok(inserted);
-  assert.equal(out.state, 'skipped');
-  assert.equal(out.exitCode, 3);
+  assert.equal(out.state, 'failed');
+  assert.equal(out.exitCode, 1);
   assert.equal(t.scans.length, 0);
-  assert.equal((await runCards(t))[0]!.name, `⏭️ ${COLUMN} · scheduled · another run in progress`);
+  assert.equal((await runCards(t))[0]!.name, `❌ ${COLUMN} · scheduled · run lock failed`);
+  assert.equal(t.lock.released, 0);
 });
 
 test('a secret in an error never reaches the status card or the log', async () => {
@@ -323,6 +349,50 @@ test('a secret in an error never reaches the status card or the log', async () =
     assert.ok(!text.includes('test-key-0000') && !text.includes('trello-token-0000'), text);
   }
   assert.equal(top.name, `❌ ${COLUMN} · scheduled · boom *** ***`);
+});
+
+test('a provider echoing its key in a quota error never reaches the status card', async () => {
+  const t = setup();
+  t.deps.call = {
+    retries: 0,
+    fetchImpl: async () => {
+      const body = '{"error":{"message":"Quota exceeded for key test-key-0000: requests per day"}}';
+      return { ok: false, status: 429, text: async () => body, json: async () => JSON.parse(body) };
+    },
+  };
+  const out = await run(t.deps);
+  assert.ok(out.stats.aborted, 'scoring was aborted');
+  const top = (await runCards(t))[0]!;
+  for (const text of [top.name, top.desc, out.report, ...t.sink]) assert.ok(!text.includes('test-key-0000'), text);
+});
+
+test('a source error clipped through a secret leaves no part of it', async () => {
+  const t = setup({
+    scan: async () => ({ jobs: [row(1)], bySource: { test: 1 }, errors: [{ company: 'Acme', error: `${'z'.repeat(295)} trello-token-0000` }] }),
+  });
+  const out = await run(t.deps);
+  const top = (await runCards(t))[0]!;
+  for (const text of [top.desc, out.report]) assert.ok(!/z tre/.test(text), text);
+});
+
+test('a long crash message clipped through a secret leaves no part of it in the log', async () => {
+  const t = setup({ scan: async () => { throw new Error(`boom ${'w'.repeat(990)} trello-token-0000`); } });
+  await run(t.deps);
+  for (const text of t.sink) assert.ok(!/w tre/.test(text), text);
+});
+
+test('the scan and the description fetches share the run deadline', async () => {
+  const t = setup();
+  let scanDeadline = 0;
+  const jdDeadlines = new Set<number | undefined>();
+  const scan = t.deps.scan;
+  t.deps.scan = (plan, o) => { scanDeadline = o.deadline; return scan(plan, o); };
+  t.deps.fetchJd = async (_j, o) => { jdDeadlines.add(o?.deadline); return { jd: JD, meta: {} }; };
+  const before = Date.now();
+  await run(t.deps, { budgetMs: 20 * 60_000 });
+  const expected = before + 15 * 60_000;
+  assert.ok(Math.abs(scanDeadline - expected) < 5_000, `scan deadline ${scanDeadline - before} ms after start`);
+  assert.deepEqual([...jdDeadlines], [scanDeadline]);
 });
 
 test('a Sources Drop typo is a warning on a ✅ card', async () => {
@@ -375,6 +445,7 @@ test('dry run: no write request at all', async () => {
   assert.deepEqual(t.fake.requests.slice(before).filter((r) => r.method !== 'GET'), []);
   assert.equal(t.fetched.length, 0);
   assert.equal(t.llm.requests.length, 0);
+  assert.equal(t.lock.acquired, 0);
   assert.match(out.report, /Scanned: 4 · Known: 0 · Fresh: 4 · Rejected pre: 1/);
   assert.match(out.report, /Would describe and score: up to 3 of the 3 jobs/);
   assert.match(out.report, /Would archive: 1050 cards/);

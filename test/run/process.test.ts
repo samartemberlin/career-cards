@@ -41,6 +41,7 @@ type Setup = {
   preferences?: Preferences;
   jd?: (key: string) => FetchJdResult | null;
   opts?: Partial<ProcessOpts>;
+  fetchJd?: ProcessDeps['fetchJd'];
 };
 
 async function run(input: Job[], s: Setup = {}, known = new Set<string>()) {
@@ -52,7 +53,11 @@ async function run(input: Job[], s: Setup = {}, known = new Set<string>()) {
   const fetched: string[] = [];
   const logs: string[] = [];
   const deps: ProcessDeps = {
-    fetchJd: async (j) => { fetched.push(j.key); return s.jd ? s.jd(j.key) : { jd: JD, meta: {} }; },
+    fetchJd: async (j, o) => {
+      fetched.push(j.key);
+      if (s.fetchJd) return s.fetchJd(j, o);
+      return s.jd ? s.jd(j.key) : { jd: JD, meta: {} };
+    },
     ctx, extractor: 'Extract facts as JSON.', call: { fetchImpl: llm.fetchImpl, retries: 0 }, log: (m) => logs.push(m),
     ...(s.preferences ? { preferences: s.preferences } : {}),
   };
@@ -265,6 +270,20 @@ describe('processJobs without a masked context', () => {
 });
 
 describe('isoDateIn', () => {
+  it('starts no description fetch past the deadline; the rest wait for the next run', async () => {
+    const deadline = Date.now() + 50;
+    const seen: (number | undefined)[] = [];
+    const { stats, fetched } = await run(jobs(4), {
+      jd: () => ({ jd: JD, meta: {} }),
+      opts: { deadline, fetchConcurrency: 1 },
+      fetchJd: async (_j, o) => { seen.push(o?.deadline); await new Promise((r) => setTimeout(r, 100)); return { jd: JD, meta: {} }; },
+    });
+    assert.equal(fetched.length, 1);
+    assert.equal(stats.jd.fetched, 1);
+    assert.equal(stats.jd.deferred, 3);
+    assert.deepEqual(seen, [deadline]);
+  });
+
   it('uses the given time zone', () => {
     assert.equal(isoDateIn(new Date('2026-11-09T23:30:00Z'), 'Europe/Berlin'), '2026-11-10');
     assert.equal(isoDateIn(new Date('2026-11-09T23:30:00Z'), 'UTC'), '2026-11-09');

@@ -24,7 +24,7 @@ export function isoDateIn(d: Date, timeZone: string): string {
 }
 
 export type ProcessDeps = {
-  fetchJd: (job: { key: string; url: string }) => Promise<FetchJdResult | null>;
+  fetchJd: (job: { key: string; url: string }, o?: { deadline?: number }) => Promise<FetchJdResult | null>;
   /** null when masking failed: then nothing is described or scored. */
   ctx: MaskedContext | null;
   extractor: string;
@@ -38,7 +38,7 @@ export type ProcessedJob = ScoredJob & { shadow?: Penalties };
 
 export type ProcessOpts = {
   cap: number;
-  /** Epoch ms after which facts and scoring start no new job. */
+  /** Epoch ms after which no description fetch, facts or scoring call starts. */
   deadline: number;
   /** `YYYY-MM-DD` in the user's time zone; a deadline before it is expired. */
   today: string;
@@ -101,8 +101,9 @@ export async function processJobs(
   stats.jd.deferred += ordered.length - toFetch.length;
   const jdOf = new Map<string, FetchJdResult>();
   const fetchOne = async (j: Job) => {
+    if (Date.now() >= deadline) { stats.jd.deferred++; return; }
     let r: FetchJdResult | null = null;
-    try { r = await deps.fetchJd({ key: j.key, url: j.url }); } catch (e) { log(`JD fetch failed ${j.key}: ${(e as Error).message}`); }
+    try { r = await deps.fetchJd({ key: j.key, url: j.url }, { deadline }); } catch (e) { log(`JD fetch failed ${j.key}: ${(e as Error).message}`); }
     if (r) { jdOf.set(j.key, r); stats.jd.fetched++; } else stats.jd.missing++;
   };
   // LinkedIn throttles bursts and a blocked request waits for minutes: everything else first, then LinkedIn one at a time.

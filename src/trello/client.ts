@@ -266,11 +266,6 @@ export function createTrelloClient(o: {
       schema: TCardSchema,
     }),
 
-    updateCard: (cardId, update) => call('PUT', `/cards/${cardId}`, {
-      body: { ...(update.name !== undefined ? { name: update.name } : {}), ...(update.desc !== undefined ? { desc: update.desc } : {}) },
-      schema: TCardSchema,
-    }),
-
     setCardClosed: (cardId, closed) => call('PUT', `/cards/${cardId}`, {
       body: { closed },
       schema: TCardSchema,
