@@ -504,6 +504,13 @@ export class FakeTrello {
     }
   }
 
+  /** Update a card's description (the user editing a card, no scope check). */
+  setCardDesc(cardId: string, desc: string): void {
+    const card = this._cards.get(cardId);
+    if (!card) throw new Error(`FakeTrello.setCardDesc: card ${cardId} not found`);
+    this._cards.set(cardId, { ...card, desc });
+  }
+
   /** Move cardId to listId (the user acting, no Originals check). */
   moveCard(cardId: string, listId: string): void {
     const card = this._cards.get(cardId);

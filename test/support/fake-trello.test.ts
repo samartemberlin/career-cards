@@ -293,3 +293,31 @@ test("pos 'top' and 'bottom' place cards relative to existing positions in a see
   assert.ok(top.pos < minPosBefore, `'top' card pos ${top.pos} must be less than min existing pos ${minPosBefore}`);
   assert.ok(bottom.pos > maxPosBefore, `'bottom' card pos ${bottom.pos} must be greater than max existing pos ${maxPosBefore}`);
 });
+
+// ── updateCard (PUT /cards/{id}) and setCardDesc ─────────────────────────────
+
+test('FakeTrello: updateCard applies name and desc; setCardDesc sets desc', async () => {
+  const fake = FakeTrello.fromRecordings(load('system'), load('lookups'));
+  const api = client(fake.fetch);
+
+  const lookups = load('lookups');
+  const cardId = lookups.find(
+    (c) => c.method === 'GET' && /^\/cards\//.test(c.path) && c.status === 200,
+  )!.path.split('/').pop()!;
+
+  // updateCard via the API
+  const updated = await api.updateCard(cardId, { name: 'New title', desc: 'new description' });
+  assert.equal(updated.name, 'New title', 'updateCard must update name');
+  assert.equal(updated.desc, 'new description', 'updateCard must update desc');
+
+  // Subsequent card() fetch reflects the change
+  const fetched = await api.card(cardId);
+  assert.equal(fetched.name, 'New title', 'card() must reflect updateCard name');
+  assert.equal(fetched.desc, 'new description', 'card() must reflect updateCard desc');
+
+  // setCardDesc (the user editing directly)
+  fake.setCardDesc(cardId, 'user-edited description');
+  const afterSet = await api.card(cardId);
+  assert.equal(afterSet.desc, 'user-edited description', 'setCardDesc must update the description');
+  assert.equal(afterSet.name, 'New title', 'setCardDesc must not change the name');
+});
