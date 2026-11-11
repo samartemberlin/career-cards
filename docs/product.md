@@ -26,7 +26,7 @@ Each user runs their own copy of this bot. Status: built = on `main` with tests;
 | Job sources: career-ops portals, RSS, pages, LinkedIn | [rss](../src/pipeline/sources/rss.ts), [pages](../src/pipeline/sources/pages.ts), [linkedin](../src/pipeline/sources/linkedin.ts), [defaults](../config/defaults/), [career-ops call and scan](../src/run/scan.ts) |
 | Search merged across active profiles | [search.ts](../src/pipeline/search.ts) |
 | Job keys, dedup across URL variants | [keys.ts](../src/pipeline/keys.ts) |
-| Title, company and text filters, each rejection with its rule | [filter.ts](../src/pipeline/filter.ts), [rules-default.json](../config/defaults/rules-default.json) |
+| Title, company and text filters, each rejection with its rule | [filter.ts](../src/pipeline/filter.ts), [rules-default.json](../config/defaults/rules-default.json), [several active profiles as one](../src/run/profiles.ts), [one run's jobs: filters, descriptions, facts, cap, scoring](../src/run/process.ts) |
 | Job descriptions (JSON-LD, page text) | [jd.ts](../src/pipeline/jd.ts), [html.ts](../src/pipeline/html.ts) |
 | Facts extraction (language, years, licence …) and preference penalties | [facts.ts](../src/pipeline/facts.ts), [prefs.ts](../src/pipeline/prefs.ts) |
 | Scoring with provider failover, pacing, clean stop on quota | [score.ts](../src/pipeline/score.ts), [llm.ts](../src/pipeline/llm.ts) |
