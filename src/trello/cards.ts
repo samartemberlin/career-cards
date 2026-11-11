@@ -1,6 +1,4 @@
 // Job card and run column formatting for Trello.
-// Ported from samjobs' views/trello.mjs (card functions only) and views/status.mjs (parseCardScore).
-// Board I/O, batch selection and list lifecycle are not ported.
 import type { Job } from '../pipeline/keys.ts';
 import type { Facts } from '../pipeline/facts.ts';
 
@@ -80,8 +78,7 @@ export function parseJobKey(desc: string): string | null {
 
 // --- score parsing -------------------------------------------------------
 
-/** The score encoded in a card title ("8 · Company — Title"): integer 0-10, else null.
- * Ported from samjobs' parseCardScore. */
+/** The score encoded in a card title ("8 · Company — Title"): integer 0-10, else null. */
 export function parseTitleScore(title: string): number | null {
   const m = /^\s*(\d{1,2})\s*·/.exec(title ?? '');
   const n = m ? Number(m[1]) : null;
