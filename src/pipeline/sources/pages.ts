@@ -102,7 +102,7 @@ export function jobFromJsonLd(jp: JsonLdJobPosting, source: { name: string; url:
   };
 }
 
-type PageSource = {
+export type PageSource = {
   name: string;
   type: string;
   url: string;
