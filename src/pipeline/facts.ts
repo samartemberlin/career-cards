@@ -83,6 +83,10 @@ export type ExtractAllResult = {
   facts: Map<string, Facts>;
   errors: { key: string; error: string }[];
   aborted: string | null;
+  /** Tokens of every facts call, retries included. */
+  tokens: number;
+  /** Facts per `provider:model`. */
+  models: Record<string, number>;
 };
 
 /** Extract facts for each job. Non-quota failures go into errors; QuotaExhausted or the deadline set aborted. */
@@ -92,6 +96,7 @@ export async function extractAll(opts: ExtractAllOpts): Promise<ExtractAllResult
   const errors: { key: string; error: string }[] = [];
   let next = 0;
   let aborted: string | null = null;
+  let tokens = 0;
   async function worker() {
     while (next < jobs.length && !aborted) {
       if (Date.now() > deadline) { aborted = 'time budget used up'; break; }
@@ -100,6 +105,7 @@ export async function extractAll(opts: ExtractAllOpts): Promise<ExtractAllResult
         const msgs = buildFactsMessages({ extractor, job });
         for (let i = 0; i < 2; i++) { // one repair retry on malformed output
           const meta = await callLLM(llm, msgs, { fetchImpl, retries });
+          tokens += meta.usage.total_tokens ?? 0;
           try {
             facts.set(job.key, { ...parseFacts(meta.text, job.key), extractor_v: EXTRACTOR_V, model: `${meta.provider}:${meta.model}` });
             break;
@@ -113,5 +119,7 @@ export async function extractAll(opts: ExtractAllOpts): Promise<ExtractAllResult
     }
   }
   await Promise.all(Array.from({ length: Math.min(concurrency, jobs.length) }, worker));
-  return { facts, errors, aborted };
+  const models: Record<string, number> = {};
+  for (const f of facts.values()) models[f.model] = (models[f.model] ?? 0) + 1;
+  return { facts, errors, aborted, tokens, models };
 }

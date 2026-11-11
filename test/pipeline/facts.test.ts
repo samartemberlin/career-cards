@@ -59,6 +59,7 @@ test('extractAll returns one entry per job, tagged with extractor version and mo
   assert.equal(result.facts.get('a')?.extractor_v, EXTRACTOR_V);
   assert.equal(result.facts.get('a')?.model, 'facts-llm:m');
   assert.equal(result.facts.get('b')?.german.level, 'c1');
+  assert.equal(result.tokens, 2); assert.deepEqual(result.models, { 'facts-llm:m': 2 });
 });
 
 test('extractAll: a malformed reply is left out and logged; quota exhaustion stops cleanly', async () => {
@@ -66,6 +67,7 @@ test('extractAll: a malformed reply is left out and logged; quota exhaustion sto
   const { calls, fetchImpl } = llmStub(() => 'no json here');
   const r = await extractAll({ llm, jobs: [job('a')], extractor: 'E', fetchImpl, log: (m) => log.push(m) });
   assert.equal(r.facts.size, 0); assert.equal(calls.length, 2); // one repair retry
+  assert.equal(r.tokens, 2); assert.deepEqual(r.models, {}); // the failed retry's tokens are counted too
   assert.match(log[0] ?? '', /facts failed a/);
   let n = 0;
   const quota: FetchJson = async () => { n++; return { status: 429, ok: false, headers: new Headers(), text: async () => 'per day limit', json: async () => ({}) }; };

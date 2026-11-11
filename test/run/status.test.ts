@@ -94,6 +94,17 @@ for (const state of ['running', 'ok', 'failed', 'skipped'] as const) {
   });
 }
 
+test('statusDesc shows facts tokens, unmasked jobs and shadow penalties only when present', () => {
+  const plain = statusDesc(makeView({ state: 'ok', stats: emptyStats() }));
+  assert.doesNotMatch(plain, /not masked|Shadow|Facts:.*tokens/);
+  const stats = emptyStats();
+  stats.facts.tokens = 40; stats.leftUnmasked = 3; stats.shadow = { jobs: 2, points: 5 };
+  const desc = statusDesc(makeView({ state: 'ok', stats }));
+  assert.match(desc, /Facts: 0 done · 0 errors · tokens: 40/);
+  assert.match(desc, /left: 0 · not masked: 3/);
+  assert.match(desc, /Shadow penalties \(not applied\): 2 jobs · 5 points/);
+});
+
 // ── statusDesc truncation ─────────────────────────────────────────────────
 
 test('statusDesc stays under DESC_LIMIT with a 50,000-char log and 500 source errors, keeping the contract line', () => {
