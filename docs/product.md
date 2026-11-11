@@ -23,7 +23,7 @@ Each user runs their own copy of this bot. Status: built = on `main` with tests;
 
 | Feature | Status |
 |---|---|
-| Job sources: career-ops portals, RSS, pages, LinkedIn | [rss](../src/pipeline/sources/rss.ts), [pages](../src/pipeline/sources/pages.ts), [linkedin](../src/pipeline/sources/linkedin.ts), [defaults](../config/defaults/); career-ops call planned (PR 3) |
+| Job sources: career-ops portals, RSS, pages, LinkedIn | [rss](../src/pipeline/sources/rss.ts), [pages](../src/pipeline/sources/pages.ts), [linkedin](../src/pipeline/sources/linkedin.ts), [defaults](../config/defaults/), [career-ops call and scan](../src/run/scan.ts) |
 | Search merged across active profiles | [search.ts](../src/pipeline/search.ts) |
 | Job keys, dedup across URL variants | [keys.ts](../src/pipeline/keys.ts) |
 | Title, company and text filters, each rejection with its rule | [filter.ts](../src/pipeline/filter.ts), [rules-default.json](../config/defaults/rules-default.json) |
