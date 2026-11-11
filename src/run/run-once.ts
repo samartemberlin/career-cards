@@ -34,7 +34,8 @@ export type RunDeps = {
   /** The raw client; runOnce scopes it to `boards`. */
   trello: TrelloApi;
   boards: UserBoards;
-  scan: (plan: ScanPlan) => Promise<ScanOutput>;
+  /** `log` is the run's redacting log. */
+  scan: (plan: ScanPlan, o: { log: (s: string) => void }) => Promise<ScanOutput>;
   fetchJd: ProcessDeps['fetchJd'];
   env: Env;
   call?: CallOpts;
@@ -301,7 +302,7 @@ export async function runOnce(deps: RunDeps, opts: RunOpts): Promise<RunOutcome>
     const active = activeProfiles(cfg);
     const plan = buildScanPlan({ defaults: deps.defaults ?? loadDefaults(), sources: cfg.sources, profiles: active, settings });
     stats.warnings.push(...plan.warnings);
-    const scanned = await deps.scan(plan);
+    const scanned = await deps.scan(plan, { log });
     recordScan(scanned, index.keys, stats, log, runLog.redact);
     const cap = Math.min(settings.scoring_cap, opts.cap ?? Infinity);
     const jobs = await processJobs(

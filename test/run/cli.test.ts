@@ -257,6 +257,28 @@ test('main: career-ops ScanFailed becomes a source error (⚠️), run still exi
   assert.ok(lines.some((l) => l.includes('career-ops')), 'career-ops error should appear in output');
 });
 
+test('main: scan log lines go through the redacting run log', async () => {
+  const { trello, boards } = setupBoards();
+  const lines: string[] = [];
+  const code = await main(
+    ['--dry-run'],
+    { JOBS_BOARD_ID: boards.jobs, PROFILES_BOARD_ID: boards.profiles, SYSTEM_BOARD_ID: boards.system, TRELLO_TOKEN: 'trello-token-0000' },
+    {
+      trello,
+      sources: {
+        careerOps: async (): Promise<SourceResult> => { throw new ScanFailed('scan failed: token trello-token-0000 refused'); },
+        rss: async () => emptyResult(),
+        pages: async () => emptyResult(),
+        linkedin: async () => emptyResult(),
+      },
+      out: (s) => lines.push(s),
+    },
+  );
+  assert.equal(code, 0);
+  assert.ok(lines.some((l) => l.includes('career-ops: failed: scan failed: token *** refused')), 'the scan log line is missing');
+  for (const l of lines) assert.ok(!l.includes('trello-token-0000'), l);
+});
+
 test('main: bad --trigger returns 1', async () => {
   const lines: string[] = [];
   const code = await main(['--trigger', 'invalid'], {}, { out: (s) => lines.push(s) });
