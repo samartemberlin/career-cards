@@ -7,13 +7,18 @@ import { parseRunArgs, resolveBoards, main, UsageError } from '../../src/run.ts'
 import type { TrelloApi } from '../../src/trello/api.ts';
 import { FakeTrello } from '../support/fake-trello.ts';
 import { createTrelloClient } from '../../src/trello/client.ts';
+import { scanAll, ScanFailed } from '../../src/run/scan.ts';
 import type { Recording } from '../../tools/sample/scrub.ts';
 import type { ScanOutput } from '../../src/run/scan.ts';
+import type { ScanPlan } from '../../src/run/sources-plan.ts';
+import type { SourceResult } from '../../src/pipeline/sources/types.ts';
 
 const DIR = join(import.meta.dirname, '..', 'fixtures', 'trello');
 const load = (name: string): Recording =>
   JSON.parse(readFileSync(join(DIR, `${name}.recording.json`), 'utf8')) as Recording;
 const boardId = (rec: Recording): string => rec.find((c) => /^\/boards\/[^/]+$/.test(c.path))!.path.split('/')[2]!;
+
+const emptyResult = (): SourceResult => Object.assign([], { errors: [] });
 
 function makeClient(fake: FakeTrello): TrelloApi {
   return createTrelloClient({
@@ -80,6 +85,10 @@ test('parseRunArgs: --boards sets boardsFile', () => {
   assert.equal(r.boardsFile, 'tools/.sample-boards.json');
 });
 
+test('parseRunArgs: --boards --dry-run is a UsageError, not a file read', () => {
+  assert.throws(() => parseRunArgs(['--boards', '--dry-run']), UsageError);
+});
+
 test('parseRunArgs: unknown flag throws UsageError', () => {
   assert.throws(() => parseRunArgs(['--unknown']), UsageError);
 });
@@ -93,6 +102,42 @@ test('resolveBoards: reads the sample state shape from file', () => {
     writeFileSync(file, JSON.stringify({ workspace: 'ws1', jobs: 'board-jobs', profiles: 'board-profiles', system: 'board-system' }));
     const boards = resolveBoards({}, file);
     assert.deepEqual(boards, { jobs: 'board-jobs', profiles: 'board-profiles', system: 'board-system' });
+  } finally {
+    rmSync(tmp, { recursive: true });
+  }
+});
+
+test('resolveBoards: file parse error names the file', () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'cli-test-'));
+  try {
+    const file = join(tmp, 'bad.json');
+    writeFileSync(file, 'not json');
+    assert.throws(
+      () => resolveBoards({}, file),
+      (e: unknown) => e instanceof Error && e.message.includes(file),
+    );
+  } finally {
+    rmSync(tmp, { recursive: true });
+  }
+});
+
+test('resolveBoards: null JSON is rejected', () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'cli-test-'));
+  try {
+    const file = join(tmp, 'null.json');
+    writeFileSync(file, 'null');
+    assert.throws(() => resolveBoards({}, file));
+  } finally {
+    rmSync(tmp, { recursive: true });
+  }
+});
+
+test('resolveBoards: non-string ids are rejected', () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'cli-test-'));
+  try {
+    const file = join(tmp, 'bad-ids.json');
+    writeFileSync(file, JSON.stringify({ jobs: 123, profiles: 'p', system: 's' }));
+    assert.throws(() => resolveBoards({}, file));
   } finally {
     rmSync(tmp, { recursive: true });
   }
@@ -131,13 +176,14 @@ test('resolveBoards: reads all three from env when no file given', () => {
 
 // ── main ──────────────────────────────────────────────────────────────────────
 
-test('main: without TRELLO_TOKEN returns 1 and prints which variable is missing, not its value', async () => {
+test('main: missing credentials are reported by name, not value', async () => {
   const lines: string[] = [];
-  const code = await main([], {}, { out: (s) => lines.push(s) });
+  // TRELLO_KEY is set to a known secret value; it must never appear in output
+  const code = await main([], { TRELLO_KEY: 'secret-key-xyzzy' }, { out: (s) => lines.push(s) });
   assert.equal(code, 1);
   const output = lines.join('\n');
-  assert.ok(output.includes('TRELLO_KEY'), 'should mention TRELLO_KEY');
   assert.ok(output.includes('TRELLO_TOKEN'), 'should mention TRELLO_TOKEN');
+  assert.ok(!output.includes('secret-key-xyzzy'), 'must not print the key value');
 });
 
 test('main: without TRELLO_KEY only returns 1 and names TRELLO_KEY', async () => {
@@ -147,6 +193,30 @@ test('main: without TRELLO_KEY only returns 1 and names TRELLO_KEY', async () =>
   const output = lines.join('\n');
   assert.ok(output.includes('TRELLO_KEY'), 'should mention TRELLO_KEY');
   assert.ok(!output.includes('some-token'), 'must not print the token value');
+});
+
+test('main: bad RUN_BUDGET_MIN returns 1 and names the variable', async () => {
+  const lines: string[] = [];
+  const { trello, boards } = setupBoards();
+  const code = await main(
+    ['--dry-run'],
+    { JOBS_BOARD_ID: boards.jobs, PROFILES_BOARD_ID: boards.profiles, SYSTEM_BOARD_ID: boards.system, RUN_BUDGET_MIN: 'not-a-number' },
+    { trello, scan: async () => ({ jobs: [], bySource: {}, errors: [] }), out: (s) => lines.push(s) },
+  );
+  assert.equal(code, 1);
+  assert.ok(lines.some((l) => l.includes('RUN_BUDGET_MIN')), 'must name the variable');
+});
+
+test('main: RUN_BUDGET_MIN=0 is rejected', async () => {
+  const lines: string[] = [];
+  const { trello, boards } = setupBoards();
+  const code = await main(
+    ['--dry-run'],
+    { JOBS_BOARD_ID: boards.jobs, PROFILES_BOARD_ID: boards.profiles, SYSTEM_BOARD_ID: boards.system, RUN_BUDGET_MIN: '0' },
+    { trello, scan: async () => ({ jobs: [], bySource: {}, errors: [] }), out: (s) => lines.push(s) },
+  );
+  assert.equal(code, 1);
+  assert.ok(lines.some((l) => l.includes('RUN_BUDGET_MIN')));
 });
 
 test('main: --dry-run over FakeTrello returns 0 and makes no write request', async () => {
@@ -165,6 +235,26 @@ test('main: --dry-run over FakeTrello returns 0 and makes no write request', asy
   assert.equal(code, 0);
   const writes = fake.requests.filter((r) => r.method !== 'GET');
   assert.equal(writes.length, 0, 'no writes in a dry run');
+});
+
+test('main: career-ops ScanFailed becomes a source error (⚠️), run still exits 0', async () => {
+  const { trello, boards } = setupBoards();
+  const lines: string[] = [];
+  // The scan passes through scanAll with a careerOps dep that throws ScanFailed;
+  // scanAll turns it into a source error via Promise.allSettled.
+  const scan = (plan: ScanPlan) => scanAll(plan, {
+    careerOps: async (): Promise<SourceResult> => { throw new ScanFailed('scan failed (exit 1)\nboom'); },
+    rss: async () => emptyResult(),
+    pages: async () => emptyResult(),
+    log: () => {},
+  });
+  const code = await main(
+    ['--dry-run'],
+    { JOBS_BOARD_ID: boards.jobs, PROFILES_BOARD_ID: boards.profiles, SYSTEM_BOARD_ID: boards.system },
+    { trello, scan, out: (s) => lines.push(s) },
+  );
+  assert.equal(code, 0, 'ScanFailed must not fail the run');
+  assert.ok(lines.some((l) => l.includes('career-ops')), 'career-ops error should appear in output');
 });
 
 test('main: bad --trigger returns 1', async () => {

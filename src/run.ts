@@ -1,15 +1,10 @@
-// CLI entrypoint for the nightly run.
-// Flags:
-//   --dry-run               no Trello writes, no model calls, no JD fetches
-//   --trigger scheduled|manual   default: manual
-//   --boards <json file>    path to a file with { jobs, profiles, system } board ids
-//   --cap <n>               scoring cap override (n ≥ 0); can only lower Settings' cap
+// CLI entrypoint: --cap can only lower the cap from Settings (never raise it).
 import { readFileSync } from 'node:fs';
 import { createTrelloClient } from './trello/client.ts';
 import type { TrelloApi } from './trello/api.ts';
 import { runOnce } from './run/run-once.ts';
 import type { RunDeps, RunOpts } from './run/run-once.ts';
-import { scanAll, runCareerOpsScan, ScanFailed } from './run/scan.ts';
+import { scanAll, runCareerOpsScan } from './run/scan.ts';
 import type { ScanDeps } from './run/scan.ts';
 import { loadDefaults } from './run/sources-plan.ts';
 import type { UserBoards } from './trello/scoped.ts';
@@ -50,7 +45,7 @@ export function parseRunArgs(argv: string[]): {
       trigger = val;
     } else if (flag === '--boards') {
       const val = args.shift();
-      if (!val) throw new UsageError(`--boards requires a file path\n${USAGE}`);
+      if (!val || val.startsWith('--')) throw new UsageError(`--boards requires a file path\n${USAGE}`);
       boardsFile = val;
     } else if (flag === '--cap') {
       const val = args.shift();
@@ -70,12 +65,21 @@ export function parseRunArgs(argv: string[]): {
 /** Reads board ids from a JSON file (sample tool's state shape) or from env vars. */
 export function resolveBoards(env: Env, file?: string): UserBoards {
   if (file) {
-    const raw = JSON.parse(readFileSync(file, 'utf8')) as Record<string, string>;
-    const jobs = raw['jobs'];
-    const profiles = raw['profiles'];
-    const system = raw['system'];
-    if (!jobs || !profiles || !system) {
-      throw new Error(`${file}: must have 'jobs', 'profiles' and 'system' fields`);
+    let raw: unknown;
+    try {
+      raw = JSON.parse(readFileSync(file, 'utf8'));
+    } catch (e) {
+      throw new Error(`${file}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      throw new Error(`${file}: expected an object with 'jobs', 'profiles' and 'system' string ids`);
+    }
+    const obj = raw as Record<string, unknown>;
+    const jobs = obj['jobs'];
+    const profiles = obj['profiles'];
+    const system = obj['system'];
+    if (typeof jobs !== 'string' || typeof profiles !== 'string' || typeof system !== 'string') {
+      throw new Error(`${file}: 'jobs', 'profiles' and 'system' must be non-empty strings`);
     }
     return { jobs, profiles, system };
   }
@@ -131,33 +135,32 @@ export async function main(
     return 1;
   }
 
+  let budgetMs: number | undefined;
+  if (env.RUN_BUDGET_MIN !== undefined) {
+    const n = Number(env.RUN_BUDGET_MIN);
+    if (!Number.isFinite(n) || n <= 0) {
+      out(`RUN_BUDGET_MIN must be a positive number (got ${JSON.stringify(env.RUN_BUDGET_MIN)})`);
+      return 1;
+    }
+    budgetMs = n * 60_000;
+  }
+
   const defaults = loadDefaults();
 
+  // scanAll already turns any thrown error from careerOps (including ScanFailed) into a
+  // source error entry via Promise.allSettled; the run reports it as ⚠️ and continues.
   const scanDeps: ScanDeps = {
-    // Turn a ScanFailed into a source error so the run shows ⚠️ instead of failing.
-    careerOps: async (portals) => {
-      try {
-        return await runCareerOpsScan(portals, { env: env as Record<string, string | undefined> });
-      } catch (e) {
-        if (e instanceof ScanFailed) {
-          const rows = Object.assign([], { errors: [{ company: 'career-ops', error: e.message }] });
-          return rows;
-        }
-        throw e;
-      }
-    },
+    careerOps: (portals) => runCareerOpsScan(portals, { env: env as Record<string, string | undefined> }),
     log: out,
   };
 
   const scan = o.scan ?? ((plan) => scanAll(plan, scanDeps));
 
-  const budgetMs = env.RUN_BUDGET_MIN ? Number(env.RUN_BUDGET_MIN) * 60_000 : undefined;
-
   const opts: RunOpts = {
     trigger: parsed.trigger,
     dryRun: parsed.dryRun,
     ...(parsed.cap !== undefined ? { cap: parsed.cap } : {}),
-    ...(budgetMs !== undefined && !isNaN(budgetMs) ? { budgetMs } : {}),
+    ...(budgetMs !== undefined ? { budgetMs } : {}),
   };
 
   const deps: RunDeps = {
@@ -176,7 +179,6 @@ export async function main(
   return result.exitCode;
 }
 
-// Only run when executed directly, not when imported.
 if (import.meta.main) {
   main(process.argv.slice(2), process.env as Env).then(
     (code) => process.exit(code),
