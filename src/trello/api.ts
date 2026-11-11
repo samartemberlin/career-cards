@@ -101,8 +101,6 @@ export interface TrelloApi {
   createList(boardId: string, name: string, pos: 'top' | 'bottom' | number): Promise<TList>;
   setListClosed(listId: string, closed: boolean): Promise<TList>;
   createCard(c: NewCard): Promise<TCard>;
-  /** Update a card's name and/or description. The scope guard restricts this to cards in the System board's Runs list. */
-  updateCard(cardId: string, update: { name?: string; desc?: string }): Promise<TCard>;
   setCardClosed(cardId: string, closed: boolean): Promise<TCard>;
   /** text in the JSON body, not the query */
   comment(cardId: string, text: string): Promise<{ id: string }>;

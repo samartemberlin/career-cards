@@ -345,13 +345,12 @@ export class FakeTrello {
       if ((m = /^\/cards\/([^/]+)$/.exec(path))) {
         const card = this._cards.get(m[1]!);
         if (!card) return notFound();
-        const { closed, name, desc } = await readJson() as { closed?: boolean; name?: string; desc?: string };
-        const updated = {
-          ...card,
-          ...(closed !== undefined && { closed }),
-          ...(name !== undefined && { name }),
-          ...(desc !== undefined && { desc }),
-        };
+        const body = await readJson() as Record<string, unknown>;
+        // The bot never edits a card: archiving is the only change it may send, so anything else fails the test.
+        if (Object.keys(body).some((k) => k !== 'closed') || typeof body.closed !== 'boolean') {
+          return new Response('the bot never edits a card', { status: 400 });
+        }
+        const updated = { ...card, closed: body.closed };
         this._cards.set(card.id, updated);
         return ok(this._cardBody(updated, false));
       }

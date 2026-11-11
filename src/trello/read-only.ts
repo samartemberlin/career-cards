@@ -38,7 +38,6 @@ export function readOnlyClient(api: TrelloApi): TrelloApi {
     setListClosed: (_listId, _closed) => deny('setListClosed'),
     createCard: (_c) => deny('createCard'),
     setCardClosed: (_cardId, _closed) => deny('setCardClosed'),
-    updateCard: (_cardId, _update) => deny('updateCard'),
     comment: (_cardId, _text) => deny('comment'),
     attachText: (_cardId, _name, _text) => deny('attachText'),
     createChecklist: (_cardId, _name) => deny('createChecklist'),

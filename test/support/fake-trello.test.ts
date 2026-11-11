@@ -294,30 +294,25 @@ test("pos 'top' and 'bottom' place cards relative to existing positions in a see
   assert.ok(bottom.pos > maxPosBefore, `'bottom' card pos ${bottom.pos} must be greater than max existing pos ${maxPosBefore}`);
 });
 
-// ── updateCard (PUT /cards/{id}) and setCardDesc ─────────────────────────────
+// ── PUT /cards/{id} and setCardDesc ──────────────────────────────────────────
 
-test('FakeTrello: updateCard applies name and desc; setCardDesc sets desc', async () => {
+test('FakeTrello: a PUT that would change a card\'s name or description is refused; setCardDesc sets desc', async () => {
   const fake = FakeTrello.fromRecordings(load('system'), load('lookups'));
-  const api = client(fake.fetch);
-
   const lookups = load('lookups');
   const cardId = lookups.find(
     (c) => c.method === 'GET' && /^\/cards\//.test(c.path) && c.status === 200,
   )!.path.split('/').pop()!;
+  const before = await client(fake.fetch).card(cardId);
 
-  // updateCard via the API
-  const updated = await api.updateCard(cardId, { name: 'New title', desc: 'new description' });
-  assert.equal(updated.name, 'New title', 'updateCard must update name');
-  assert.equal(updated.desc, 'new description', 'updateCard must update desc');
+  for (const body of [{ name: 'New title' }, { desc: 'new description' }, { closed: true, name: 'x' }]) {
+    const res = await fake.fetch(`https://api.trello.com/1/cards/${cardId}`, { method: 'PUT', body: JSON.stringify(body) });
+    assert.equal(res.status, 400, JSON.stringify(body));
+  }
+  const after = await client(fake.fetch).card(cardId);
+  assert.deepEqual([after.name, after.desc, after.closed], [before.name, before.desc, before.closed]);
 
-  // Subsequent card() fetch reflects the change
-  const fetched = await api.card(cardId);
-  assert.equal(fetched.name, 'New title', 'card() must reflect updateCard name');
-  assert.equal(fetched.desc, 'new description', 'card() must reflect updateCard desc');
-
-  // setCardDesc (the user editing directly)
   fake.setCardDesc(cardId, 'user-edited description');
-  const afterSet = await api.card(cardId);
+  const afterSet = await client(fake.fetch).card(cardId);
   assert.equal(afterSet.desc, 'user-edited description', 'setCardDesc must update the description');
-  assert.equal(afterSet.name, 'New title', 'setCardDesc must not change the name');
+  assert.equal(afterSet.name, before.name, 'setCardDesc must not change the name');
 });

@@ -14,7 +14,6 @@ import { FakeTrello } from '../support/fake-trello.ts';
 import { createTrelloClient } from '../../src/trello/client.ts';
 import { scopeClient } from '../../src/trello/scoped.ts';
 import type { Recording } from '../../tools/sample/scrub.ts';
-import type { TCard } from '../../src/trello/api.ts';
 
 const DIR = join(import.meta.dirname, '..', 'fixtures', 'trello');
 const load = (name: string): Recording =>

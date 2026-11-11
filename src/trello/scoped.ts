@@ -16,17 +16,6 @@ export class ScopeError extends Error {
   }
 }
 
-/** Thrown when updateCard is called on a card that is not in the System board's Runs list.
- *  Distinct from ScopeError (wrong board) so callers can tell the two apart. */
-export class ImmutableCardError extends Error {
-  readonly cardId: string;
-  constructor(cardId: string) {
-    super(`Card ${cardId} is not in the System board's Runs list and cannot be edited`);
-    this.name = 'ImmutableCardError';
-    this.cardId = cardId;
-  }
-}
-
 export class OriginalsWriteError extends Error {
   readonly cardId?: string;
   readonly listId?: string;
@@ -44,7 +33,7 @@ export class OriginalsWriteError extends Error {
 
 /** A guard refused the call: the bug is in the caller, so it must end the run, never become a count or a warning. */
 export function isGuardError(e: unknown): boolean {
-  return e instanceof ScopeError || e instanceof OriginalsWriteError || e instanceof ImmutableCardError;
+  return e instanceof ScopeError || e instanceof OriginalsWriteError;
 }
 
 /** Returns true for any list name that trims to "originals" (case-insensitive). */
@@ -57,8 +46,6 @@ export type Scope = {
   boards: string[];
   /** If set, writes into any list named "Originals" on this board are blocked. */
   profilesBoard?: string;
-  /** If set, updateCard is allowed only for cards whose current list is named "Runs" on this board. */
-  systemBoard?: string;
 };
 
 /** The three boards that make up a user's career-cards workspace. */
@@ -193,19 +180,6 @@ export function scopeClient(api: TrelloApi, scope: Scope): TrelloApi {
       assertListNotOriginals(l);
       return api.createCard(c);
     },
-
-    updateCard: async (cardId, update) => {
-      const c = await api.card(cardId);
-      assertBoard(c.idBoard);
-      if (
-        scope.systemBoard === undefined ||
-        c.idBoard !== scope.systemBoard ||
-        c.list.name.trim().toLowerCase() !== 'runs'
-      ) {
-        throw new ImmutableCardError(cardId);
-      }
-      return api.updateCard(cardId, update);
-    },
   };
 }
 
@@ -215,6 +189,5 @@ export function scopeUserBoards(api: TrelloApi, boards: UserBoards): TrelloApi {
   return scopeClient(api, {
     boards: [boards.jobs, boards.profiles, boards.system],
     profilesBoard: boards.profiles,
-    systemBoard: boards.system,
   });
 }

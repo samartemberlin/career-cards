@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { scopeClient, scopeUserBoards, ScopeError, ImmutableCardError, OriginalsWriteError, isOriginalsName } from '../../src/trello/scoped.ts';
+import { scopeClient, scopeUserBoards, ScopeError, OriginalsWriteError, isOriginalsName } from '../../src/trello/scoped.ts';
 import type { UserBoards } from '../../src/trello/scoped.ts';
 import type { TrelloApi, TCard, TCardWithList, TList, TChecklist, TCheckItem, TBoard, TMember, TLabel } from '../../src/trello/api.ts';
 import { createTrelloClient } from '../../src/trello/client.ts';
@@ -73,7 +73,6 @@ function makeStub(opts: StubOpts = {}): { api: TrelloApi; log: CallLog } {
     createList: async (boardId, name, pos) => { log.push({ method: 'createList', args: [boardId, name, pos] }); return makeList({ id: 'lst-new', name, idBoard: boardId }); },
     setListClosed: async (listId, closed) => { log.push({ method: 'setListClosed', args: [listId, closed] }); return makeList({ id: listId }); },
     createCard: async (c) => { log.push({ method: 'createCard', args: [c] }); return { id: 'card-new', name: c.name, desc: c.desc, idList: c.idList, idBoard: 'board1', closed: false, pos: typeof c.pos === 'number' ? c.pos : 0, shortUrl: 'https://trello.com/c/sample001' }; },
-    updateCard: async (cardId, update) => { log.push({ method: 'updateCard', args: [cardId, update] }); return { id: cardId, name: update.name ?? '', desc: update.desc ?? '', idList: 'list1', idBoard: 'board1', closed: false, pos: 0, shortUrl: 'https://trello.com/c/sample001' }; },
     setCardClosed: async (cardId, closed) => { log.push({ method: 'setCardClosed', args: [cardId, closed] }); return { id: cardId, name: '', desc: '', idList: 'list1', idBoard: 'board1', closed, pos: 0, shortUrl: 'https://trello.com/c/sample001' }; },
     comment: async (cardId, text) => { log.push({ method: 'comment', args: [cardId, text] }); return { id: 'act1' }; },
     attachText: async (cardId, name, text) => { log.push({ method: 'attachText', args: [cardId, name, text] }); return { id: 'att1' }; },
@@ -437,141 +436,4 @@ test('scopeUserBoards: Originals guard is always active (profilesBoard is requir
   });
   const scoped = scopeUserBoards(api, makeUserBoards());
   await assert.rejects(() => scoped.comment('card1', 'hello'), OriginalsWriteError);
-});
-
-// --- updateCard: restricted to System board Runs list --------------------
-
-test('updateCard succeeds for a card in the System board Runs list', async () => {
-  const { api } = makeStub({
-    cardResult: () => makeCard({ id: 'card1', idBoard: SYSTEM_BOARD, idList: 'runs-list', list: { id: 'runs-list', name: 'Runs' } }),
-  });
-  const scoped = scopeClient(api, { boards: [SYSTEM_BOARD], systemBoard: SYSTEM_BOARD });
-  const result = await scoped.updateCard('card1', { name: 'running ✅' });
-  assert.ok(result.id, 'updateCard returned a card');
-});
-
-test('updateCard on a card not in Runs throws ImmutableCardError', async () => {
-  const { api } = makeStub({
-    cardResult: () => makeCard({ id: 'card1', idBoard: SYSTEM_BOARD, idList: 'config-list', list: { id: 'config-list', name: 'Config' } }),
-  });
-  const scoped = scopeClient(api, { boards: [SYSTEM_BOARD], systemBoard: SYSTEM_BOARD });
-  await assert.rejects(() => scoped.updateCard('card1', { name: 'x' }), ImmutableCardError);
-});
-
-test('updateCard on a card outside the System board throws ImmutableCardError', async () => {
-  const { api } = makeStub({
-    // Card is in JOBS_BOARD, list named Runs — still must be rejected (wrong board)
-    cardResult: () => makeCard({ id: 'card1', idBoard: JOBS_BOARD, idList: 'runs-list', list: { id: 'runs-list', name: 'Runs' } }),
-  });
-  const scoped = scopeClient(api, { boards: [JOBS_BOARD, SYSTEM_BOARD], systemBoard: SYSTEM_BOARD });
-  await assert.rejects(() => scoped.updateCard('card1', { name: 'x' }), ImmutableCardError);
-});
-
-test('updateCard without systemBoard set always throws ImmutableCardError', async () => {
-  const { api } = makeStub({
-    cardResult: () => makeCard({ id: 'card1', idBoard: SYSTEM_BOARD, idList: 'runs-list', list: { id: 'runs-list', name: 'Runs' } }),
-  });
-  // scopeClient without systemBoard
-  const scoped = scopeClient(api, { boards: [SYSTEM_BOARD] });
-  await assert.rejects(() => scoped.updateCard('card1', { name: 'x' }), ImmutableCardError);
-});
-
-// --- updateCard over FakeTrello (integration) ----------------------------
-
-const REC_DIR = join(import.meta.dirname, '..', 'fixtures', 'trello');
-const loadRec = (name: string): Recording =>
-  JSON.parse(readFileSync(join(REC_DIR, `${name}.recording.json`), 'utf8')) as Recording;
-
-function firstBoardId(rec: Recording): string {
-  return (rec.find((e) => /^\/boards\/[^/]+$/.test(e.path) && e.method === 'GET' && e.status === 200)!.body as { id: string }).id;
-}
-
-function fakeClient(fake: FakeTrello) {
-  return createTrelloClient({ key: 'k', token: 't', fetchImpl: fake.fetch, sleep: async () => {} });
-}
-
-test('updateCard (scopeUserBoards): passes on a Runs card; throws on a Jobs card; Jobs card unchanged', async () => {
-  const sysRec = loadRec('system');
-  const jobsRec = loadRec('jobs');
-  const profilesRec = loadRec('profiles');
-  const fake = FakeTrello.fromRecordings(sysRec, jobsRec, profilesRec);
-  const rawApi = fakeClient(fake);
-
-  const boards: UserBoards = {
-    system: firstBoardId(sysRec),
-    jobs: firstBoardId(jobsRec),
-    profiles: firstBoardId(profilesRec),
-  };
-
-  // Find a card in the Runs list from the system recording
-  const sysLists = (sysRec.find((e) => /\/lists$/.test(e.path) && e.method === 'GET' && e.status === 200)!.body as { id: string; name: string }[]);
-  const runsListId = sysLists.find((l) => l.name === 'Runs')!.id;
-  const sysCards = (sysRec.find((e) => /\/cards\//.test(e.path) && e.method === 'GET' && e.status === 200)!.body as { id: string; idList: string; name: string }[]);
-  const runsCard = sysCards.find((c) => c.idList === runsListId)!;
-
-  // Find a Jobs board card
-  const jobsCards = (jobsRec.find((e) => /\/cards\//.test(e.path) && e.method === 'GET' && e.status === 200)!.body as { id: string; name: string }[]);
-  const jobCard = jobsCards[0]!;
-
-  const scoped = scopeUserBoards(rawApi, boards);
-
-  // updateCard on the Runs card succeeds
-  const updated = await scoped.updateCard(runsCard.id, { name: '✅ done', desc: 'career-cards-run: done' });
-  assert.equal(updated.id, runsCard.id, 'updateCard returned the updated card');
-
-  // updateCard on a Jobs card throws ImmutableCardError; card is unchanged
-  await assert.rejects(() => scoped.updateCard(jobCard.id, { name: 'edited' }), ImmutableCardError);
-  const jobsAfter = await rawApi.cards(boards.jobs, { filter: 'open' });
-  const stillJob = jobsAfter.find((c) => c.id === jobCard.id)!;
-  assert.equal(stillJob.name, jobCard.name, 'Jobs card must be unchanged after failed updateCard');
-});
-
-test('updateCard: card moved out of Runs between lookup and update throws ImmutableCardError', async () => {
-  const sysRec = loadRec('system');
-  const jobsRec = loadRec('jobs');
-  const profilesRec = loadRec('profiles');
-  const fake = FakeTrello.fromRecordings(sysRec, jobsRec, profilesRec);
-  const rawApi = fakeClient(fake);
-
-  const boards: UserBoards = {
-    system: firstBoardId(sysRec),
-    jobs: firstBoardId(jobsRec),
-    profiles: firstBoardId(profilesRec),
-  };
-
-  const sysLists = (sysRec.find((e) => /\/lists$/.test(e.path) && e.method === 'GET' && e.status === 200)!.body as { id: string; name: string }[]);
-  const runsListId = sysLists.find((l) => l.name === 'Runs')!.id;
-  const configListId = sysLists.find((l) => l.name !== 'Runs')!.id;
-
-  // Create a new status card in Runs
-  const card = await rawApi.createCard({ idList: runsListId, name: '⏳ Nov 11', desc: '', pos: 'top' });
-
-  // Move it out of Runs before the updateCard call
-  fake.moveCard(card.id, configListId);
-
-  const scoped = scopeUserBoards(rawApi, boards);
-  await assert.rejects(() => scoped.updateCard(card.id, { name: '✅ Nov 11' }), ImmutableCardError);
-});
-
-test('updateCard: System board card outside Runs (Settings list) throws ImmutableCardError', async () => {
-  const sysRec = loadRec('system');
-  const jobsRec = loadRec('jobs');
-  const profilesRec = loadRec('profiles');
-  const fake = FakeTrello.fromRecordings(sysRec, jobsRec, profilesRec);
-  const rawApi = fakeClient(fake);
-
-  const boards: UserBoards = {
-    system: firstBoardId(sysRec),
-    jobs: firstBoardId(jobsRec),
-    profiles: firstBoardId(profilesRec),
-  };
-
-  // Find a card in the non-Runs list (Config) on the System board
-  const sysLists = (sysRec.find((e) => /\/lists$/.test(e.path) && e.method === 'GET' && e.status === 200)!.body as { id: string; name: string }[]);
-  const configListId = sysLists.find((l) => l.name !== 'Runs')!.id;
-  const sysCards = (sysRec.find((e) => /\/cards\//.test(e.path) && e.method === 'GET' && e.status === 200)!.body as { id: string; idList: string; name: string }[]);
-  const configCard = sysCards.find((c) => c.idList === configListId)!;
-
-  const scoped = scopeUserBoards(rawApi, boards);
-  await assert.rejects(() => scoped.updateCard(configCard.id, { name: 'edited' }), ImmutableCardError);
 });

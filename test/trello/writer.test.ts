@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createTrelloClient } from '../../src/trello/client.ts';
-import { scopeClient, ImmutableCardError, OriginalsWriteError, ScopeError } from '../../src/trello/scoped.ts';
+import { scopeClient, OriginalsWriteError, ScopeError } from '../../src/trello/scoped.ts';
 import { FakeTrello } from '../support/fake-trello.ts';
 import { createLabelResolver, createJobCard, archiveCards } from '../../src/trello/writer.ts';
 import type { ScoredJob } from '../../src/trello/writer.ts';
@@ -194,8 +194,8 @@ test('archiveCards continues past a failure', async () => {
   assert.ok(logs.length > 0, 'failure logged');
 });
 
-test('archiveCards rethrows scope, Originals and immutable-card errors instead of counting them', async () => {
-  const errors = [new ScopeError('board-x'), new OriginalsWriteError({ cardId: 'c1' }), new ImmutableCardError('c1')];
+test('archiveCards rethrows scope and Originals errors instead of counting them', async () => {
+  const errors = [new ScopeError('board-x'), new OriginalsWriteError({ cardId: 'c1' })];
   for (const err of errors) {
     let calls = 0;
     const api = { setCardClosed: async () => { calls++; throw err; } } as unknown as TrelloApi;
