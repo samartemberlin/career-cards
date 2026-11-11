@@ -264,3 +264,27 @@ test('findRunsList creates Runs only when asked (FakeTrello from System recordin
 test('parseStatusCard: a ⏳ running card from before the bot stopped editing cards is not a status', () => {
   assert.equal(parseStatusCard({ name: '⏳ x', desc: 'career-cards-run: 2024-11-10T01:00:00.000Z running' }), null);
 });
+
+test('statusDesc shortens long Problems and Warnings with a "… and N more" line to stay under DESC_LIMIT', () => {
+  const stats = emptyStats();
+  stats.warnings = Array.from({ length: 400 }, (_, i) => `warning ${i}: ${'w'.repeat(80)}`);
+  stats.sourceErrors = Array.from({ length: 50 }, (_, i) => ({ company: `Company${i}`, error: 'HTTP 500' }));
+  const problems = Array.from({ length: 300 }, (_, i) => `Filters card: pattern ${i} is not a valid regex ${'p'.repeat(60)}`);
+  const log = Array.from({ length: 40 }, (_, i) => `log line ${i}`);
+  const start = new Date('2024-11-10T01:00:00.000Z');
+  const desc = statusDesc(makeView({ state: 'failed', reason: 'config error', stats, problems, log, start }));
+  assert.ok(desc.length <= DESC_LIMIT, `desc length ${desc.length} exceeds DESC_LIMIT ${DESC_LIMIT}`);
+  assert.equal(desc.trimEnd().split('\n').at(-1), `career-cards-run: ${start.toISOString()} failed`);
+  assert.match(desc, /\nProblems:\n- Filters card: pattern 0 /);
+  assert.match(desc, /\n- … and \d+ more\n/);
+});
+
+test('statusDesc: problems are kept before warnings', () => {
+  const stats = emptyStats();
+  stats.warnings = Array.from({ length: 400 }, (_, i) => `warning ${i}: ${'w'.repeat(80)}`);
+  const problems = Array.from({ length: 50 }, (_, i) => `problem ${i}`);
+  const desc = statusDesc(makeView({ state: 'failed', stats, problems }));
+  assert.ok(desc.length <= DESC_LIMIT);
+  assert.match(desc, /- problem 49\n/);
+  assert.match(desc, /\nWarnings:\n- warning 0: [\s\S]*- … and \d+ more\n/);
+});

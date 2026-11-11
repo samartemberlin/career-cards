@@ -29,6 +29,7 @@ const MARKS: Record<RunState, string> = {
 
 // Abort reasons carry every provider's error text, which can run to kilobytes.
 const ABORT_MAX = 300;
+const ITEM_MAX = 500;
 
 function clip(s: string, n: number): string {
   return s.length <= n ? s : s.slice(0, n - 1) + '…';
@@ -113,13 +114,13 @@ function buildCountLines(v: StatusView): string[] {
   return lines;
 }
 
-/** Card description with counts, source errors, problems, log excerpt, and the contract line.
- *  Always ends with the contract line `career-cards-run: <ISO> <state>`.
- *  When over DESC_LIMIT the log excerpt is cut first, then the source-error list. */
+/** Card description with counts, source errors, problems, warnings, log excerpt, and the contract line.
+ *  Always ends with the contract line `career-cards-run: <ISO> <state>`, under Trello's DESC_LIMIT: when over, the
+ *  log excerpt is cut first, then the source errors, then warnings and last problems, each list ending with
+ *  "… and N more". */
 export function statusDesc(v: StatusView): string {
   const contract = `career-cards-run: ${v.start.toISOString()} ${v.state}`;
   const CONTRACT_SEP = '\n\n';
-  // Space available for everything before the contract separator and line.
   const budget = DESC_LIMIT - CONTRACT_SEP.length - contract.length;
 
   const countLines = buildCountLines(v);
@@ -127,53 +128,63 @@ export function statusDesc(v: StatusView): string {
 
   // Source-error text can contain provider URLs with keys in the query string — redact the full line.
   const allErrLines = (v.stats?.sourceErrors ?? []).map((e) => r(`${e.company}: ${e.error}`));
+  const item = (t: string): string => `- ${clip(r(t), ITEM_MAX)}`;
+  const problems = (v.problems ?? []).map(item);
+  const warnings = (v.stats?.warnings ?? []).map(item);
+  const section = (title: string, lines: string[], keep: number): string[] => (lines.length
+    ? ['', title, ...lines.slice(0, keep), ...(keep < lines.length ? [`- … and ${lines.length - keep} more`] : [])]
+    : []);
 
-  // Problems and warnings are never truncated — they appear between errors and the log excerpt.
-  const problemLines: string[] = v.problems?.length
-    ? ['', 'Problems:', ...v.problems.map((p) => `- ${r(p)}`)]
-    : [];
-  const warnings = v.stats?.warnings ?? [];
-  if (warnings.length) problemLines.push('', 'Warnings:', ...warnings.map((w) => `- ${r(w)}`));
-
-  // Log lines clipped individually; only the last 40 are shown.
   const rawLogLines = (v.log ?? [])
     .slice(-40)
     .map((l) => (l.length > 200 ? l.slice(0, 199) + '…' : l));
 
-  function buildBody(errLines: string[], logLines: string[]): string {
+  function buildBody(errLines: string[], logLines: string[], keepProblems: number, keepWarnings: number): string {
     const parts = [...countLines];
     if (errLines.length) {
       parts.push('', `Source errors (${errLines.length}):`, ...errLines);
     }
-    parts.push(...problemLines);
+    parts.push(...section('Problems:', problems, keepProblems), ...section('Warnings:', warnings, keepWarnings));
     if (logLines.length) {
       parts.push('', `Log (last ${logLines.length} lines):`, ...logLines);
     }
     // Every field is redacted where it is built; this pass also covers fields added later.
     return r(parts.join('\n'));
   }
+  const fits = (body: string): boolean => body.length <= budget;
+  const done = (body: string): string => body + CONTRACT_SEP + contract;
+  /** The largest k in 0..n for which ok(k) holds, assuming ok is monotone; 0 when none does. */
+  const largest = (n: number, ok: (k: number) => boolean): number => {
+    let lo = 0;
+    let hi = n;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (ok(mid)) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo;
+  };
+  const P = problems.length;
+  const W = warnings.length;
 
-  // Try full content first.
-  let body = buildBody(allErrLines, rawLogLines);
-  if (body.length <= budget) return body + CONTRACT_SEP + contract;
+  let body = buildBody(allErrLines, rawLogLines, P, W);
+  if (fits(body)) return done(body);
 
-  // Cut log lines from the front (at most 40 iterations).
   for (let n = rawLogLines.length - 1; n >= 0; n--) {
-    body = buildBody(allErrLines, n > 0 ? rawLogLines.slice(-n) : []);
-    if (body.length <= budget) return body + CONTRACT_SEP + contract;
+    body = buildBody(allErrLines, n > 0 ? rawLogLines.slice(-n) : [], P, W);
+    if (fits(body)) return done(body);
   }
 
-  // Log fully removed; binary-search the max error lines that fit.
-  let lo = 0;
-  let hi = allErrLines.length;
-  while (lo < hi) {
-    const mid = (lo + hi + 1) >> 1;
-    body = buildBody(allErrLines.slice(0, mid), []);
-    if (body.length <= budget) lo = mid;
-    else hi = mid - 1;
-  }
+  const errs = largest(allErrLines.length, (k) => fits(buildBody(allErrLines.slice(0, k), [], P, W)));
+  body = buildBody(allErrLines.slice(0, errs), [], P, W);
+  if (fits(body)) return done(body);
 
-  return buildBody(allErrLines.slice(0, lo), []) + CONTRACT_SEP + contract;
+  const keepW = largest(W, (k) => fits(buildBody([], [], P, k)));
+  body = buildBody([], [], P, keepW);
+  if (fits(body)) return done(body);
+
+  const keepP = largest(P, (k) => fits(buildBody([], [], k, 0)));
+  return done(clip(buildBody([], [], keepP, 0), budget));
 }
 
 /** Parses the status and start time from the last line of a status card description.
