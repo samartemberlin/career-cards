@@ -90,11 +90,15 @@ export function parseTitleScore(title: string): number | null {
 
 // --- run column name -----------------------------------------------------
 
+// Fixed month abbreviations: Intl short-month output is ICU-version-dependent
+// (Node 24 returns "Sept" for September in en-GB). This guarantees the format is stable.
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
+
 /** "Nov 10 · 01:00" in the user's timezone. Handles DST correctly via Intl. */
 export function runColumnName(start: Date, timeZone: string): string {
   const fmt = new Intl.DateTimeFormat('en-GB', {
     timeZone,
-    month: 'short',
+    month: 'numeric',
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
@@ -102,7 +106,8 @@ export function runColumnName(start: Date, timeZone: string): string {
   });
   const parts = fmt.formatToParts(start);
   const get = (type: string): string => parts.find((p) => p.type === type)?.value ?? '';
-  return `${get('month')} ${get('day')} · ${get('hour')}:${get('minute')}`;
+  const month = MONTHS[parseInt(get('month'), 10) - 1]!;
+  return `${month} ${get('day')} · ${get('hour')}:${get('minute')}`;
 }
 
 // --- location helper -----------------------------------------------------
@@ -156,7 +161,8 @@ export function jobLabels(r: Job & { facts?: Facts }): { name: string; color: st
 // --- run column name predicate -------------------------------------------
 
 // "Nov 10 · 01:00" (runColumnName output): Mon D · HH:MM
-const RUN_COLUMN_RE = /^[A-Z][a-z]{2} \d{1,2} · \d{2}:\d{2}$/u;
+// Also accepts "Sept" for columns created before the ICU-stable fix.
+const RUN_COLUMN_RE = /^[A-Z][a-z]{2,3} \d{1,2} · \d{2}:\d{2}$/u;
 
 /** True when a list name was produced by runColumnName. */
 export function isRunColumnName(name: string): boolean {
