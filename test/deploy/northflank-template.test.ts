@@ -58,10 +58,13 @@ describe('Northflank template', () => {
     assert.equal(job.spec.activeDeadlineSeconds, 3600);
     assert.equal(job.spec.backoffLimit, 0);
     assert.equal(job.spec.runOnSourceChange, 'never');
+    assert.equal(job.spec.deployment.docker.configType, 'customCommand');
     assert.equal(job.spec.deployment.docker.customCommand, 'run');
+    assert.equal(job.spec.deployment.external?.imagePath, '${args.IMAGE}');
   });
 
   it('the service: one instance, port 8080 public, /healthz, starts the job by ref', () => {
+    assert.equal(svc.spec.deployment.external?.imagePath, '${args.IMAGE}');
     assert.equal(svc.spec.deployment.instances, 1);
     const port = svc.spec.ports?.find((p) => p.internalPort === 8080);
     assert.ok(port, 'no port 8080');

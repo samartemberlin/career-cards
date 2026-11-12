@@ -43,7 +43,7 @@ DeploymentService (`serve`) in your project.
 
 - Add a folder `deploy/<name>/` with the platform's template or manifest.
 - Supply the same env contract.
-- Run a long-running `serve` with public HTTPS. Then either add a one-shot job API and a [`RunStarter`](src/serve/northflank.ts),
+- Run a long-running `serve` with public HTTPS. Then either add a one-shot job API and a [`RunStarter`](src/serve/runs.ts),
   or omit the `NORTHFLANK_*` variables and let `serve` run the job as a child process (needs ≥ 1 GB RAM).
 
 Some free LLM tiers may train on prompts; check each provider's terms before use.
