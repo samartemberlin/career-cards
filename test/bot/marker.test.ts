@@ -62,6 +62,7 @@ test('parseMarker rejects a non-hex id, an unknown class, and bad base64', () =>
     `career-cards-reply: ${ID} model proposal=${Buffer.from('{"action":{"id":"x"},"expires":"soon"}').toString('base64url')}`,
     `career-cards-reply: ${ID} model proposal=${Buffer.from('[1]').toString('base64url')}`,
     `career-cards-reply: ${ID} model proposal=`,
+    `career-cards-reply: ${ID} model proposal=${Buffer.from('{"action":{"id":"x"},"expires":"2026-11-12T11:00:00.000Z"}').toString('base64url')}`,
   ];
   for (const line of bad) assert.equal(parseMarker(line), null, line);
 });

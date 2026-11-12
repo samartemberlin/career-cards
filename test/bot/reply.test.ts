@@ -188,3 +188,33 @@ test('a hard split does not cut a surrogate pair', () => {
 test('a short reply is one part: mention, body, blank line, marker', () => {
   assert.deepEqual(finish('  Fine.  '), [`@usera Fine.\n\n${formatMarker(MARKER)}`]);
 });
+
+test('Markdown backslash escapes do not hide a link or a personal detail', () => {
+  const cases = [
+    'https\\://evil.test/x', 'www\\.evil.test', 'evil\\.com/x', 'mail theo.example\\@mail.test',
+    'see social.example.test\\/in/theo-example',
+  ];
+  for (const text of cases) {
+    const [part] = finish(text);
+    assert.doesNotMatch(part!, /evil|theo/i, text);
+  }
+});
+
+test('a reference definition inside a blockquote or a list item is checked too', () => {
+  for (const text of ['> [x][r]\n> [r]: //evil.ninja', '- [x][r]\n- [r]: evil.test', '1. [r]: https://evil.test']) {
+    const [part] = finish(text);
+    assert.doesNotMatch(part!, /evil|\[r\]:/, text);
+  }
+});
+
+test('emphasis inside a word does not split a personal detail past the masking', () => {
+  for (const text of ['Theo Exa**mple**', 'Th_eo_ Example', 'theo.example@**mail**.test', '*Theo* ~~Example~~', '`Theo` Example']) {
+    const [part] = finish(text);
+    assert.doesNotMatch(part!.replace(/[*_~`]/g, ''), /theo|example@/i, text);
+  }
+});
+
+test('newer bare-domain endings are links', () => {
+  const [part] = finish('evil.ninja evil.wtf evil.zip evil.social evil.lol');
+  assert.doesNotMatch(part!, /evil/);
+});

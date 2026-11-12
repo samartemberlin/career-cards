@@ -2,7 +2,7 @@
 // planted in it, so these checks, not the model, decide what reaches Trello: no image, no HTML, no link the caller
 // did not allow, no listed personal detail and no line that reads as a bot marker.
 import { REPLY_MAX } from './catalogue.ts';
-import { MARKER_PREFIX, formatMarker } from './marker.ts';
+import { formatMarker } from './marker.ts';
 import type { ReplyMarker } from './marker.ts';
 import { PrivacyError } from '../privacy.ts';
 import type { Masker } from '../privacy.ts';
@@ -45,8 +45,10 @@ function decodeEntities(text: string): string {
 // Private-use characters are reserved for the link placeholders below, so they can't come from the input.
 const STRIPPED = /[\u0000-\u0008\u000E-\u001F\u007F\u00AD\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF\uE000-\uF8FF]/g;
 const LINE_BREAK = /\r\n?|[\u000B\u000C\u0085\u2028\u2029]/g;
+// Markdown renders `https\://` and `jane\@mail.test` without the backslash, so the checks must not see it either.
+const MD_ESCAPE = /\\([!-/:-@[-`{-~])/g;
 const normalize = (text: string): string =>
-  decodeEntities(text).normalize('NFKC').replace(STRIPPED, '').replace(LINE_BREAK, '\n');
+  decodeEntities(text).normalize('NFKC').replace(STRIPPED, '').replace(LINE_BREAK, '\n').replace(MD_ESCAPE, '$1');
 
 const AUTOLINK = /<(https?:\/\/[^\s<>]+)>/gi;
 const HTML_COMMENT = /<!--[\s\S]*?(?:-->|$)/g;
@@ -67,8 +69,9 @@ function dropMarkup(text: string): string {
 
 // Any line that mentions the prefix goes, not just lines that start with it: a hard split of a long line could
 // otherwise turn its middle into the start of a part's last line.
+const MARKER_WORD = 'career-cards-reply';
 const dropMarkerLines = (text: string): string =>
-  text.split('\n').filter((l) => !l.toLowerCase().includes(MARKER_PREFIX.slice(0, -1))).join('\n');
+  text.split('\n').filter((l) => !l.toLowerCase().includes(MARKER_WORD)).join('\n');
 
 // Allowed links wait behind private-use placeholders while the other link checks and the masking run (the masker
 // would otherwise turn them into [LINK]).
@@ -83,7 +86,8 @@ const ONLY_TOKEN = new RegExp(
 const LINK_START = /[\s(\[{"'*_~>|`]/;
 
 const MD_TARGET = /\]\(([^)\n]*)\)/g;
-const REF_DEF = /^ {0,3}\[([^\]\n]+)\]:[ \t]*(.*)$/gm;
+// Not anchored to the line start: a definition also works inside a blockquote or a list item.
+const REF_DEF = /\[([^\]\n]+)\]:[ \t]*(.*)$/gm;
 const SCHEME_URL = new RegExp(`[a-z][a-z0-9+.-]*:\\/\\/${URL_CHAR}*`, 'gi');
 const RISKY_SCHEME = new RegExp(
   `\\b(?:https?|ftps?|sftp|file|javascript|vbscript|data|blob|mailto|tel|sms|callto|intent|wss?):${URL_CHAR}+`, 'gi');
@@ -97,7 +101,8 @@ const CC_TLD = 'a[cdefgilmnoqrstuwxz]|b[abdefghijmnorstvwyz]|c[acdfghiklmnoruvwx
   't[cdfghjklmnortvwz]|u[agksyz]|v[aceginu]|w[fs]|y[et]|z[amw]';
 const G_TLD = 'biz|com|edu|gov|net|org|pro|web|xxx|aero|asia|coop|info|museum|name|shop|рф|int|mobi|travel|app|dev|' +
   'xyz|online|site|top|club|store|tech|cloud|live|blog|page|link|click|berlin|website|space|jobs|careers|email|' +
-  'digital|agency|network|systems|solutions|xn--[a-z0-9-]+';
+  'digital|agency|network|systems|solutions|ninja|wtf|zip|mov|social|lol|fun|icu|today|world|life|art|design|studio|' +
+  'media|zone|xn--[a-z0-9-]+';
 const BARE_DOMAIN = new RegExp(
   `(?<![\\p{L}\\p{N}@._-])(?:[\\p{L}\\p{N}](?:[\\p{L}\\p{N}-]{0,61}[\\p{L}\\p{N}])?\\.)+(?:${G_TLD}|${CC_TLD})` +
   `(?![\\p{L}\\p{N}_-])(?::\\d{1,5})?(?:[/?#]${URL_CHAR}*)?`, 'giu');
@@ -175,6 +180,7 @@ function split(text: string, firstMax: number): string[] {
   return parts;
 }
 
+const EMPHASIS_IN_WORD = /(?<=[\p{L}\p{N}])[*_~`]+|[*_~`]+(?=[\p{L}\p{N}])/gu;
 const USERNAME = /^[a-z0-9_]{1,100}$/i;
 
 export function finishReply(r: {
@@ -190,7 +196,8 @@ export function finishReply(r: {
   if (firstMax < 100) throw new Error('reply: marker leaves no room for the reply');
 
   const guarded = guardLinks(dropMarkerLines(dropMarkup(normalize(r.text))), r.allowedLinks);
-  const masked = r.masker.mask(guarded.text);
+  // Emphasis marks inside or around a word render as nothing, so `Th_eo_ Exa**mple**` would show a masked name.
+  const masked = r.masker.mask(guarded.text.replace(EMPHASIS_IN_WORD, ''));
   const body = dropMarkerLines(restoreLinks(masked, guarded.links, r.masker)).replace(IMAGE_START, '[').trim();
   if (r.masker.hasDetail(body)) throw new PrivacyError('reply: a personal detail is left after masking');
 

@@ -15,7 +15,7 @@ const ID = /^[0-9a-f]{24}$/;
 const LINE = /^career-cards-reply: ([0-9a-f]{24}) (static|model|research|refusal)(?: proposal=([A-Za-z0-9_-]+))?(?: resolves=([0-9a-f]{24}))?$/;
 
 const ProposalSchema = z.object({
-  action: z.object({ id: z.string().min(1), args: z.unknown() }).strict(),
+  action: z.object({ id: z.string().min(1), args: z.custom<unknown>((v) => v !== undefined) }).strict(),
   expires: z.string().datetime({ offset: true }),
 }).strict();
 
