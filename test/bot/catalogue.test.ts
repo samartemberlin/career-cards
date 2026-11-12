@@ -117,3 +117,7 @@ test('matchStatic: arguments', () => {
   assert.equal(matchStatic('@bot feedback', 'bot').kind, 'bad_args');
   assert.equal(matchStatic(`@bot feedback ${'x'.repeat(2001)}`, 'bot').kind, 'bad_args');
 });
+
+test('catalogue: every row has a non-empty about', () => {
+  for (const s of CATALOGUE) assert.ok(s.about.trim().length > 0, s.id);
+});

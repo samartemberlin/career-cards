@@ -15,6 +15,8 @@ export type ActionSpec = {
   textArgs: (rest: string) => unknown;
   /** Shown when a static command's arguments don't parse. */
   usage: string;
+  /** The help line: what the action tells the user. */
+  about: string;
 };
 
 export const COMPANY_TOPICS = ['about', 'openings', 'locations', 'news', 'reputation'] as const;
@@ -23,21 +25,22 @@ export const REPLY_MAX = 4000;
 
 const NoArgs = z.object({}).strict();
 
-const simple = (id: string, verbs: string[], stage: Stage): ActionSpec =>
-  ({ id, verbs, stage, router: 'auto', args: NoArgs, textArgs: () => ({}), usage: verbs[0]! });
+const simple = (id: string, verbs: string[], stage: Stage, about: string): ActionSpec =>
+  ({ id, verbs, stage, router: 'auto', args: NoArgs, textArgs: () => ({}), usage: verbs[0]!, about });
 
 export const CATALOGUE: ActionSpec[] = [
-  simple('check_open', ['open', 'offen'], 'code'),
-  simple('check_legit', ['legit', 'echt'], 'reader'),
-  simple('apply_needs', ['needs'], 'reader'),
-  simple('explain_fit', ['fit'], 'advisor'),
-  simple('cv_tips', ['cv', 'lebenslauf'], 'advisor'),
-  simple('job_deep_dive', ['deep'], 'researcher+advisor'),
+  simple('check_open', ['open', 'offen'], 'code', 'whether the posting is still live.'),
+  simple('check_legit', ['legit', 'echt'], 'reader', 'whether the posting is real and current: ghost-job and scam signals.'),
+  simple('apply_needs', ['needs'], 'reader', 'what applying takes: documents, language, deadline, how to apply.'),
+  simple('explain_fit', ['fit'], 'advisor', 'why the job scored what it did: strong points, gaps, deal-breakers.'),
+  simple('cv_tips', ['cv', 'lebenslauf'], 'advisor', 'how to target your CV for this job.'),
+  simple('job_deep_dive', ['deep'], 'researcher+advisor', 'public facts about the role and company, then how you would match this job.'),
   {
     id: 'company_research', verbs: ['company', 'firma'], stage: 'researcher', router: 'auto',
     args: z.object({ topic: z.enum(COMPANY_TOPICS).default('about') }).strict(),
     textArgs: (rest) => (rest ? { topic: rest.toLowerCase() } : {}),
     usage: `company [${COMPANY_TOPICS.join(' | ')}], default about`,
+    about: 'the company: what they do, other openings, locations, news or reputation.',
   },
   {
     id: 'explain_filter', verbs: ['why', 'warum'], stage: 'code', router: 'auto',
@@ -47,15 +50,17 @@ export const CATALOGUE: ActionSpec[] = [
     }).strict(),
     textArgs: (rest) => ({ link: rest }),
     usage: 'why <link to the job posting>',
+    about: 'which rule rejected a job that has no card, with the matched text.',
   },
   {
     id: 'record_feedback', verbs: ['feedback'], stage: 'code', router: 'confirm',
     args: z.object({ text: z.string().min(1).max(FEEDBACK_MAX) }).strict(),
     textArgs: (rest) => ({ text: rest }),
     usage: `feedback <your words, 1 to ${FEEDBACK_MAX} characters>`,
+    about: 'your words posted verbatim on the active profile\'s Feedback card, after you confirm.',
   },
-  simple('show_last_run', ['last'], 'code'),
-  { ...simple('start_run', ['run'], 'code'), router: 'confirm' },
+  simple('show_last_run', ['last'], 'code', 'a summary of the latest run, with a link.'),
+  { ...simple('start_run', ['run'], 'code', 'starts a manual run, after you confirm.'), router: 'confirm' },
 ];
 
 const BUILTINS = new Map<string, 'help' | 'yes' | 'no'>([['help', 'help'], ['hilfe', 'help'], ['yes', 'yes'], ['ja', 'yes'], ['no', 'no'], ['nein', 'no']]);
