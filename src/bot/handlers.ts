@@ -9,9 +9,15 @@ import type { UserBoards } from '../trello/scoped.ts';
 import type { Settings, UserConfig } from '../config/schema.ts';
 import { explainFilter } from './why.ts';
 import { handleOpen } from './open.ts';
+import type { UrlGuard } from '../net/safe-fetch.ts';
 
 export type OpenResult = { verdict: 'open' | 'closed' | 'unknown'; reason: string };
-export type NetDeps = { fetchJd: ProcessDeps['fetchJd']; checkOpen: (url: string) => Promise<OpenResult> };
+export type NetDeps = {
+  fetchJd: ProcessDeps['fetchJd'];
+  checkOpen: (url: string) => Promise<OpenResult>;
+  /** Tests only: lets loopback pass the address checks. */
+  urlGuard?: UrlGuard;
+};
 
 export type CommandCtx = {
   api: BotApi;

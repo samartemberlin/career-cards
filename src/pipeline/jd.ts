@@ -70,6 +70,9 @@ export type FetchJdOpts = {
   env?: ParentEnv;
   /** Epoch ms: no request runs past it. */
   deadline?: number;
+  /** For links from comments: only `fetchImpl` runs. career-ops' fetch-jd child has no public-address guard, and the
+   *  LinkedIn guest API gives no title. */
+  pageOnly?: boolean;
 };
 
 export async function fetchJd(
@@ -82,12 +85,13 @@ export async function fetchJd(
     careerOpsDir = DEFAULT_CAREER_OPS_DIR,
     env = process.env,
     deadline = Infinity,
+    pageOnly = false,
     // LinkedIn guest endpoint, paced and capped; injectable for tests.
     linkedinFetch = (id: string, o: { deadline?: number }): Promise<string | null> => fetchLinkedinJd(id, o),
   } = opts;
   const timeout = (ms: number): number => Math.max(1, Math.min(ms, deadline - Date.now()));
 
-  if (job.key.startsWith('linkedin:')) {
+  if (!pageOnly && job.key.startsWith('linkedin:')) {
     const id = job.key.slice('linkedin:'.length);
     const text = await linkedinFetch(id, { deadline });
     return text
@@ -95,7 +99,7 @@ export async function fetchJd(
       : null;
   }
 
-  if (ATS_KEY.test(job.key)) {
+  if (!pageOnly && ATS_KEY.test(job.key)) {
     const text = await atsFetch(careerOpsDir, job.url, careerOpsEnv(env), timeout(30000));
     if (text && text.length >= MIN_TEXT) {
       return { jd: text.slice(0, MAX_TEXT), meta: { source: 'ats-api' } };

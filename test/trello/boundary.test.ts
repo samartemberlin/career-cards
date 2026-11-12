@@ -5,10 +5,10 @@ import { join, relative } from 'node:path';
 
 const SRC = join(import.meta.dirname, '..', '..', 'src');
 
-// The CLI entry point builds the one raw client and hands it to runOnce, which scopes it with scopeUserBoards.
-const RAW_CLIENT_ALLOWED = new Set(['run.ts']);
+// The two entry points build the one raw client and scope it with scopeUserBoards (run.ts through runOnce).
+const RAW_CLIENT_ALLOWED = new Set(['run.ts', 'serve.ts']);
 
-test('outside src/trello/, nothing imports scopeClient, and only the CLI entry point imports createTrelloClient', () => {
+test('outside src/trello/, nothing imports scopeClient, and only the entry points import createTrelloClient', () => {
   const offenders: string[] = [];
   for (const entry of readdirSync(SRC, { recursive: true, withFileTypes: true })) {
     if (!entry.isFile() || !entry.name.endsWith('.ts')) continue;

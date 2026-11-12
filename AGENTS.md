@@ -24,6 +24,7 @@ npm run typecheck                        # tsc --noEmit
 npm test                                 # node --test "test/**/*.test.ts"
 node --env-file=<secrets> tools/sample-boards.ts setup|capture   # sample boards only: bot's own boards, fixtures
 node --env-file=<secrets> src/run.ts [--dry-run] [--trigger scheduled|manual] [--boards <file>] [--cap <n>]
+node --env-file=<secrets> src/serve.ts      # webhook service and /trigger/run on $PORT (default 8080)
 ```
 
 ## Workflow

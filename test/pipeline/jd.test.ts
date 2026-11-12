@@ -142,3 +142,27 @@ test('fetchJd: LinkedIn gets the run deadline', async () => {
   );
   assert.equal(got, 12345);
 });
+
+test('fetchJd pageOnly: ATS and LinkedIn keys read the page itself, never fetch-jd or the guest API', async () => {
+  const html = page({ '@type': 'JobPosting', title: 'Event Planner', description: `<p>${longText}</p>` });
+  const never = async (): Promise<string | null> => { throw new Error('should not be called'); };
+  for (const job of [
+    { key: 'greenhouse:acme:1', url: 'https://boards.greenhouse.io/acme/jobs/1' },
+    { key: 'linkedin:1234567', url: 'https://www.linkedin.com/jobs/view/1234567' },
+  ]) {
+    const r = await fetchJd(job, { pageOnly: true, fetchImpl: okFetch(html), atsFetch: never, linkedinFetch: never });
+    assert.equal(r?.meta.title, 'Event Planner', job.key);
+  }
+});
+
+test('fetchJd: JSON-LD gives title, company and city', async () => {
+  const html = page({
+    '@type': 'JobPosting', title: 'Event &amp; Venue Planner', description: `<p>${longText}</p>`,
+    hiringOrganization: { '@type': 'Organization', name: 'Sample Events' },
+    jobLocation: [{ '@type': 'Place', address: { addressLocality: 'Berlin' } }],
+  });
+  const r = await fetchJd({ key: 'ba:1', url: 'https://x.org/1' }, { fetchImpl: okFetch(html) });
+  assert.equal(r?.meta.title, 'Event & Venue Planner');
+  assert.equal(r?.meta.company, 'Sample Events');
+  assert.equal(r?.meta.location, 'Berlin');
+});
