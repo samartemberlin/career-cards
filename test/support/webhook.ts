@@ -1,5 +1,6 @@
 // Test helpers for Trello webhook payloads.
 import type { TMember } from '../../src/trello/api.ts';
+import { trelloSignature } from '../../src/serve/auth.ts';
 
 /** Returns the body Trello POSTs to the callback URL for a commentCard action. */
 export function commentWebhook(o: {
@@ -30,4 +31,13 @@ export function commentWebhook(o: {
     },
     model: { id: o.boardId },
   };
+}
+
+/** Serializes `body` once and signs those exact bytes the way Trello does. */
+export function signedRequest(
+  body: unknown,
+  o: { callbackUrl: string; appSecret: string },
+): { raw: Buffer; signature: string } {
+  const raw = Buffer.from(JSON.stringify(body), 'utf8');
+  return { raw, signature: trelloSignature(raw, o.callbackUrl, o.appSecret) };
 }
