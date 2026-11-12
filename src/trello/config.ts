@@ -1,6 +1,6 @@
 import type { TCard, TChecklist, TList, BotApi } from './api.ts';
-import { ConfigError, ProfileMetaSchema, UserConfigSchema, hasYamlBlock, parseYamlBlock } from '../config/schema.ts';
-import type { UserConfig } from '../config/schema.ts';
+import { ConfigError, ProfileMetaSchema, SettingsSchema, UserConfigSchema, hasYamlBlock, parseYamlBlock } from '../config/schema.ts';
+import type { Settings, UserConfig } from '../config/schema.ts';
 import type { UserBoards } from './scoped.ts';
 export type { UserBoards } from './scoped.ts';
 export type CardRef = { id: string; name: string; url: string; board: 'profiles' | 'system' };
@@ -110,18 +110,25 @@ function columns(lists: TList[], cards: TCard[]): { list: TList; cards: TCard[] 
   return open.map((list) => ({ list, cards: cards.filter((c) => !c.closed && c.idList === list.id).sort((a, b) => a.pos - b.pos) }));
 }
 
-function readSystem(c: Collector, raw: Record<string, unknown>, lists: TList[], cards: TCard[]): void {
-  const col: Column = {
+function systemColumn(lists: TList[], cards: TCard[]): Column {
+  return {
     board: 'system', label: 'on the System board', where: 'System board', prefix: 'System',
     cards: columns(lists, cards).flatMap((x) => x.cards),
   };
+}
 
+function readSettingsCard(c: Collector, raw: Record<string, unknown>, col: Column): void {
   const settings = pick(c, col, 'Settings', true, 'settings');
   if (settings) {
     const o = cardOrigin(col, 'Settings', settings);
     c.origin('settings', o);
     raw['settings'] = yamlOf(c, o, settings, 'settings');
   }
+}
+
+function readSystem(c: Collector, raw: Record<string, unknown>, lists: TList[], cards: TCard[]): void {
+  const col = systemColumn(lists, cards);
+  readSettingsCard(c, raw, col);
 
   const sources = pick(c, col, 'Sources', false, 'sources');
   const add: string[] = [];
@@ -253,6 +260,18 @@ export async function readUserConfig(api: BotApi, boards: UserBoards): Promise<U
 
   const parsed = UserConfigSchema.safeParse(raw);
   if (!parsed.success) for (const issue of parsed.error.issues) c.issue(issue.path, issue.message);
+  if (c.problems.length || !parsed.success) throw new ConfigInvalid(c.problems);
+  return parsed.data;
+}
+
+/** Reads only the System board's Settings card, with the same problems as `readUserConfig`. */
+export async function readSettings(api: BotApi, boards: UserBoards): Promise<Settings> {
+  const [lists, cards] = await Promise.all([api.lists(boards.system, 'open'), api.cards(boards.system, { filter: 'open' })]);
+  const c = new Collector();
+  const raw: Record<string, unknown> = {};
+  readSettingsCard(c, raw, systemColumn(lists, cards));
+  const parsed = SettingsSchema.safeParse(raw['settings']);
+  if (!parsed.success) for (const issue of parsed.error.issues) c.issue(['settings', ...issue.path], issue.message);
   if (c.problems.length || !parsed.success) throw new ConfigInvalid(c.problems);
   return parsed.data;
 }
