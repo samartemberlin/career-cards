@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileLock } from '../../src/run/lock.ts';
+import { fileLock, lockHeld } from '../../src/run/lock.ts';
 
 function lockPath(t: { after: (fn: () => void) => void }): string {
   const dir = mkdtempSync(join(tmpdir(), 'career-cards-lock-test-'));
@@ -51,4 +51,14 @@ test('release without acquire leaves another holder\'s lock alone', async (t) =>
   await loser.release();
   assert.equal(existsSync(path), true);
   await holder.release();
+});
+
+test('lockHeld: no file → false; fresh → true; stale → false', async (t) => {
+  const path = lockPath(t);
+  assert.equal(await lockHeld(path), false);
+  writeFileSync(path, 'a run');
+  assert.equal(await lockHeld(path), true);
+  const old = (Date.now() - 2 * 3600_000 - 1000) / 1000;
+  utimesSync(path, old, old);
+  assert.equal(await lockHeld(path), false);
 });

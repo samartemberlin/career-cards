@@ -13,6 +13,7 @@ export type AppDeps = {
   callbackUrl: string;
   triggerSecret: string;
   onComment: (a: CommentAction) => boolean;
+  /** Serialized by the caller (`serialStarter`): `@bot run` starts runs too. */
   starter: RunStarter;
   log: (s: string) => void;
 };
@@ -62,8 +63,6 @@ function send(res: ServerResponse, status: number, body = '', headers: Record<st
 }
 
 export function createApp(d: AppDeps): (req: IncomingMessage, res: ServerResponse) => void {
-  let starting = false;
-
   async function webhook(req: IncomingMessage, res: ServerResponse): Promise<void> {
     let raw: Buffer;
     try {
@@ -99,18 +98,7 @@ export function createApp(d: AppDeps): (req: IncomingMessage, res: ServerRespons
       send(res, 401, 'unauthorized');
       return;
     }
-    // Two triggers at once would both see no run in progress.
-    if (starting) {
-      send(res, 409, 'busy');
-      return;
-    }
-    starting = true;
-    let result: StartResult;
-    try {
-      result = await startRun(d.starter, 'scheduled', d.log);
-    } finally {
-      starting = false;
-    }
+    const result = await startRun(d.starter, 'scheduled', d.log);
     d.log(`trigger: ${result}`);
     send(res, START_STATUS[result], result);
   }

@@ -14,6 +14,16 @@ export const LOCK_STALE_MS = 2 * 3600_000;
 
 const code = (e: unknown): string | undefined => (e as NodeJS.ErrnoException).code;
 
+/** True while a fresh lock file exists. Errors other than a missing file throw, so callers can fail closed. */
+export async function lockHeld(path: string, staleMs = LOCK_STALE_MS): Promise<boolean> {
+  try {
+    return Date.now() - (await stat(path)).mtimeMs < staleMs;
+  } catch (e) {
+    if (code(e) === 'ENOENT') return false;
+    throw e;
+  }
+}
+
 export function fileLock(path: string, o: { staleMs?: number } = {}): RunLock {
   const staleMs = o.staleMs ?? LOCK_STALE_MS;
   let token: string | null = null;

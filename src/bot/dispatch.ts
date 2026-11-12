@@ -1,5 +1,5 @@
 // One webhook comment in, at most one reply out. Every reply goes through finishReply with the user's masker; the
-// only exception is CONFIG_BROKEN, a constant that can carry no personal detail, posted when there is no masker.
+// only exceptions are CONFIG_BROKEN and NOT_PRIVATE, constants that carry no personal detail, posted without config.
 import { gate } from '../serve/gate.ts';
 import type { CommentAction, GateDeps } from '../serve/gate.ts';
 import type { RunStarter } from '../serve/runs.ts';
@@ -24,6 +24,7 @@ export type DispatchDeps = GateDeps & { starter: RunStarter; net: NetDeps; env: 
 export const COMMENT_MAX = 2000;
 export const COMMENT_TIMEOUT_MS = 300_000;
 const CONFIG_BROKEN = "I can't answer until the config cards are fixed. The next run's status card names the problem.";
+const NOT_PRIVATE = "I can't work while the boards aren't private. The next run's status card names the problem.";
 const IDENTITY: Masker = { mask: (t) => t, hasDetail: () => false };
 
 const firstLine = (e: unknown) => (e instanceof Error ? `${e.name}: ${e.message}` : String(e)).split('\n')[0];
@@ -90,12 +91,8 @@ async function respond(d: DispatchDeps, a: CommentAction): Promise<void> {
     allowedMembers: settings.allowed_members,
     botUsername: botName,
   });
-  let refusal: string | null = null;
-  if (problems.length) {
-    refusal = `I can't work while the boards aren't private: ${problems.map((p) => `${p.boardName}: ${p.reason} (${p.detail})`).join('; ')}`;
-  } else if (a.text.length > COMMENT_MAX) {
-    refusal = 'That comment is over 2,000 characters. Please shorten it.';
-  }
+  if (problems.length) return post(IDENTITY, { text: NOT_PRIVATE, cls: 'refusal' });
+  const refusal = a.text.length > COMMENT_MAX ? 'That comment is over 2,000 characters. Please shorten it.' : null;
 
   let masker: Masker;
   try {

@@ -182,3 +182,19 @@ test('why through the real wiring: ATS and LinkedIn links are read with the guar
   assert.deepEqual(hits, ['/boards.greenhouse.io/acme/jobs/9001', '/linkedin.com/jobs/view/1234567']);
   assert.ok(lookups.every((h) => h === 'jobs.example'));
 });
+
+test('end to end: the trigger and @samplebot run at once → one run started', async () => {
+  const s = setup();
+  let running = false;
+  const starter = {
+    // The answer reflects the moment of the call, like a platform API that is slow to reply.
+    isRunning: async () => { const r = running; await new Promise((ok) => setTimeout(ok, 100)); return r; },
+    start: async (t: RunTrigger) => { s.starts.push(t); running = true; },
+  };
+  const { base, say } = await start(s, { starter });
+  const [res] = await Promise.all([fetch(`${base}/trigger/run?key=${ENV.TRIGGER_SECRET}`, { method: 'POST' }), say('@samplebot run')]);
+  assert.equal(s.starts.length, 1);
+  const reply = s.fake.commentsOn(JOB_CARD).at(-1)!;
+  if (res.status === 202) assert.match(reply, /A run is already in progress/);
+  else assert.equal(res.status, 409);
+});

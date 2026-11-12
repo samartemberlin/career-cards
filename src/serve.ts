@@ -4,13 +4,13 @@ import { createTrelloClient } from './trello/client.ts';
 import type { TrelloApi } from './trello/api.ts';
 import { scopeUserBoards } from './trello/scoped.ts';
 import type { UserBoards } from './trello/scoped.ts';
-import { UsageError, resolveBoards } from './run.ts';
+import { UsageError, resolveBoards, runLockPath } from './run.ts';
 import { createApp } from './serve/app.ts';
 import { callbackUrl } from './serve/auth.ts';
 import { createRecentIds } from './serve/gate.ts';
 import { createQueue } from './serve/queue.ts';
 import type { Queue } from './serve/queue.ts';
-import { localRunStarter } from './serve/runs.ts';
+import { localRunStarter, serialStarter } from './serve/runs.ts';
 import type { RunStarter } from './serve/runs.ts';
 import { handleComment } from './bot/dispatch.ts';
 import type { DispatchDeps } from './bot/dispatch.ts';
@@ -97,7 +97,7 @@ export async function main(
   const me = await api.me();
   for (const id of [cfg.boards.jobs, cfg.boards.profiles, cfg.boards.system]) await api.board(id);
 
-  const starter = o.starter ?? localRunStarter({ env, log });
+  const starter = serialStarter(o.starter ?? localRunStarter({ env, log, lockFile: runLockPath(env, cfg.boards) }));
   const deps: DispatchDeps = {
     api,
     boards: cfg.boards,

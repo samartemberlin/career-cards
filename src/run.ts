@@ -99,6 +99,11 @@ export function resolveBoards(env: Env, file?: string): UserBoards {
   };
 }
 
+/** Shared with the service, which reads the same lock to answer `busy`. */
+export function runLockPath(env: Env, boards: UserBoards): string {
+  return env.RUN_LOCK_FILE ?? join(tmpdir(), `career-cards-run-${boards.system}.lock`);
+}
+
 export async function main(
   argv: string[],
   env: Env,
@@ -176,7 +181,7 @@ export async function main(
   const deps: RunDeps = {
     trello,
     boards,
-    lock: o.lock ?? fileLock(env.RUN_LOCK_FILE ?? join(tmpdir(), `career-cards-run-${boards.system}.lock`)),
+    lock: o.lock ?? fileLock(runLockPath(env, boards)),
     scan,
     fetchJd: (job, jo) => fetchJd(job, { env, ...jo }),
     env,
