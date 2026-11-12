@@ -241,3 +241,12 @@ test('a reply without emphasis tricks keeps its underscores and allowed links', 
   const [part] = finish(`use record_feedback, **bold** and ${link}`, { allowedLinks: [link] });
   assert.ok(part!.includes(`use record_feedback, **bold** and ${link}`), part);
 });
+
+test('a masked detail before a colon and an emphasised allowed link are ordinary replies', () => {
+  for (const text of ['Theo Example: you fit well', 'Mail theo.example@mail.test: done', 'Call +49 30 1234567: ok']) {
+    const [part] = finish(text);
+    assert.doesNotMatch(part!, /theo|1234567/i, text);
+  }
+  const [part] = finish(`**${JOB}** and _${JOB}_ and snake_case`);
+  assert.ok(part!.includes(`**${JOB}** and _${JOB}_ and snake_case`), part);
+});

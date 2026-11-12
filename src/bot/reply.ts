@@ -13,7 +13,7 @@ const REMOVED = '[link removed]';
 const CUT = '… (cut)';
 const URL_CHAR = '[^\\s<>"`\\[\\]]';
 const HTTP_URL = new RegExp(`https?:\\/\\/${URL_CHAR}+`, 'gi');
-const TRAILING = /[).,;:!?'"]+$/;
+const TRAILING = /[).,;:!?'"*_~]+$/;
 
 /** http(s) links in `text`, as they would be compared with the allowed links. */
 export function linksIn(text: string): string[] {
@@ -202,7 +202,10 @@ export function finishReply(r: {
     const guarded = guardLinks(dropMarkerLines(dropMarkup(text)), r.allowedLinks);
     const masked = r.masker.mask(guarded.text).replace(IMAGE_START, '[');
     const bare = masked.replace(EMPHASIS_IN_WORD, '');
-    const unsafe = r.masker.hasDetail(bare) || guardLinks(dropMarkerLines(dropMarkup(bare)), []).text !== bare;
+    // Compared with the same checks on the masked text, not with `bare`: a placeholder such as `[USER]:` is not a
+    // fixed point of the checks, but its target already passed them.
+    const recheck = (t: string) => guardLinks(dropMarkerLines(dropMarkup(t)), []).text;
+    const unsafe = r.masker.hasDetail(bare) || recheck(bare) !== recheck(masked).replace(EMPHASIS_IN_WORD, '');
     return { body: dropMarkerLines(restoreLinks(masked, guarded.links, r.masker)).trim(), unsafe };
   };
   const text = normalize(r.text);
