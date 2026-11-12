@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTrelloClient } from '../../src/trello/client.ts';
 import type { FetchLike } from '../../src/trello/client.ts';
-import { SAMPLE_NAMES, denyBoardListing, pickBotWorkspace, verifySampleBoards } from '../../tools/sample/guard.ts';
+import { SAMPLE_NAMES, denyBoardListing, pickBotWorkspace, verifySampleBoards, withAllowedMembers } from '../../tools/sample/guard.ts';
 import { personalStrings, scrubRecording, scrubRecordings } from '../../tools/sample/scrub.ts';
 import type { Recording } from '../../tools/sample/scrub.ts';
 
@@ -205,4 +205,28 @@ test('personalStrings finds member names, initials and emails, comment entities 
     body: { memberCreator: { fullName: 'Real Person', initials: 'RP', username: 'realbot' }, entities: [{ type: 'member', text: 'Shown Name' }, { type: 'text', text: 'on' }] },
   }];
   assert.deepEqual(personalStrings(rec).sort(), ['RP', 'Real Person', 'Shown Name', 'realbot']);
+});
+
+test('verifySampleBoards accepts a shared guest and still refuses anyone else', async () => {
+  const routes = sampleRoutes();
+  routes[`/boards/${STATE.system}/members`] = [ME, OTHER];
+  await verifySampleBoards(stubApi(routes).api, { ...STATE, guests: [OTHER.id] });
+  routes[`/boards/${STATE.jobs}/members`] = [ME, { id: 'f'.repeat(24), username: 'stranger' }];
+  await assert.rejects(verifySampleBoards(stubApi(routes).api, { ...STATE, guests: [OTHER.id] }), /members/);
+});
+
+test('verifySampleBoards refuses a board the bot is not a member of', async () => {
+  const routes = sampleRoutes();
+  routes[`/boards/${STATE.profiles}/members`] = [OTHER];
+  await assert.rejects(verifySampleBoards(stubApi(routes).api, { ...STATE, guests: [OTHER.id] }), /members/);
+});
+
+test('withAllowedMembers rewrites only the allowed_members line of the YAML block', () => {
+  const desc = 'Note.\n\n```yaml\ntimezone: Europe/Berlin\nallowed_members: [samplebot]\n```\n\nallowed_members: outside';
+  assert.equal(
+    withAllowedMembers(desc, ['tester_a']),
+    'Note.\n\n```yaml\ntimezone: Europe/Berlin\nallowed_members: [tester_a]\n```\n\nallowed_members: outside',
+  );
+  assert.throws(() => withAllowedMembers('```yaml\ntimezone: x\n```', ['a']), /allowed_members/);
+  assert.throws(() => withAllowedMembers('no block', ['a']), /allowed_members/);
 });

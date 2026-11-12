@@ -8,7 +8,8 @@ export const SAMPLE_NAMES = {
 } as const;
 
 export type SampleBoard = keyof typeof SAMPLE_NAMES;
-export type SampleState = { workspace: string } & Record<SampleBoard, string>;
+/** `guests`: member ids the `share` command added (the test bot); nobody else may be a member. */
+export type SampleState = { workspace: string; guests?: string[] } & Record<SampleBoard, string>;
 
 export class SampleGuardError extends Error {
   constructor(message: string) {
@@ -61,9 +62,21 @@ export async function verifySampleBoards(api: TrelloApi, state: SampleState): Pr
     if (b.name !== SAMPLE_NAMES[which]) throw new SampleGuardError(`the ${which} board is not a sample board`);
     if (b.idOrganization !== state.workspace) throw new SampleGuardError(`the ${which} board is not in the bot's workspace`);
     if (b.prefs.permissionLevel !== 'private') throw new SampleGuardError(`the ${which} board is not private`);
+    const allowed = new Set([me.id, ...(state.guests ?? [])]);
     const members = await api.boardMembers(b.id);
-    if (members.length !== 1 || members[0]!.id !== me.id) {
-      throw new SampleGuardError(`the ${which} board has members other than the bot`);
+    if (!members.some((m) => m.id === me.id) || members.some((m) => !allowed.has(m.id))) {
+      throw new SampleGuardError(`the ${which} board has members other than the bot and its shared guests`);
     }
   }
+}
+
+/** Rewrites the `allowed_members:` line of the Settings card's YAML block; refuses a card without exactly one. */
+export function withAllowedMembers(desc: string, usernames: string[]): string {
+  const block = /```yaml\n([\s\S]*?)```/.exec(desc);
+  const lines = block?.[1]!.split('\n') ?? [];
+  if (lines.filter((l) => /^allowed_members:/.test(l)).length !== 1) {
+    throw new SampleGuardError('the Settings card has no single allowed_members line');
+  }
+  const body = lines.map((l) => (/^allowed_members:/.test(l) ? `allowed_members: [${usernames.join(', ')}]` : l)).join('\n');
+  return desc.slice(0, block!.index) + '```yaml\n' + body + '```' + desc.slice(block!.index + block![0].length);
 }

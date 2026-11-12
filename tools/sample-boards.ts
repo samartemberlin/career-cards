@@ -1,12 +1,12 @@
 // Creates and fills the three sample boards in the bot's own workspace, and captures their API responses as fixtures.
-// Usage: node --env-file=<file with TRELLO_KEY, TRELLO_TOKEN> tools/sample-boards.ts setup|capture
+// Usage: node --env-file=<file with TRELLO_KEY, TRELLO_TOKEN> tools/sample-boards.ts setup|capture|share <member id>
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { createTrelloClient } from '../src/trello/client.ts';
 import { isOriginalsName, scopeClient } from '../src/trello/scoped.ts';
 import type { TrelloApi, TCard, TList } from '../src/trello/api.ts';
 import { parseJobKey } from '../src/trello/cards.ts';
-import { SAMPLE_NAMES, SampleGuardError, denyBoardListing, pickBotWorkspace, verifySampleBoards } from './sample/guard.ts';
+import { SAMPLE_NAMES, SampleGuardError, denyBoardListing, pickBotWorkspace, verifySampleBoards, withAllowedMembers } from './sample/guard.ts';
 import type { SampleBoard, SampleState } from './sample/guard.ts';
 import { LAYOUT, OLD_RUN_COLUMN, RUN_COLUMN, cardCount } from './sample/layout.ts';
 import type { BoardLayout } from './sample/layout.ts';
@@ -42,7 +42,7 @@ function saveState(s: State): void {
 
 function complete(s: State): SampleState {
   if (!s.workspace || !s.jobs || !s.profiles || !s.system) throw new Error(`${STATE_FILE} is incomplete: run setup`);
-  return { workspace: s.workspace, jobs: s.jobs, profiles: s.profiles, system: s.system };
+  return { workspace: s.workspace, jobs: s.jobs, profiles: s.profiles, system: s.system, ...(s.guests ? { guests: s.guests } : {}) };
 }
 
 /** Every request goes through denyBoardListing; `onCall` sees each response (credentials are in a header, never here). */
@@ -265,10 +265,52 @@ function assertOnlySampleBoards(files: Record<string, Recording>, s: SampleState
   }
 }
 
+/**
+ * Adds a test bot (by member id) to the three boards and makes the account running this tool the Settings card's
+ * only allowed member, so the test bot can be driven with this account as the human tester.
+ * The bot's own API cannot add members or edit cards, so these two writes are raw requests.
+ */
+async function share(memberId: string | undefined): Promise<void> {
+  if (!memberId || !/^[0-9a-f]{24}$/.test(memberId)) throw new Error('usage: tools/sample-boards.ts share <24-hex member id>');
+  const state = loadState();
+  const s = complete(state);
+  const guarded = denyBoardListing(fetch);
+  const raw = rawClient(guarded);
+  await verifySampleBoards(raw, s);
+  const me = await raw.me();
+  if (!/^[a-z0-9_]+$/.test(me.username)) throw new Error('unexpected username format');
+
+  const put = async (path: string, body: Record<string, string>): Promise<void> => {
+    const res = await guarded(new URL(`https://api.trello.com/1${path}`), {
+      method: 'PUT',
+      headers: {
+        authorization: `OAuth oauth_consumer_key="${process.env.TRELLO_KEY}", oauth_token="${process.env.TRELLO_TOKEN}"`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`PUT ${path.replace(/[0-9a-f]{24}/g, '<id>')} → ${res.status}`);
+  };
+
+  state.guests = [...new Set([...(state.guests ?? []), memberId])];
+  saveState(state);
+  for (const b of BOARDS) await put(`/boards/${s[b]}/members/${memberId}`, { type: 'normal' });
+
+  const api = scopeClient(raw, { boards: BOARDS.map((b) => s[b]) });
+  const config = (await api.lists(s.system, 'open')).find((l) => l.name === 'Config');
+  const settings = (await api.cards(s.system, { filter: 'open' })).filter((c) => c.idList === config?.id && c.name === 'Settings');
+  if (settings.length !== 1) throw new SampleGuardError('need exactly one open Settings card in System › Config');
+  await put(`/cards/${settings[0]!.id}`, { desc: withAllowedMembers(settings[0]!.desc, [me.username]) });
+
+  await verifySampleBoards(raw, complete(state));
+  console.log('shared the three boards with the guest; allowed_members is now the account running this tool');
+}
+
 const cmd = process.argv[2];
 if (cmd === 'setup') await setup();
 else if (cmd === 'capture') await capture();
+else if (cmd === 'share') await share(process.argv[3]);
 else {
-  console.error('usage: tools/sample-boards.ts setup|capture');
+  console.error('usage: tools/sample-boards.ts setup|capture|share <member id>');
   process.exitCode = 2;
 }
