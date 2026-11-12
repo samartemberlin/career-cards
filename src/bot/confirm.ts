@@ -60,11 +60,16 @@ export function finishProposal(r: {
   masker: Masker;
   allowedLinks: Iterable<string>;
 }): string[] {
-  const chars = [...r.text];
-  const attempt = (n: number) => finishReply({
-    ...r,
-    text: proposalText(n < chars.length ? chars.slice(0, n).join('') + ELLIPSIS : r.text, r.botName),
-  });
+  // Masked before any cut, and cut at a space where one is in the second half, as reply.ts does: half of a listed
+  // detail is no longer recognised by the masker.
+  const masked = r.masker.mask(r.text);
+  const chars = [...masked];
+  const head = (n: number): string => {
+    const s = chars.slice(0, n).join('');
+    const space = s.search(/\s\S*$/);
+    return (space > s.length / 2 ? s.slice(0, space) : s) + ELLIPSIS;
+  };
+  const attempt = (n: number) => finishReply({ ...r, text: proposalText(n < chars.length ? head(n) : masked, r.botName) });
   let parts = attempt(chars.length);
   if (parts.length === 1) return parts;
   // Masking and escaping can lengthen text, and not evenly, so the cut is searched for, not computed.
@@ -98,6 +103,8 @@ export function findPending(
   if (!valid) return { kind: 'none' };
   const expires = Date.parse(newest.proposal.expires);
   if (!(expires <= o.now.getTime() + PROPOSAL_TTL_MS)) return { kind: 'none' };
-  if (expires <= o.now.getTime()) return { kind: 'expired' };
+  if (expires <= o.now.getTime() || Date.parse(newest.comment.date) + PROPOSAL_TTL_MS <= o.now.getTime()) {
+    return { kind: 'expired' };
+  }
   return { kind: 'pending', pending: { actionId: newest.actionId, spec: valid.spec, args: valid.args } };
 }

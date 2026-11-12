@@ -175,3 +175,19 @@ test('finishProposal keeps a short proposal whole', () => {
   const [part] = finishProposal({ text: 'Start a run now?', botName: 'cardbot', author: 'usera', marker, masker, allowedLinks: [] });
   assert.ok(part!.startsWith('@usera Start a run now?\n\nReply \\`\\@cardbot yes\\` within 24 h'));
 });
+
+test('finishProposal never posts part of a listed detail at the cut', () => {
+  const masker = buildMasker(['Theo Example', '+49 30 1234567']);
+  const marker = { actionId: ASK1, cls: 'static' as const, proposal: proposal({ id: 'record_feedback', args: { text: big('a') } }, NOW) };
+  for (let k = 0; k < 40; k++) {
+    const text = 'w'.repeat(k) + ' Theo Example +49 30 1234567x'.repeat(200);
+    const [part, ...rest] = finishProposal({ text, botName: 'cardbot', author: 'usera', marker, masker, allowedLinks: [] });
+    assert.equal(rest.length, 0);
+    assert.doesNotMatch(part!, /Theo|Exa|\+49|\\\+49|1234/, `shift ${k}`);
+  }
+});
+
+test('a proposal older than the TTL by its comment date is expired, whatever its expires says', () => {
+  const c = comment(BOT, ago(25), proposed(ASK1, RUN, ago(1)));
+  assert.deepEqual(findPending([c], opts), { kind: 'expired' });
+});
