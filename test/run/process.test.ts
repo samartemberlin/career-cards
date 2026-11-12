@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { isoDateIn, processJobs } from '../../src/run/process.ts';
+import { describedRejection, isoDateIn, processJobs } from '../../src/run/process.ts';
 import type { ProcessDeps, ProcessOpts } from '../../src/run/process.ts';
 import { combinedFilter } from '../../src/run/profiles.ts';
 import { emptyStats } from '../../src/run/stats.ts';
@@ -266,6 +266,30 @@ describe('processJobs without a masked context', () => {
     assert.equal(stats.leftUnmasked, 2);
     assert.equal(stats.left, 0);
     assert.ok(stats.aborted);
+  });
+});
+
+describe('describedRejection', () => {
+  const noFilter = (): null => null;
+  const alwaysReject = (): string => 'RULE: "matched"';
+  const j = (extra: Partial<{ deadline: string }> = {}): { key: string; url: string; company: string; title: string } & typeof extra =>
+    ({ key: 'url:x', url: 'https://jobs.example/x', company: 'Acme', title: 'Engineer', ...extra });
+
+  it('filter reason wins', () => {
+    assert.equal(describedRejection(j(), alwaysReject, '2026-11-12'), 'RULE: "matched"');
+  });
+
+  it('past deadline → EXPIRED', () => {
+    assert.equal(describedRejection(j({ deadline: '2026-11-11' }), noFilter, '2026-11-12'), 'EXPIRED: "deadline 2026-11-11"');
+  });
+
+  it("today's deadline passes", () => {
+    assert.equal(describedRejection(j({ deadline: '2026-11-12' }), noFilter, '2026-11-12'), null);
+  });
+
+  it('non-ISO deadline passes', () => {
+    assert.equal(describedRejection(j({ deadline: 'asap' }), noFilter, '2026-11-12'), null);
+    assert.equal(describedRejection(j({ deadline: '2026-11' }), noFilter, '2026-11-12'), null);
   });
 });
 
