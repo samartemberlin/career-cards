@@ -53,7 +53,7 @@ No stage gets untrusted content, private data and a way out at once. Stage runne
 - Every scored job gets a card, no threshold — low scores stay visible at the bottom, never lost. [process.ts](../src/run/process.ts)
 - List moves and title edits are not feedback; only `@bot feedback` is — users move cards for their own tracking. [catalogue.ts](../src/bot/catalogue.ts)
 - A Trello automation rule triggers the run — nothing polls, and the user edits the schedule in Trello. [app.ts](../src/serve/app.ts)
-- One worker per user on their own Northflank — separation of data, tokens and quota; image stays cloud-neutral. planned (PR 5)
+- One worker per user on their own Northflank — separation of data, tokens and quota; image stays cloud-neutral. [deploy/northflank/](../deploy/northflank/), [DEPLOY.md](../DEPLOY.md)
 - One run at a time is a lock outside Trello, since no card is ever edited: a lock file locally, the platform check when deployed. [lock.ts](../src/run/lock.ts)
 - Deployed, one run at a time is the service asking Northflank for active runs before starting one, serialised in one instance, with a 1 h job deadline; Northflank's concurrency policy does not cover API-started runs. [northflank.ts](../src/serve/northflank.ts)
 - A broken config card fails the run before scanning, no stale fallback — the user sees the exact card. [schema.ts](../src/config/schema.ts)
