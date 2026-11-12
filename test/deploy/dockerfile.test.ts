@@ -2,9 +2,9 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-// Resolve project root relative to this test file (test/deploy/ → ../../)
-const root = new URL('../../', import.meta.url).pathname;
+const root = fileURLToPath(new URL('../../', import.meta.url));
 const df = readFileSync(join(root, 'Dockerfile'), 'utf-8');
 const ignore = readFileSync(join(root, '.dockerignore'), 'utf-8');
 

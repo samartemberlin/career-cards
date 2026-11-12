@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { Env } from './pipeline/llm.ts';
 import { main as runMain } from './run.ts';
+import { createRunLog, secretsFromEnv } from './run/log.ts';
 
 const USAGE = 'Usage: main.ts serve | run [flags] | check';
 
@@ -36,7 +37,9 @@ export async function dispatch(
     }
     // Dynamic import keeps serve.ts out of the run-command load path.
     const { main: serveMain } = await import('./serve.ts');
-    await serveMain(env);
+    const { server } = await serveMain(env);
+    // Block until the server closes; process.exit is never called while it runs.
+    await new Promise<void>((resolve) => server.once('close', resolve));
     return 0;
   }
 
@@ -62,10 +65,13 @@ async function defaultCheck(): Promise<string> {
 }
 
 if (import.meta.main) {
-  dispatch(process.argv.slice(2), process.env as Env).then(
+  const env = process.env as Env;
+  dispatch(process.argv.slice(2), env).then(
     (code) => process.exit(code),
     (e) => {
-      process.stderr.write(`${e instanceof Error ? e.message : String(e)}\n`);
+      // Redact before printing so startup errors don't leak env values.
+      const { redact } = createRunLog({ sink: () => {}, secrets: secretsFromEnv(env), keep: 0 });
+      process.stderr.write(`${redact(e instanceof Error ? e.message : String(e))}\n`);
       process.exit(1);
     },
   );
