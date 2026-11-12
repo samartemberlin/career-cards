@@ -78,6 +78,8 @@ function makeStub(opts: StubOpts = {}): { api: TrelloApi; log: CallLog } {
     attachText: async (cardId, name, text) => { log.push({ method: 'attachText', args: [cardId, name, text] }); return { id: 'att1' }; },
     createChecklist: async (cardId, name) => { log.push({ method: 'createChecklist', args: [cardId, name] }); return makeChecklist({ idCard: cardId, name }); },
     addCheckItem: async (checklistId, name, checked) => { log.push({ method: 'addCheckItem', args: [checklistId, name, checked] }); return { id: 'ci1', name, state: 'incomplete', pos: 0 }; },
+    cardComments: async (cardId, o) => { log.push({ method: 'cardComments', args: [cardId, o] }); return []; },
+    boardComments: async (boardId, o) => { log.push({ method: 'boardComments', args: [boardId, o] }); return []; },
   };
 
   return { api, log };
@@ -436,4 +438,41 @@ test('scopeUserBoards: Originals guard is always active (profilesBoard is requir
   });
   const scoped = scopeUserBoards(api, makeUserBoards());
   await assert.rejects(() => scoped.comment('card1', 'hello'), OriginalsWriteError);
+});
+
+// --- cardComments: id-addressed, one lookup ----------------------------------
+
+test('cardComments on a foreign card throws ScopeError after one lookup', async () => {
+  const { api, log } = makeStub({
+    cardResult: () => makeCard({ id: 'card-other', idBoard: 'board-other' }),
+  });
+  const scoped = scopeClient(api, { boards: ['board1'] });
+  await assert.rejects(() => scoped.cardComments('card-other'), ScopeError);
+  assert.equal(log.filter((c) => c.method === 'card').length, 1, 'one lookup to check the board');
+  assert.equal(log.filter((c) => c.method === 'cardComments').length, 0, 'no call when board is out of scope');
+});
+
+test('cardComments on an in-scope card passes through', async () => {
+  const { api, log } = makeStub({
+    cardResult: () => makeCard({ id: 'card1', idBoard: 'board1' }),
+  });
+  const scoped = scopeClient(api, { boards: ['board1'] });
+  await scoped.cardComments('card1');
+  assert.equal(log.filter((c) => c.method === 'cardComments').length, 1);
+});
+
+// --- boardComments: board-addressed, check before any request ----------------
+
+test('boardComments on a foreign board throws before any request', async () => {
+  const { api, log } = makeStub();
+  const scoped = scopeClient(api, { boards: ['board1'] });
+  await assert.rejects(() => scoped.boardComments('board-other', { since: '2026-01-01T00:00:00.000Z' }), ScopeError);
+  assert.equal(log.length, 0, 'no requests should be made before scope check');
+});
+
+test('boardComments on an in-scope board passes through', async () => {
+  const { api, log } = makeStub();
+  const scoped = scopeClient(api, { boards: ['board1'] });
+  await scoped.boardComments('board1', { since: '2026-01-01T00:00:00.000Z' });
+  assert.equal(log.filter((c) => c.method === 'boardComments').length, 1);
 });

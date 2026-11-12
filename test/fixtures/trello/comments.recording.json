@@ -1,0 +1,118 @@
+[
+ {
+  "method": "GET",
+  "path": "/cards/fa4e00000000000000000012/actions",
+  "query": {
+   "filter": "commentCard",
+   "limit": "50",
+   "memberCreator": "true"
+  },
+  "status": 200,
+  "body": [
+   {
+    "id": "fa4e00000000000000000013",
+    "idMemberCreator": "fa4e00000000000000000002",
+    "data": {
+     "idCard": "fa4e00000000000000000012",
+     "idAuthor": "fa4e00000000000000000002",
+     "text": "Sample comment: looks like a good fit.",
+     "textData": {
+      "emoji": {}
+     },
+     "card": {
+      "id": "fa4e00000000000000000012",
+      "name": "9 · Example Media GmbH — Content Editor",
+      "idShort": 2
+     },
+     "board": {
+      "id": "fa4e00000000000000000005",
+      "name": "career-cards sample · Jobs"
+     },
+     "list": {
+      "id": "fa4e00000000000000000010",
+      "name": "Nov 9 · 01:00"
+     }
+    },
+    "agenticIdentity": null,
+    "appCreator": {
+     "id": "fa4e00000000000000000004",
+     "authType": "appKeyToken"
+    },
+    "type": "commentCard",
+    "date": "2026-11-10T22:09:07.518Z",
+    "limits": {
+     "reactions": {
+      "perAction": {
+       "status": "ok",
+       "disableAt": 900,
+       "warnAt": 720
+      },
+      "uniquePerAction": {
+       "status": "ok",
+       "disableAt": 17,
+       "warnAt": 14
+      }
+     }
+    }
+   }
+  ]
+ },
+ {
+  "method": "GET",
+  "path": "/boards/fa4e00000000000000000005/actions",
+  "query": {
+   "filter": "commentCard",
+   "since": "2026-01-01T00:00:00.000Z",
+   "limit": "1000"
+  },
+  "status": 200,
+  "body": [
+   {
+    "id": "fa4e00000000000000000013",
+    "idMemberCreator": "fa4e00000000000000000002",
+    "data": {
+     "idCard": "fa4e00000000000000000012",
+     "idAuthor": "fa4e00000000000000000002",
+     "text": "Sample comment: looks like a good fit.",
+     "textData": {
+      "emoji": {}
+     },
+     "card": {
+      "id": "fa4e00000000000000000012",
+      "name": "9 · Example Media GmbH — Content Editor",
+      "idShort": 2
+     },
+     "board": {
+      "id": "fa4e00000000000000000005",
+      "name": "career-cards sample · Jobs"
+     },
+     "list": {
+      "id": "fa4e00000000000000000010",
+      "name": "Nov 9 · 01:00"
+     }
+    },
+    "agenticIdentity": null,
+    "appCreator": {
+     "id": "fa4e00000000000000000004",
+     "authType": "appKeyToken"
+    },
+    "type": "commentCard",
+    "date": "2026-11-10T22:09:07.518Z",
+    "limits": {
+     "reactions": {
+      "perAction": {
+       "status": "ok",
+       "disableAt": 900,
+       "warnAt": 720
+      },
+      "uniquePerAction": {
+       "status": "ok",
+       "disableAt": 17,
+       "warnAt": 14
+      }
+     }
+    }
+   }
+  ]
+ }
+]

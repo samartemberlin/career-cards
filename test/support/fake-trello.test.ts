@@ -316,3 +316,64 @@ test('FakeTrello: a PUT that would change a card\'s name or description is refus
   assert.equal(afterSet.desc, 'user-edited description', 'setCardDesc must update the description');
   assert.equal(afterSet.name, before.name, 'setCardDesc must not change the name');
 });
+
+// ── comments ─────────────────────────────────────────────────────────────────
+
+test('FakeTrello: addComment then cardComments returns it newest first with author and date', async () => {
+  const jobsRec = load('jobs');
+  const fake = FakeTrello.fromRecordings(jobsRec);
+  const bid = boardId(jobsRec);
+  const lists = await client(fake.fetch).lists(bid, 'all');
+  const listId = lists[0]!.id;
+  const card = await client(fake.fetch).createCard({ idList: listId, name: 'Test', desc: '', pos: 'bottom' });
+
+  const author: { id: string; username: string } = { id: 'fa4eaaaaaaaaaaaaaaaaaa01', username: 'userA' };
+  const d1 = new Date('2026-11-01T10:00:00.000Z');
+  const d2 = new Date('2026-11-02T12:00:00.000Z');
+  const c1 = fake.addComment(card.id, author, 'first comment', d1);
+  const c2 = fake.addComment(card.id, author, 'second comment', d2);
+
+  const comments = await client(fake.fetch).cardComments(card.id);
+  assert.equal(comments.length, 2, 'both comments returned');
+  assert.equal(comments[0]!.id, c2.id, 'newest first');
+  assert.equal(comments[1]!.id, c1.id);
+  assert.equal(comments[0]!.text, 'second comment');
+  assert.equal(comments[0]!.idMemberCreator, author.id);
+  assert.equal(comments[0]!.username, author.username);
+  assert.equal(comments[0]!.cardId, card.id);
+  assert.equal(comments[0]!.boardId, bid);
+});
+
+test('FakeTrello: boardComments honours since', async () => {
+  const jobsRec = load('jobs');
+  const fake = FakeTrello.fromRecordings(jobsRec);
+  const bid = boardId(jobsRec);
+  const lists = await client(fake.fetch).lists(bid, 'all');
+  const listId = lists[0]!.id;
+  const card = await client(fake.fetch).createCard({ idList: listId, name: 'Test', desc: '', pos: 'bottom' });
+  const author: { id: string; username: string } = { id: 'fa4eaaaaaaaaaaaaaaaaaa01', username: 'userA' };
+
+  fake.addComment(card.id, author, 'old comment', new Date('2026-10-01T00:00:00.000Z'));
+  fake.addComment(card.id, author, 'new comment', new Date('2026-11-15T00:00:00.000Z'));
+
+  const since = '2026-11-01T00:00:00.000Z';
+  const comments = await client(fake.fetch).boardComments(bid, { since });
+  assert.equal(comments.length, 1, 'only the comment after since');
+  assert.equal(comments[0]!.text, 'new comment');
+});
+
+test("FakeTrello: a client POST comment is authored by the bot (the client's _me)", async () => {
+  const jobsRec = load('jobs');
+  const fake = FakeTrello.fromRecordings(jobsRec);
+  const bid = boardId(jobsRec);
+  const lists = await client(fake.fetch).lists(bid, 'all');
+  const listId = lists[0]!.id;
+  const card = await client(fake.fetch).createCard({ idList: listId, name: 'Test', desc: '', pos: 'bottom' });
+
+  await client(fake.fetch).comment(card.id, 'bot says hello');
+  const comments = await client(fake.fetch).cardComments(card.id);
+  assert.equal(comments.length, 1);
+  assert.equal(comments[0]!.text, 'bot says hello');
+  assert.equal(comments[0]!.idMemberCreator, fake['_me'].id);
+  assert.equal(comments[0]!.username, fake['_me'].username);
+});

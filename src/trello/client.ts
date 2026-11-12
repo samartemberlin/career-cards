@@ -8,6 +8,7 @@ import {
   TCardWithListSchema,
   TChecklistSchema,
   TCheckItemSchema,
+  TCommentActionSchema,
 } from './api.ts';
 import type { TrelloApi, NewCard } from './api.ts';
 
@@ -84,7 +85,7 @@ export function createTrelloClient(o: {
       query?: Record<string, string | number | boolean | undefined | null>;
       body?: unknown;
       form?: FormData;
-      schema?: z.ZodType<T>;
+      schema?: z.ZodType<T, z.ZodTypeDef, unknown>;
     } = {},
   ): Promise<T> {
     await pace();
@@ -301,6 +302,16 @@ export function createTrelloClient(o: {
     addCheckItem: (checklistId, name, checked) => call('POST', `/checklists/${checklistId}/checkItems`, {
       body: { name, ...(checked !== undefined ? { state: checked ? 'complete' : 'incomplete' } : {}) },
       schema: TCheckItemSchema,
+    }),
+
+    cardComments: (cardId, o) => call('GET', `/cards/${cardId}/actions`, {
+      query: { filter: 'commentCard', limit: o?.limit ?? 50, memberCreator: true },
+      schema: z.array(TCommentActionSchema),
+    }),
+
+    boardComments: (boardId, o) => call('GET', `/boards/${boardId}/actions`, {
+      query: { filter: 'commentCard', since: o.since, limit: 1000 },
+      schema: z.array(TCommentActionSchema),
     }),
   };
 }

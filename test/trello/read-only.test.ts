@@ -66,7 +66,7 @@ test('readOnlyClient: every write method throws DryRunWriteError and FakeTrello 
   assert.equal(fake.requests.length, requestsBefore, 'FakeTrello must receive no requests from write method calls');
 
   assert.deepEqual(calls.map(([m]) => m), [...WRITE_METHODS]);
-  const reads = ['me', 'board', 'boardMembers', 'lists', 'list', 'cards', 'allCards', 'card', 'checklist', 'labels'];
+  const reads = ['me', 'board', 'boardMembers', 'lists', 'list', 'cards', 'allCards', 'card', 'checklist', 'labels', 'cardComments', 'boardComments'];
   assert.deepEqual(Object.keys(roApi).sort(), [...reads, ...WRITE_METHODS].sort(), 'readOnlyClient exposes exactly BotApi');
 });
 

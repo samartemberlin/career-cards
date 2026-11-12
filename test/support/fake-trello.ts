@@ -2,12 +2,14 @@
 // Seeds from GET bodies; serves every route createTrelloClient uses.
 import type { Recording } from '../../tools/sample/scrub.ts';
 import type {
-  TBoard, TMember, TList, TCard, TChecklist, TCheckItem, TLabel, TCardWithList,
+  TBoard, TMember, TList, TCard, TChecklist, TCheckItem, TLabel, TCardWithList, TComment,
 } from '../../src/trello/api.ts';
 
 const NOT_FOUND_BODY = 'The requested resource was not found.';
 
 type FailEntry = { method: string; path: RegExp; status: number; remaining: number };
+
+type CommentEntry = { id: string; idMemberCreator: string; username: string; date: string; text: string };
 
 export class FakeTrello {
   // ── state ─────────────────────────────────────────────────────────────────
@@ -23,8 +25,9 @@ export class FakeTrello {
   private _cardChecklistIds = new Map<string, string[]>();    // cardId → checklistId[]
   private _labels = new Map<string, TLabel[]>();              // boardId → labels
   private _orgMembers = new Map<string, TMember[]>();         // orgId → members
-  private _comments = new Map<string, string[]>();            // cardId → texts
+  private _comments = new Map<string, CommentEntry[]>();      // cardId → comment entries
   private _attachments = new Map<string, string[]>();         // cardId → names
+  private _now: Date = new Date('2026-01-01T00:00:00.000Z');
 
   // ── id / position generators ──────────────────────────────────────────────
   // IDs start above the highest id in the seeded recordings.
@@ -289,9 +292,16 @@ export class FakeTrello {
         if (!card) return notFound();
         const { text } = await readJson() as { text: string };
         const id = this._genId();
+        const entry: CommentEntry = {
+          id,
+          idMemberCreator: this._me.id,
+          username: this._me.username,
+          date: this._now.toISOString(),
+          text,
+        };
         if (!this._comments.has(card.id)) this._comments.set(card.id, []);
-        this._comments.get(card.id)!.push(text);
-        return ok({ id, idMemberCreator: this._me.id, data: {}, agenticIdentity: null, appCreator: null, type: 'commentCard', date: new Date().toISOString(), limits: {} });
+        this._comments.get(card.id)!.push(entry);
+        return ok({ id, idMemberCreator: this._me.id, data: {}, agenticIdentity: null, appCreator: null, type: 'commentCard', date: entry.date, limits: {} });
       }
       // POST /cards/{id}/attachments
       if ((m = /^\/cards\/([^/]+)\/attachments$/.exec(path))) {
@@ -432,8 +442,49 @@ export class FakeTrello {
     if ((m = /^\/organizations\/([^/]+)\/members$/.exec(path))) {
       return ok(this._orgMembers.get(m[1]!) ?? []);
     }
+    // /boards/{id}/actions?filter=commentCard
+    if ((m = /^\/boards\/([^/]+)\/actions$/.exec(path))) {
+      if (u.searchParams.get('filter') !== 'commentCard') return notFound();
+      const boardId = m[1]!;
+      const since = u.searchParams.get('since') ?? undefined;
+      const cardIds = this._boardCardIds.get(boardId) ?? [];
+      const all: (CommentEntry & { cardId: string })[] = [];
+      for (const cardId of cardIds) {
+        for (const c of this._comments.get(cardId) ?? []) {
+          if (since === undefined || c.date > since) all.push({ ...c, cardId });
+        }
+      }
+      all.sort((a, b) => b.date.localeCompare(a.date));
+      return ok(all.map((c) => this._toAction(c, c.cardId, boardId)));
+    }
+    // /cards/{id}/actions?filter=commentCard
+    if ((m = /^\/cards\/([^/]+)\/actions$/.exec(path))) {
+      if (u.searchParams.get('filter') !== 'commentCard') return notFound();
+      const cardId = m[1]!;
+      const card = this._cards.get(cardId);
+      if (!card) return notFound();
+      const limit = parseInt(u.searchParams.get('limit') ?? '50', 10);
+      const comments = [...(this._comments.get(cardId) ?? [])];
+      comments.sort((a, b) => b.date.localeCompare(a.date));
+      return ok(comments.slice(0, limit).map((c) => this._toAction(c, cardId, card.idBoard)));
+    }
 
     return notFound();
+  }
+
+  private _toAction(c: CommentEntry & { cardId?: string }, cardId: string, boardId: string): object {
+    return {
+      id: c.id,
+      idMemberCreator: c.idMemberCreator,
+      type: 'commentCard',
+      date: c.date,
+      memberCreator: { id: c.idMemberCreator, username: c.username },
+      data: {
+        text: c.text,
+        card: { id: cardId },
+        board: { id: boardId },
+      },
+    };
   }
 
   private _withChecklists(card: TCard): TCard {
@@ -532,7 +583,30 @@ export class FakeTrello {
   }
 
   commentsOn(cardId: string): string[] {
-    return this._comments.get(cardId) ?? [];
+    return (this._comments.get(cardId) ?? []).map((e) => e.text);
+  }
+
+  /** Add a comment as the given author. Returns the TComment it would produce. */
+  addComment(cardId: string, author: TMember, text: string, date?: Date): TComment {
+    const card = this._cards.get(cardId);
+    if (!card) throw new Error(`FakeTrello.addComment: card ${cardId} not found`);
+    const id = this._genId();
+    const d = date ?? this._now;
+    const entry: CommentEntry = {
+      id,
+      idMemberCreator: author.id,
+      username: author.username,
+      date: d.toISOString(),
+      text,
+    };
+    if (!this._comments.has(cardId)) this._comments.set(cardId, []);
+    this._comments.get(cardId)!.push(entry);
+    return { id, idMemberCreator: author.id, username: author.username, date: d.toISOString(), text, cardId, boardId: card.idBoard };
+  }
+
+  /** Move the fake's clock to d. POST /actions/comments will record this date. */
+  setNow(d: Date): void {
+    this._now = d;
   }
 
   attachmentsOn(cardId: string): string[] {

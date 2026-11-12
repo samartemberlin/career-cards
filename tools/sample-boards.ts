@@ -176,7 +176,7 @@ async function capture(): Promise<void> {
   const state = loadState();
   const s = complete(state);
   const counter = { n: 0 };
-  const files: Record<'jobs' | 'profiles' | 'system' | 'lookups', Recording> = { jobs: [], profiles: [], system: [], lookups: [] };
+  const files: Record<'jobs' | 'profiles' | 'system' | 'lookups' | 'comments', Recording> = { jobs: [], profiles: [], system: [], lookups: [], comments: [] };
   let into: Recording | null = null;
   const raw = rawClient(recordingFetch((c) => into?.push(c), counter));
 
@@ -216,6 +216,14 @@ async function capture(): Promise<void> {
     () => { throw new Error('expected a 404 for a card that does not exist'); },
     (e: unknown) => { if ((e as { status?: number }).status !== 404) throw e; },
   );
+  into = null;
+
+  // Comments: capture GET /cards/{id}/actions for the job card with a known comment,
+  // and GET /boards/{id}/actions for the whole jobs board.
+  // jobCard is the first open non-ℹ card in RUN_COLUMN; layout.ts adds a comment to job n=1.
+  into = files.comments;
+  await raw.cardComments(jobCard.id);
+  await raw.boardComments(s.jobs, { since: '2026-01-01T00:00:00.000Z' });
   into = null;
 
   const missing = WRITE_KINDS.map(([k]) => k).filter((k) => !state.writes?.[k]);

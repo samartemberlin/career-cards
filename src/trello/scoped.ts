@@ -189,6 +189,16 @@ export function scopeClient(api: TrelloApi, scope: Scope): TrelloApi {
       assertListNotOriginals(l);
       return api.createCard(c);
     },
+
+    // Id-addressed read: one lookup to verify board
+    cardComments: async (cardId, o) => {
+      const c = await api.card(cardId);
+      assertBoard(c.idBoard);
+      return api.cardComments(cardId, o);
+    },
+
+    // Board-addressed: check before any request
+    boardComments: async (boardId, o) => { assertBoard(boardId); return api.boardComments(boardId, o); },
   };
 }
 
@@ -225,6 +235,9 @@ export function scopeBotClient(api: TrelloApi, scope: Scope): BotApi {
     },
 
     archiveCard: (cardId) => inner.setCardClosed(cardId, true),
+
+    cardComments: (cardId, o) => inner.cardComments(cardId, o),
+    boardComments: (boardId, o) => inner.boardComments(boardId, o),
   };
 }
 
