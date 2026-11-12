@@ -8,6 +8,7 @@ import type { BotApi, TMember } from '../trello/api.ts';
 import type { UserBoards } from '../trello/scoped.ts';
 import type { Settings, UserConfig } from '../config/schema.ts';
 import { explainFilter } from './why.ts';
+import { handleOpen } from './open.ts';
 
 export type OpenResult = { verdict: 'open' | 'closed' | 'unknown'; reason: string };
 export type NetDeps = { fetchJd: ProcessDeps['fetchJd']; checkOpen: (url: string) => Promise<OpenResult> };
@@ -55,6 +56,7 @@ export const HANDLERS: Partial<Record<string, Handler>> = {
   show_last_run: showLastRun,
   start_run: runNow,
   explain_filter: explainFilter as Handler,
+  check_open: handleOpen,
 };
 
 export function helpText(botName: string): string {
