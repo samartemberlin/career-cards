@@ -63,7 +63,8 @@ export function createLabelResolver(
 /** Creates a job card at the bottom of the given list.
  *
  * start and due are only set when the job's posted/deadline fields are ISO YYYY-MM-DD dates.
- * When the description is truncated, the full JD is attached; an attach failure is logged and the card is still returned. */
+ * When the description is truncated, the full JD is attached; an attach failure is logged and the card is still returned,
+ * except a guard error, which is rethrown. */
 export async function createJobCard(
   api: BotApi,
   o: { listId: string; job: ScoredJob; labelIds: string[]; log: (s: string) => void },
