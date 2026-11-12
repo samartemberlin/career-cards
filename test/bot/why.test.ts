@@ -96,7 +96,7 @@ test('why: a job with an archived card → its link plus (archived)', async () =
   assert.deepEqual(result.links, [card.shortUrl]);
 });
 
-test('why: rejected by an Exclude titles item → the rule id and matched text', async () => {
+test('why: rejected by an Exclude titles item → the rule id', async () => {
   // 8.8.8.8 is a public IP so assertPublicUrl passes without DNS lookup
   const url = 'https://8.8.8.8/senior-engineer/42';
   const jd: FetchJdResult = { jd: 'Join our team.', meta: { title: 'Senior Software Engineer', company: 'Acme' } };
@@ -152,4 +152,15 @@ test('why: no title in description → the can\'t-tell reply', async () => {
   const { ctx } = setup(async () => jd);
   const result = await explainFilter(ctx, { link: url });
   assert.ok(result.text.includes("I couldn't find the job title"), `unexpected text: ${result.text}`);
+});
+
+// When the real bot fetchJd (Task 13) provides a title for an ATS key, why reaches the filter.
+// The host 8.8.8.8 is a public IP so assertPublicUrl passes without DNS. The path matches
+// the greenhouse key pattern, so jobKey returns greenhouse:acme:9999 (an ATS key).
+test('why: ATS-key URL whose fetchJd returns a title → passes the filter', async () => {
+  const url = 'https://8.8.8.8/greenhouse.io/acme/jobs/9999';
+  const jd: FetchJdResult = { jd: 'Join our event team.', meta: { title: 'Event Manager', company: 'Acme Events', location: 'Berlin, Germany' } };
+  const { ctx } = setup(async () => jd);
+  const result = await explainFilter(ctx, { link: url });
+  assert.ok(result.text.startsWith('No filter rejects it'), `unexpected text: ${result.text}`);
 });

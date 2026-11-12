@@ -11,7 +11,6 @@ export async function explainFilter(ctx: CommandCtx, args: { link: string }): Pr
   const { link } = args;
   const key = jobKey(link);
 
-  // Check if the job already has a card (open or archived) before making any external request.
   const index = await loadJobIndex(ctx.api, ctx.boards.jobs);
   const existing = index.byKey.get(key);
   if (existing) {
@@ -23,7 +22,8 @@ export async function explainFilter(ctx: CommandCtx, args: { link: string }): Pr
   }
 
   // assertPublicUrl must run before fetchJd: the link comes from a user comment, and
-  // fetchJd for ATS keys may shell out to career-ops without its own address guard.
+  // the real bot fetchJd (Task 13) must not shell out to career-ops for ATS keys — it
+  // has no public-address guard and would follow the URL without this check.
   try {
     await assertPublicUrl(link);
   } catch (e) {
@@ -43,8 +43,7 @@ export async function explainFilter(ctx: CommandCtx, args: { link: string }): Pr
     return { text: "I couldn't find the job title on the page, so I can't tell." };
   }
 
-  // Build a job for the filter: key and url come from the command; company defaults to empty
-  // when the page doesn't name it; the full JD is included so text rules can fire.
+  // company defaults to '' when the page doesn't name it; the full JD lets text rules fire.
   const { employment_type, deadline, posted, location, seniority, source, company } = result.meta;
   const job: Job = {
     key, url: link, jd: result.jd, company: company ?? '', title: metaTitle,
