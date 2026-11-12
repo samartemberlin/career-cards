@@ -586,7 +586,6 @@ export class FakeTrello {
     return (this._comments.get(cardId) ?? []).map((e) => e.text);
   }
 
-  /** Add a comment as the given author. Returns the TComment it would produce. */
   addComment(cardId: string, author: TMember, text: string, date?: Date): TComment {
     const card = this._cards.get(cardId);
     if (!card) throw new Error(`FakeTrello.addComment: card ${cardId} not found`);

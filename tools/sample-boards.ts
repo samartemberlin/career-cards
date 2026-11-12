@@ -222,8 +222,8 @@ async function capture(): Promise<void> {
   // and GET /boards/{id}/actions for the whole jobs board.
   // jobCard is the first open non-ℹ card in RUN_COLUMN; layout.ts adds a comment to job n=1.
   into = files.comments;
-  await raw.cardComments(jobCard.id);
-  await raw.boardComments(s.jobs, { since: '2026-01-01T00:00:00.000Z' });
+  await api.cardComments(jobCard.id);
+  await api.boardComments(s.jobs, { since: '2026-01-01T00:00:00.000Z' });
   into = null;
 
   const missing = WRITE_KINDS.map(([k]) => k).filter((k) => !state.writes?.[k]);
