@@ -1,6 +1,7 @@
 // Every bot comment is built here. Reply text can carry whatever a job page, a search result or a user's own comment
-// planted in it, so these checks, not the model, decide what reaches Trello: no image, no HTML, no link the caller
-// did not allow, no listed personal detail and no line that reads as a bot marker.
+// planted in it, so these checks, not the model, decide what reaches Trello. The reply is plain text: every character
+// Markdown or HTML can act on is escaped, so no construct renders, whatever it is. Links are never taken from the
+// text: every one is removed, and the allowed links the text mentioned are listed after it by this code, in one form.
 import { REPLY_MAX } from './catalogue.ts';
 import { formatMarker } from './marker.ts';
 import type { ReplyMarker } from './marker.ts';
@@ -11,8 +12,7 @@ export const REPLY_PARTS_MAX = 3;
 
 const REMOVED = '[link removed]';
 const CUT = '… (cut)';
-const URL_CHAR = '[^\\s<>"`\\[\\]]';
-const HTTP_URL = new RegExp(`https?:\\/\\/${URL_CHAR}+`, 'gi');
+const HTTP_URL = /https?:\/\/[^\s<>"`\[\]]+/gi;
 const TRAILING = /[).,;:!?'"*_~]+$/;
 
 /** http(s) links in `text`, as they would be compared with the allowed links. */
@@ -20,7 +20,7 @@ export function linksIn(text: string): string[] {
   return [...text.matchAll(HTTP_URL)].map((m) => m[0].replace(TRAILING, ''));
 }
 
-// Decoded before anything else, in case Trello renders entities: `h&#116;tps:` must meet the link checks as `https:`.
+// Decoded first, in case Trello decodes entities: `h&#116;tps:` must meet the link checks as `https:`.
 const ENTITY = /&(#\d{1,7}|#x[0-9a-f]{1,6}|[a-z][a-z0-9]{1,31});/gi;
 const NAMED: Record<string, string> = {
   amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', colon: ':', sol: '/', bsol: '\\', period: '.',
@@ -42,119 +42,121 @@ function decodeEntities(text: string): string {
   return text.replace(ENTITY, '');
 }
 
-// Private-use characters are reserved for the link placeholders below, so they can't come from the input.
-const STRIPPED = /[\u0000-\u0008\u000E-\u001F\u007F\u00AD\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF\uE000-\uF8FF]/g;
+const STRIPPED = /[\u0000-\u0008\u000E-\u001F\u007F\u00AD\u200B-‏‪-‮⁠-⁤⁦-⁩\uFEFF\uE000-\uF8FF]/g;
 const LINE_BREAK = /\r\n?|[\u000B\u000C\u0085\u2028\u2029]/g;
-// Markdown renders `https\://` and `jane\@mail.test` without the backslash, so the checks must not see it either.
+// The output escapes every backslash, so none of these could unescape on Trello; they go so that the link and detail
+// checks see `https\://` and `jane\@mail.test` as what they would read as.
 const MD_ESCAPE = /\\+(?=[!-/:-@[-`{-~])/g;
 const normalize = (text: string): string =>
   decodeEntities(text).normalize('NFKC').replace(STRIPPED, '').replace(LINE_BREAK, '\n').replace(MD_ESCAPE, '');
 
-const AUTOLINK = /<(https?:\/\/[^\s<>]+)>/gi;
-const HTML_COMMENT = /<!--[\s\S]*?(?:-->|$)/g;
-const TAG = /<[a-z!/?][^>\n]*>/gi;
-const UNCLOSED_TAG = /<[a-z!/?][^\n]*/gi;
-const IMAGE = /!\[[^\]\n]*\](?:\([^)\n]*\)|\[[^\]\n]*\])?/g;
-const IMAGE_START = /!+\[/g;
-
-// Repeated until nothing changes, because removing one piece can join the pieces around it (`<<b>img>`, `!<i></i>[x](y)`).
-function dropMarkup(text: string): string {
-  let prev: string;
-  do {
-    prev = text;
-    text = text.replace(AUTOLINK, '$1').replace(HTML_COMMENT, '').replace(TAG, '').replace(UNCLOSED_TAG, '').replace(IMAGE, '');
-  } while (text !== prev);
-  return text.replace(IMAGE_START, '[');
-}
-
-// Any line that mentions the prefix goes, not just lines that start with it: a hard split of a long line could
-// otherwise turn its middle into the start of a part's last line.
+// Any line that mentions the prefix goes, not just lines that start with it.
 const MARKER_WORD = 'career-cards-reply';
 const dropMarkerLines = (text: string): string =>
   text.split('\n').filter((l) => !l.toLowerCase().includes(MARKER_WORD)).join('\n');
 
-// Allowed links wait behind private-use placeholders while the other link checks and the masking run (the masker
-// would otherwise turn them into [LINK]).
-const TOKEN_OPEN = '\uE000';
-const TOKEN_CLOSE = '\uE001';
-const TOKEN_BASE = 0xe100;
-const TOKEN_MAX = 0x1000;
-const TOKEN = new RegExp(`${TOKEN_OPEN}([\\u{E100}-\\u{F0FF}])${TOKEN_CLOSE}`, 'gu');
-const ONLY_TOKEN = new RegExp(
-  `^<?${TOKEN_OPEN}[\\u{E100}-\\u{F0FF}]${TOKEN_CLOSE}>?(?:\\s+(?:"[^"\\n]*"|'[^'\\n]*'))?$`, 'u');
-// Where a link may start; anything else glued in front could make it a different link (`javascript:https://…`).
-const LINK_START = /[\s(\[{"'*_~>|`]/;
+// A listed link is emitted as a CommonMark autolink, which allows no space, `<` or `>` inside; RFC 3986 characters
+// only, so nothing in it can end the autolink or be read as anything else.
+const SAFE_LINK = /^https?:\/\/[A-Za-z0-9\-._~:/?#@!$&'()*+,;=%]+$/;
+const LINK_MAX = 1000;
+const LINKS_MAX = 10;
 
-const MD_TARGET = /\]\(([^)\n]*)\)/g;
-// Not anchored to the line start: a definition also works inside a blockquote or a list item.
-const REF_DEF = /\[([^\]\n]+)\]:[ \t]*(.*)$/gm;
-const SCHEME_URL = new RegExp(`[a-z][a-z0-9+.-]*:\\/\\/${URL_CHAR}*`, 'gi');
-const RISKY_SCHEME = new RegExp(
-  `\\b(?:https?|ftps?|sftp|file|javascript|vbscript|data|blob|mailto|tel|sms|callto|intent|wss?):${URL_CHAR}+`, 'gi');
-const WWW = new RegExp(`(?<![\\p{L}\\p{N}.-])www\\.${URL_CHAR}+`, 'giu');
-const PROTOCOL_RELATIVE = new RegExp(`(?<![\\p{L}\\p{N}:/])\\/\\/[\\p{L}\\p{N}]${URL_CHAR}*`, 'gu');
-// The domain endings a linkifier turns into links without a scheme: linkify-it's defaults (all two-letter country
-// codes and the old generic ones), common newer ones, and IDN. `Node.js` and `e.g.` stay text.
-const CC_TLD = 'a[cdefgilmnoqrstuwxz]|b[abdefghijmnorstvwyz]|c[acdfghiklmnoruvwxyz]|d[ejkmoz]|e[cegrstu]|f[ijkmor]|' +
-  'g[abdefghilmnpqrstuwy]|h[kmnrtu]|i[delmnoqrst]|j[emop]|k[eghimnprwyz]|l[abcikrstuvy]|' +
-  'm[acdeghklmnopqrstuvwxyz]|n[acefgilopruz]|om|p[aefghklmnrstwy]|qa|r[eosuw]|s[abcdeghijklmnortuvxyz]|' +
-  't[cdfghjklmnortvwz]|u[agksyz]|v[aceginu]|w[fs]|y[et]|z[amw]';
-const G_TLD = 'biz|com|edu|gov|net|org|pro|web|xxx|aero|asia|coop|info|museum|name|shop|рф|int|mobi|travel|app|dev|' +
-  'xyz|online|site|top|club|store|tech|cloud|live|blog|page|link|click|berlin|website|space|jobs|careers|email|' +
-  'digital|agency|network|systems|solutions|ninja|wtf|zip|mov|social|lol|fun|icu|today|world|life|art|design|studio|' +
-  'media|zone|xn--[a-z0-9-]+';
-const BARE_DOMAIN = new RegExp(
-  `(?<![\\p{L}\\p{N}@._-])(?:[\\p{L}\\p{N}](?:[\\p{L}\\p{N}-]{0,61}[\\p{L}\\p{N}])?\\.)+(?:${G_TLD}|${CC_TLD})` +
-  `(?![\\p{L}\\p{N}_-])(?::\\d{1,5})?(?:[/?#]${URL_CHAR}*)?`, 'giu');
+function isSafeLink(link: string, masker: Masker): boolean {
+  if (link.length > LINK_MAX || !SAFE_LINK.test(link) || masker.hasDetail(link)) return false;
+  try {
+    return new URL(link).hostname.length > 0;
+  } catch {
+    return false;
+  }
+}
 
-function guardLinks(text: string, allowedLinks: Iterable<string>): { text: string; links: string[] } {
-  const allowed = new Set([...allowedLinks].map((l) => l.trim()));
+/** Every http(s) link becomes `[link N]` when allowed, else `[link removed]`. */
+function takeLinks(text: string, allowedLinks: Iterable<string>, masker: Masker): { text: string; links: string[] } {
+  const allowed = new Set([...allowedLinks].map((l) => l.trim()).filter((l) => isSafeLink(l, masker)));
   const links: string[] = [];
-  text = text.replace(HTTP_URL, (match: string, offset: number, whole: string) => {
+  text = text.replace(HTTP_URL, (match: string) => {
     const link = match.replace(TRAILING, '');
     const rest = match.slice(link.length);
-    const atStart = offset === 0 || LINK_START.test(whole[offset - 1]!);
-    if (!atStart || !allowed.has(link)) return REMOVED + rest;
     let i = links.indexOf(link);
-    if (i < 0) {
-      if (links.length >= TOKEN_MAX) return REMOVED + rest;
-      i = links.push(link) - 1;
-    }
-    return TOKEN_OPEN + String.fromCharCode(TOKEN_BASE + i) + TOKEN_CLOSE + rest;
+    if (i < 0 && allowed.has(link) && links.length < LINKS_MAX) i = links.push(link) - 1;
+    return (i < 0 ? REMOVED : `[link ${i + 1}]`) + rest;
   });
-  text = text
-    .replace(MD_TARGET, (m: string, target: string) => (ONLY_TOKEN.test(target.trim()) ? m : `] (${REMOVED})`))
-    .replace(REF_DEF, (m: string, label: string, target: string) => (ONLY_TOKEN.test(target.trim()) ? m : `[${label}] ${REMOVED}`))
-    .replace(SCHEME_URL, REMOVED)
-    .replace(RISKY_SCHEME, REMOVED)
-    .replace(WWW, REMOVED)
-    .replace(PROTOCOL_RELATIVE, REMOVED)
-    .replace(BARE_DOMAIN, REMOVED);
   return { text, links };
 }
 
-function restoreLinks(text: string, links: string[], masker: Masker): string {
-  return text
-    .replace(TOKEN, (_: string, c: string) => {
-      const link = links[c.charCodeAt(0) - TOKEN_BASE];
-      return link === undefined || masker.hasDetail(link) ? REMOVED : link;
-    })
-    .replace(/[\uE000-\uF8FF]/g, '');
+const SCHEME_URL = /[a-z][a-z0-9+.-]*:\/\/\S*/gi;
+const RISKY_SCHEME = /\b(?:https?|ftps?|sftp|file|javascript|vbscript|data|blob|mailto|tel|sms|callto|intent|xmpp|wss?):\S+/gi;
+const PROTOCOL_RELATIVE = /\/\/[\p{L}\p{N}]\S*/gu;
+// Emphasis marks count as part of a label, so `evil*.ninja` is a domain here as well.
+const HOST = /[\p{L}\p{N}*_~`-]+(?:\.[\p{L}\p{N}*_~`-]+)+/gu;
+// Any ending of two or more letters may be a top-level domain some linkifier knows, so a dotted word goes unless its
+// endings are all on this short list of file extensions that are not domains (`Node.js`). `e.g.` and `3.91` stay.
+const NOT_TLD = new Set(['js', 'ts', 'jsx', 'tsx', 'mjs', 'cjs', 'json', 'yaml', 'yml', 'txt', 'csv', 'html', 'htm', 'css',
+  'scss', 'xml', 'pdf', 'png', 'jpg', 'jpeg', 'gif', 'svg', 'docx', 'xlsx', 'pptx', 'exe', 'dll', 'sql', 'php', 'java']);
+function mayBeTld(label: string): boolean {
+  const bare = label.replace(/[*_~`]/g, '').toLowerCase();
+  return bare.startsWith('xn--') || (/^\p{L}{2,63}$/u.test(bare) && !NOT_TLD.has(bare));
+}
+const dropHost = (host: string): string => (host.split('.').slice(1).some(mayBeTld) ? REMOVED : host);
+
+/** Removes every other link form, repeated until nothing changes. */
+function stripLinks(text: string): string {
+  for (let i = 0; i < 16; i++) {
+    const next = text
+      .replace(SCHEME_URL, REMOVED)
+      .replace(RISKY_SCHEME, REMOVED)
+      .replace(PROTOCOL_RELATIVE, REMOVED)
+      .replace(HOST, dropHost);
+    if (next === text) return text;
+    text = next;
+  }
+  throw new PrivacyError('reply: links do not settle');
 }
 
-/** Where to cut `s` to at most `max` characters: at the last space in the second half, else hard, never inside a
- * surrogate pair. Returns the head and the rest. */
+const MARKS = /[*_~`]/g;
+// Every ASCII punctuation character CommonMark, GFM or HTML give a meaning to. Left out: , ; ? " ' % / which mean
+// something only inside a link, a tag or an entity, and each of those needs an escaped character to start.
+const ACTIVE = /[!#$&()*+\-.:<=>@[\\\]^_`{|}~]/g;
+const escapeText = (line: string): string => line.replace(ACTIVE, '\\$&');
+
+/** The plain text of the reply: links taken out, details masked, one space between words, no marker line. */
+function plainText(r: { text: string; masker: Masker; allowedLinks: Iterable<string> }): { text: string; links: string[] } {
+  const taken = takeLinks(dropMarkerLines(normalize(r.text)), r.allowedLinks, r.masker);
+  let masked = r.masker.mask(taken.text);
+  // Marks are shown, not rendered, but `Th_eo_ Exa**mple**` still reads as the name.
+  if (r.masker.hasDetail(masked.replace(MARKS, ''))) masked = r.masker.mask(taken.text.replace(MARKS, ''));
+  const plain = dropMarkerLines(stripLinks(masked))
+    .split('\n')
+    .map((l) => l.replace(/[ \t]+/g, ' ').trim())
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  if (r.masker.hasDetail(plain) || r.masker.hasDetail(plain.replace(MARKS, ''))) {
+    throw new PrivacyError('reply: a personal detail is left after masking');
+  }
+  return { text: plain, links: taken.links };
+}
+
+/** Where to cut an escaped line to at most `max` characters: at the last space in the second half, else after the
+ * last whole character, never between a backslash and what it escapes, nor inside a surrogate pair. */
 function cut(s: string, max: number): [string, string] {
   const space = s.lastIndexOf(' ', max);
   if (space > max / 2) return [s.slice(0, space), s.slice(space + 1)];
-  const at = /[\uD800-\uDBFF]/.test(s[max - 1] ?? '') && max > 1 ? max - 1 : max;
-  return [s.slice(0, at), s.slice(at)];
+  let at = 0;
+  while (at < s.length) {
+    const width = s[at] === '\\' || /[\uD800-\uDBFF]/.test(s[at]!) ? 2 : 1;
+    if (at + width > max) break;
+    at += width;
+  }
+  return [s.slice(0, at), s.slice(at).trimStart()];
 }
 
-function split(text: string, firstMax: number): string[] {
+type Line = { text: string; atomic: boolean };
+
+function split(lines: Line[], firstMax: number): string[] {
   const parts: string[] = [];
   let cur: string | null = null;
-  for (let line of text.split('\n')) {
+  for (let { text: line, atomic } of lines) {
     for (;;) {
       if (parts.length > REPLY_PARTS_MAX) return parts;
       const max = parts.length === 0 ? firstMax : REPLY_MAX;
@@ -171,6 +173,7 @@ function split(text: string, firstMax: number): string[] {
         cur = line;
         break;
       }
+      if (atomic) throw new Error('reply: a link line does not fit a part');
       const [head, rest] = cut(line, max);
       parts.push(head);
       line = rest;
@@ -180,7 +183,16 @@ function split(text: string, firstMax: number): string[] {
   return parts;
 }
 
-const EMPHASIS_IN_WORD = /(?<=[\p{L}\p{N}])[*_~`]+|[*_~`]+(?=[\p{L}\p{N}])/gu;
+function cutLast(part: string): string {
+  const lines = part.split('\n');
+  const room = REPLY_MAX - CUT.length - 1;
+  while (lines.join('\n').length > room) {
+    if (lines.length > 1) lines.pop();
+    else lines[0] = cut(lines[0]!, room)[0];
+  }
+  return `${lines.join('\n')}\n${CUT}`;
+}
+
 const USERNAME = /^[a-z0-9_]{1,100}$/i;
 
 export function finishReply(r: {
@@ -195,29 +207,19 @@ export function finishReply(r: {
   const firstMax = REPLY_MAX - 2 - marker.length;
   if (firstMax < 100) throw new Error('reply: marker leaves no room for the reply');
 
-  // Emphasis marks inside or around a word render as nothing, so `Th_eo_ Exa**mple**` shows a name the masker didn't
-  // see, and `evil*.ninja` may show a link. A reply whose text, without those marks, would not pass the checks
-  // unchanged is rebuilt from the text without them, through every check again.
-  const check = (text: string): { body: string; unsafe: boolean } => {
-    const guarded = guardLinks(dropMarkerLines(dropMarkup(text)), r.allowedLinks);
-    const masked = r.masker.mask(guarded.text).replace(IMAGE_START, '[');
-    const bare = masked.replace(EMPHASIS_IN_WORD, '');
-    // Compared with the same checks on the masked text, not with `bare`: a placeholder such as `[USER]:` is not a
-    // fixed point of the checks, but its target already passed them.
-    const recheck = (t: string) => guardLinks(dropMarkerLines(dropMarkup(t)), []).text;
-    const unsafe = r.masker.hasDetail(bare) || recheck(bare) !== recheck(masked).replace(EMPHASIS_IN_WORD, '');
-    return { body: dropMarkerLines(restoreLinks(masked, guarded.links, r.masker)).trim(), unsafe };
-  };
-  const text = normalize(r.text);
-  let result = check(text);
-  if (result.unsafe) result = check(text.replace(EMPHASIS_IN_WORD, ''));
-  if (result.unsafe || r.masker.hasDetail(result.body)) throw new PrivacyError('reply: a personal detail or link is left after the checks');
-  const body = result.body;
+  const plain = plainText(r);
+  const [first, ...rest] = plain.text ? plain.text.split('\n').map(escapeText) : [];
+  const lines: Line[] = [{ text: first ? `@${r.author} ${first}` : `@${r.author}`, atomic: false }];
+  for (const text of rest) lines.push({ text, atomic: false });
+  if (plain.links.length) {
+    lines.push({ text: '', atomic: false }, { text: 'Links:', atomic: false });
+    plain.links.forEach((link, i) => lines.push({ text: `link ${i + 1}: <${link}>`, atomic: true }));
+  }
 
-  let parts = split(body ? `@${r.author} ${body}` : `@${r.author}`, firstMax);
+  let parts = split(lines, firstMax);
   if (parts.length > REPLY_PARTS_MAX) {
     parts = parts.slice(0, REPLY_PARTS_MAX);
-    parts[REPLY_PARTS_MAX - 1] = `${cut(parts[REPLY_PARTS_MAX - 1]!, REPLY_MAX - CUT.length - 1)[0]}\n${CUT}`;
+    parts[REPLY_PARTS_MAX - 1] = cutLast(parts[REPLY_PARTS_MAX - 1]!);
   }
   parts[0] = `${parts[0]}\n\n${marker}`;
   return parts;
