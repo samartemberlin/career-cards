@@ -7,7 +7,7 @@ import { llmConfig, providerProblems } from '../pipeline/llm.ts';
 import type { CallOpts, Env } from '../pipeline/llm.ts';
 import { buildScoreContext, PrivacyError } from '../privacy.ts';
 import type { MaskedContext } from '../privacy.ts';
-import type { TCard, TrelloApi } from '../trello/api.ts';
+import type { BotApi, TCard, TrelloApi } from '../trello/api.ts';
 import { runColumnName } from '../trello/cards.ts';
 import { ConfigInvalid, readUserConfig } from '../trello/config.ts';
 import type { ConfigProblem, UserBoards } from '../trello/config.ts';
@@ -110,7 +110,7 @@ function problemText(p: ConfigProblem): string {
 
 /** One comment per card that broke the config; a failed comment is logged, the run still fails on the config. */
 async function commentOnBadCards(
-  api: TrelloApi, problems: ConfigProblem[], column: string, redact: (s: string) => string, log: (s: string) => void,
+  api: BotApi, problems: ConfigProblem[], column: string, redact: (s: string) => string, log: (s: string) => void,
 ): Promise<void> {
   const byCard = new Map<string, string[]>();
   for (const p of problems) {

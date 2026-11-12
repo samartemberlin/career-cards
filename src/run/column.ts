@@ -1,4 +1,4 @@
-import type { TrelloApi, TCard, TList } from '../trello/api.ts';
+import type { BotApi, TCard, TList } from '../trello/api.ts';
 import type { Settings } from '../config/schema.ts';
 import { createJobCard, createLabelResolver, archiveCards } from '../trello/writer.ts';
 import type { ScoredJob } from '../trello/writer.ts';
@@ -49,7 +49,7 @@ const message = (e: unknown): string => (e instanceof Error ? e.message : String
 /** Creates the run column: the summary card, then one card per job in the given order (callers pass best first).
  *  No jobs, no column. A failed job card is logged and counted; scope-guard errors are rethrown. */
 export async function writeRunColumn(
-  api: TrelloApi,
+  api: BotApi,
   o: {
     board: string;
     name: string;
@@ -99,7 +99,7 @@ export async function writeRunColumn(
 
 /** Archives cards in chunks, starting no chunk at or after the deadline; the rest are archived by the next run. */
 export async function archiveRunCards(
-  api: TrelloApi,
+  api: BotApi,
   cards: TCard[],
   o: { deadline: number; log: (s: string) => void },
 ): Promise<{ archived: number; failed: number; left: number }> {

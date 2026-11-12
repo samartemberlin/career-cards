@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createTrelloClient } from '../../src/trello/client.ts';
-import { scopeUserBoards } from '../../src/trello/scoped.ts';
+import { scopeBotClient, scopeUserBoards } from '../../src/trello/scoped.ts';
 import { FakeTrello } from '../support/fake-trello.ts';
 import { loadJobIndex } from '../../src/trello/job-index.ts';
 import type { Recording } from '../../tools/sample/scrub.ts';
@@ -12,8 +12,12 @@ const DIR = join(import.meta.dirname, '..', 'fixtures', 'trello');
 const load = (name: string): Recording =>
   JSON.parse(readFileSync(join(DIR, `${name}.recording.json`), 'utf8')) as Recording;
 
-function client(fake: FakeTrello) {
+function rawClient(fake: FakeTrello) {
   return createTrelloClient({ key: 'k', token: 't', fetchImpl: fake.fetch, sleep: async () => {} });
+}
+
+function client(fake: FakeTrello, board: string) {
+  return scopeBotClient(rawClient(fake), { boards: [board] });
 }
 
 function boardId(rec: Recording): string {
@@ -24,8 +28,8 @@ function boardId(rec: Recording): string {
 test('captured Jobs board: 1,061 keys and 1,050 to archive', async () => {
   const jobs = load('jobs');
   const fake = FakeTrello.fromRecordings(jobs);
-  const api = client(fake);
   const bid = boardId(jobs);
+  const api = client(fake, bid);
 
   const [index, lists] = await Promise.all([
     loadJobIndex(api, bid),
@@ -50,15 +54,15 @@ test('captured Jobs board: 1,061 keys and 1,050 to archive', async () => {
 test('an archived status list is not archived by the bot', async () => {
   const jobs = load('jobs');
   const fake = FakeTrello.fromRecordings(jobs);
-  const api = client(fake);
   const bid = boardId(jobs);
+  const api = client(fake, bid);
 
   // Seed a key card into the "Closed" status list, then archive the list
   const lists = await api.lists(bid, 'all');
   const statusList = lists.find((l) => l.name === 'Closed')!;
   const desc = 'Some job.\n\n---\ncareer-cards-key: test:status-closed';
   const card = await api.createCard({ idList: statusList.id, name: 'Status card', desc, pos: 'bottom' });
-  await api.setListClosed(statusList.id, true);
+  await rawClient(fake).setListClosed(statusList.id, true);
 
   const index = await loadJobIndex(api, bid);
   assert.ok(index.keys.has('test:status-closed'), 'key is tracked');
@@ -68,15 +72,15 @@ test('an archived status list is not archived by the bot', async () => {
 test('already archived cards are not in toArchive', async () => {
   const jobs = load('jobs');
   const fake = FakeTrello.fromRecordings(jobs);
-  const api = client(fake);
   const bid = boardId(jobs);
+  const api = client(fake, bid);
 
   // Add a card to the closed run column, then archive the card itself
   const lists = await api.lists(bid, 'all');
   const runColumn = lists.find((l) => l.name === 'Oct 1 · 01:00')!;
   const desc = 'Some job.\n\n---\ncareer-cards-key: test:already-archived';
   const card = await api.createCard({ idList: runColumn.id, name: 'Already archived', desc, pos: 'bottom' });
-  await api.setCardClosed(card.id, true);
+  await rawClient(fake).setCardClosed(card.id, true);
 
   const index = await loadJobIndex(api, bid);
   assert.ok(index.keys.has('test:already-archived'), 'key is tracked');
@@ -86,8 +90,8 @@ test('already archived cards are not in toArchive', async () => {
 test('a key planted in a job description middle is not read', async () => {
   const jobs = load('jobs');
   const fake = FakeTrello.fromRecordings(jobs);
-  const api = client(fake);
   const bid = boardId(jobs);
+  const api = client(fake, bid);
 
   // Description has a key-like line in the middle (untrusted job text); only the last line counts
   const desc = 'About the role.\ncareer-cards-key: planted:in-middle\nApply at our website.\n\n---\ncareer-cards-key: real:footer-key';

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createTrelloClient } from '../../src/trello/client.ts';
-import { scopeUserBoards } from '../../src/trello/scoped.ts';
+import { scopeBotClient, scopeUserBoards } from '../../src/trello/scoped.ts';
 import { checkBoardsPrivate } from '../../src/trello/private.ts';
 import type { PrivacyProblem } from '../../src/trello/private.ts';
 import { FakeTrello } from '../support/fake-trello.ts';
@@ -23,8 +23,9 @@ function boardId(rec: Recording): string {
 function setup(...names: ('jobs' | 'profiles' | 'system')[]) {
   const recs = names.map(load);
   const fake = FakeTrello.fromRecordings(...recs);
-  const api = createTrelloClient({ key: 'k', token: 't', fetchImpl: fake.fetch, sleep: async () => {} });
   const boards = recs.map((r) => boardId(r));
+  const raw = createTrelloClient({ key: 'k', token: 't', fetchImpl: fake.fetch, sleep: async () => {} });
+  const api = scopeBotClient(raw, { boards });
   return { fake, api, boards };
 }
 

@@ -109,3 +109,13 @@ export interface TrelloApi {
   createChecklist(cardId: string, name: string): Promise<TChecklist>;
   addCheckItem(checklistId: string, name: string, checked?: boolean): Promise<TCheckItem>;
 }
+
+/** The only Trello surface `src/` sees. It can create, archive and comment, and cannot change an existing card:
+ *  no unarchive, no checklists, no list close, and `attachText` only on a card this same client just created. */
+export type BotApi = Pick<
+  TrelloApi,
+  | 'me' | 'board' | 'boardMembers' | 'lists' | 'list' | 'cards' | 'allCards' | 'card' | 'checklist' | 'labels'
+  | 'createLabel' | 'createList' | 'createCard' | 'comment' | 'attachText'
+> & {
+  archiveCard(cardId: string): Promise<TCard>;
+};

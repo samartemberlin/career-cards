@@ -1,4 +1,4 @@
-import type { TrelloApi, TCard } from './api.ts';
+import type { BotApi, TCard } from './api.ts';
 import { parseJobKey, isRunColumnName } from './cards.ts';
 
 export type JobIndex = {
@@ -11,7 +11,7 @@ export type JobIndex = {
  *
  * toArchive: open cards with a key whose list is both closed and a run column name.
  * Summary and keyless cards are in neither set. */
-export async function loadJobIndex(api: TrelloApi, jobsBoard: string): Promise<JobIndex> {
+export async function loadJobIndex(api: BotApi, jobsBoard: string): Promise<JobIndex> {
   const [lists, cards] = await Promise.all([
     api.lists(jobsBoard, 'all'),
     api.allCards(jobsBoard),

@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { readOnlyClient, DryRunWriteError } from '../../src/trello/read-only.ts';
 import { createTrelloClient } from '../../src/trello/client.ts';
+import { scopeUserBoards } from '../../src/trello/scoped.ts';
 import { FakeTrello } from '../support/fake-trello.ts';
 import type { Recording } from '../../tools/sample/scrub.ts';
 
@@ -15,18 +16,14 @@ function firstBoardId(rec: Recording): string {
   return (rec.find((e) => /^\/boards\/[^/]+$/.test(e.path) && e.method === 'GET' && e.status === 200)!.body as { id: string }).id;
 }
 
-// All write method names from TrelloApi (these must each throw DryRunWriteError)
+// All write method names from BotApi (these must each throw DryRunWriteError)
 const WRITE_METHODS = [
-  'createBoard',
-  'createLabel',
-  'createList',
-  'setListClosed',
-  'createCard',
-  'setCardClosed',
-  'comment',
+  'archiveCard',
   'attachText',
-  'createChecklist',
-  'addCheckItem',
+  'comment',
+  'createCard',
+  'createList',
+  'createLabel',
 ] as const;
 
 test('readOnlyClient: every write method throws DryRunWriteError and FakeTrello sees no request', async () => {
@@ -34,32 +31,28 @@ test('readOnlyClient: every write method throws DryRunWriteError and FakeTrello 
     loadRec('jobs'), loadRec('profiles'), loadRec('system'), loadRec('lookups'),
   );
   const rawApi = createTrelloClient({ key: 'k', token: 't', fetchImpl: fake.fetch, sleep: async () => {} });
-  const roApi = readOnlyClient(rawApi);
-
   const jobsBid = firstBoardId(loadRec('jobs'));
+  const roApi = readOnlyClient(scopeUserBoards(rawApi, {
+    jobs: jobsBid, profiles: firstBoardId(loadRec('profiles')), system: firstBoardId(loadRec('system')),
+  }));
+
   const jobsListId = (() => {
     const rec = loadRec('jobs');
     return (rec.find((e) => /\/lists$/.test(e.path) && e.method === 'GET' && e.status === 200)!.body as { id: string }[])[0]!.id;
   })();
   const lookupsRec = loadRec('lookups');
   const existingCardId = lookupsRec.find((e) => /^\/cards\/[^/]+$/.test(e.path) && e.method === 'GET' && e.status === 200)!.path.split('/').pop()!;
-  const existingChecklistId = lookupsRec.find((e) => /^\/checklists\/[^/]+$/.test(e.path) && e.method === 'GET' && e.status === 200)!.path.split('/').pop()!;
-  const existingListId = lookupsRec.find((e) => /^\/lists\/[^/]+$/.test(e.path) && e.method === 'GET' && e.status === 200)!.path.split('/').pop()!;
 
   const requestsBefore = fake.requests.length;
 
   // Verify each write throws DryRunWriteError and names the method
   const calls: Array<[string, () => Promise<unknown>]> = [
-    ['createBoard', () => roApi.createBoard('Test Board', 'org1')],
-    ['createLabel', () => roApi.createLabel(jobsBid, 'Tag', 'blue')],
-    ['createList', () => roApi.createList(jobsBid, 'New list', 'bottom')],
-    ['setListClosed', () => roApi.setListClosed(existingListId, true)],
-    ['createCard', () => roApi.createCard({ idList: jobsListId, name: 'Job', desc: '', pos: 'bottom' })],
-    ['setCardClosed', () => roApi.setCardClosed(existingCardId, true)],
-    ['comment', () => roApi.comment(existingCardId, 'hello')],
+    ['archiveCard', () => roApi.archiveCard(existingCardId)],
     ['attachText', () => roApi.attachText(existingCardId, 'cv.md', 'content')],
-    ['createChecklist', () => roApi.createChecklist(existingCardId, 'Tasks')],
-    ['addCheckItem', () => roApi.addCheckItem(existingChecklistId, 'Item 1')],
+    ['comment', () => roApi.comment(existingCardId, 'hello')],
+    ['createCard', () => roApi.createCard({ idList: jobsListId, name: 'Job', desc: '', pos: 'bottom' })],
+    ['createList', () => roApi.createList(jobsBid, 'New list', 'bottom')],
+    ['createLabel', () => roApi.createLabel(jobsBid, 'Tag', 'blue')],
   ];
 
   for (const [method, fn] of calls) {
@@ -72,11 +65,9 @@ test('readOnlyClient: every write method throws DryRunWriteError and FakeTrello 
 
   assert.equal(fake.requests.length, requestsBefore, 'FakeTrello must receive no requests from write method calls');
 
-  // Verify WRITE_METHODS list is complete (no method added to TrelloApi without updating this test)
-  const writeMethods = new Set(WRITE_METHODS);
-  for (const [method] of calls) {
-    assert.ok(writeMethods.has(method as typeof WRITE_METHODS[number]), `${method} not in WRITE_METHODS`);
-  }
+  assert.deepEqual(calls.map(([m]) => m), [...WRITE_METHODS]);
+  const reads = ['me', 'board', 'boardMembers', 'lists', 'list', 'cards', 'allCards', 'card', 'checklist', 'labels'];
+  assert.deepEqual(Object.keys(roApi).sort(), [...reads, ...WRITE_METHODS].sort(), 'readOnlyClient exposes exactly BotApi');
 });
 
 test('readOnlyClient: reads pass through to FakeTrello', async () => {
@@ -84,10 +75,11 @@ test('readOnlyClient: reads pass through to FakeTrello', async () => {
     loadRec('jobs'), loadRec('profiles'), loadRec('system'), loadRec('lookups'),
   );
   const rawApi = createTrelloClient({ key: 'k', token: 't', fetchImpl: fake.fetch, sleep: async () => {} });
-  const roApi = readOnlyClient(rawApi);
-
   const jobsRec = loadRec('jobs');
   const jobsBid = firstBoardId(jobsRec);
+  const roApi = readOnlyClient(scopeUserBoards(rawApi, {
+    jobs: jobsBid, profiles: firstBoardId(loadRec('profiles')), system: firstBoardId(loadRec('system')),
+  }));
 
   // A sample of read methods
   const member = await roApi.me();

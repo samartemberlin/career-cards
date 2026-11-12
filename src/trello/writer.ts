@@ -1,4 +1,4 @@
-import type { TrelloApi, TCard } from './api.ts';
+import type { BotApi, TCard } from './api.ts';
 import type { Job } from '../pipeline/keys.ts';
 import type { ParsedScore } from '../pipeline/score.ts';
 import type { Facts } from '../pipeline/facts.ts';
@@ -19,7 +19,7 @@ function keyFilename(key: string): string {
  * Board labels are loaded once per resolver instance and cached.
  * A missing label is created; a creation failure is logged and that label is omitted — never throws. */
 export function createLabelResolver(
-  api: TrelloApi,
+  api: BotApi,
   boardId: string,
   log: (s: string) => void,
 ): (labels: { name: string; color: string }[]) => Promise<string[]> {
@@ -65,7 +65,7 @@ export function createLabelResolver(
  * start and due are only set when the job's posted/deadline fields are ISO YYYY-MM-DD dates.
  * When the description is truncated, the full JD is attached; an attach failure is logged and the card is still returned. */
 export async function createJobCard(
-  api: TrelloApi,
+  api: BotApi,
   o: { listId: string; job: ScoredJob; labelIds: string[]; log: (s: string) => void },
 ): Promise<TCard> {
   const { listId, job, labelIds, log } = o;
@@ -85,6 +85,7 @@ export async function createJobCard(
     try {
       await api.attachText(card.id, keyFilename(job.key), job.jd);
     } catch (err) {
+      if (isGuardError(err)) throw err;
       log(`attach JD for ${job.key} failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
@@ -92,9 +93,9 @@ export async function createJobCard(
   return card;
 }
 
-/** Archives cards one by one with setCardClosed. A failure is logged and counted; the rest continue. */
+/** Archives cards one by one. A failure is logged and counted; the rest continue. */
 export async function archiveCards(
-  api: TrelloApi,
+  api: BotApi,
   cards: TCard[],
   log: (s: string) => void,
 ): Promise<{ archived: number; failed: number }> {
@@ -102,7 +103,7 @@ export async function archiveCards(
   let failed = 0;
   for (const card of cards) {
     try {
-      await api.setCardClosed(card.id, true);
+      await api.archiveCard(card.id);
       archived++;
     } catch (err) {
       if (isGuardError(err)) throw err;

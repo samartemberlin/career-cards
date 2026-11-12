@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createTrelloClient } from '../../src/trello/client.ts';
-import { scopeClient, OriginalsWriteError, ScopeError } from '../../src/trello/scoped.ts';
+import { scopeBotClient, ImmutableCardError, OriginalsWriteError, ScopeError } from '../../src/trello/scoped.ts';
 import { FakeTrello } from '../support/fake-trello.ts';
 import { createLabelResolver, createJobCard, archiveCards } from '../../src/trello/writer.ts';
 import type { ScoredJob } from '../../src/trello/writer.ts';
 import { parseJobKey, jobCardTitle, parseTitleScore } from '../../src/trello/cards.ts';
-import type { TrelloApi, NewCard } from '../../src/trello/api.ts';
+import type { BotApi, TrelloApi, NewCard } from '../../src/trello/api.ts';
 import type { Recording } from '../../tools/sample/scrub.ts';
 
 const DIR = join(import.meta.dirname, '..', 'fixtures', 'trello');
@@ -26,7 +26,7 @@ function setup() {
   const bid = getBoardId(rec);
   const fake = FakeTrello.fromRecordings(rec);
   const inner = createTrelloClient({ key: 'k', token: 't', fetchImpl: fake.fetch, sleep: async () => {} });
-  const api = scopeClient(inner, { boards: [bid] });
+  const api = scopeBotClient(inner, { boards: [bid] });
   return { bid, fake, inner, api };
 }
 
@@ -139,7 +139,7 @@ test('free-text dates are not sent', async () => {
 
   let captured: NewCard | undefined;
   const spy: TrelloApi = { ...inner, createCard: async (c) => { captured = c; return inner.createCard(c); } };
-  const spyScoped = scopeClient(spy, { boards: [bid] });
+  const spyScoped = scopeBotClient(spy, { boards: [bid] });
 
   const job = makeJob({ posted: '2 weeks ago', deadline: 'ASAP' });
   const card = await createJobCard(spyScoped, { listId: list.id, job, labelIds: [], log: noLog });
@@ -172,6 +172,16 @@ test('long JD is attached; attach failure still returns the card', async () => {
   assert.ok(logs.some((l) => l.includes('attach')), 'attach failure logged');
 });
 
+test('a guard error from the JD attachment ends the write instead of being logged', async () => {
+  const err = new ImmutableCardError('c1');
+  const api = {
+    createCard: async () => ({ id: 'c1' }),
+    attachText: async () => { throw err; },
+  } as unknown as BotApi;
+  const job = makeJob({ jd: 'x'.repeat(20_000) });
+  await assert.rejects(createJobCard(api, { listId: 'l1', job, labelIds: [], log: noLog }), (e: unknown) => e === err);
+});
+
 // ── archiving ─────────────────────────────────────────────────────────────
 
 test('archiveCards continues past a failure', async () => {
@@ -198,7 +208,7 @@ test('archiveCards rethrows scope and Originals errors instead of counting them'
   const errors = [new ScopeError('board-x'), new OriginalsWriteError({ cardId: 'c1' })];
   for (const err of errors) {
     let calls = 0;
-    const api = { setCardClosed: async () => { calls++; throw err; } } as unknown as TrelloApi;
+    const api = { archiveCard: async () => { calls++; throw err; } } as unknown as BotApi;
     const cards = [{ id: 'c1' }, { id: 'c2' }] as Parameters<typeof archiveCards>[1];
     await assert.rejects(archiveCards(api, cards, noLog), (e: unknown) => e === err);
     assert.equal(calls, 1, `${err.name} stops archiving`);
@@ -209,11 +219,11 @@ test('archiveCards rethrows scope and Originals errors instead of counting them'
 
 test('writing into Originals throws through the writer', async () => {
   const { bid, inner } = setup();
-  // Create a Profiles board with an Originals list using the raw client (scopeClient blocks createBoard).
+  // Create a Profiles board with an Originals list using the raw client (the scoped client has no createBoard).
   const profBoard = await inner.createBoard('Profiles', 'org1');
   const origList = await inner.createList(profBoard.id, 'Originals', 'top');
 
-  const api = scopeClient(inner, { boards: [bid, profBoard.id], profilesBoard: profBoard.id });
+  const api = scopeBotClient(inner, { boards: [bid, profBoard.id], profilesBoard: profBoard.id });
 
   await assert.rejects(
     () => createJobCard(api, { listId: origList.id, job: makeJob(), labelIds: [], log: noLog }),

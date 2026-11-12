@@ -1,4 +1,4 @@
-import type { TCard, TChecklist, TList, TrelloApi } from './api.ts';
+import type { TCard, TChecklist, TList, BotApi } from './api.ts';
 import { ConfigError, ProfileMetaSchema, UserConfigSchema, hasYamlBlock, parseYamlBlock } from '../config/schema.ts';
 import type { UserConfig } from '../config/schema.ts';
 import type { UserBoards } from './scoped.ts';
@@ -239,7 +239,7 @@ function readProfile(c: Collector, col: Column, path: string, basics: string): R
 }
 
 /** Reads the Profiles and System boards. Every problem is collected, then thrown once as ConfigInvalid. */
-export async function readUserConfig(api: TrelloApi, boards: UserBoards): Promise<UserConfig> {
+export async function readUserConfig(api: BotApi, boards: UserBoards): Promise<UserConfig> {
   const [pLists, pCards, sLists, sCards] = await Promise.all([
     api.lists(boards.profiles, 'open'),
     api.cards(boards.profiles, { filter: 'open', checklists: true }),

@@ -12,7 +12,7 @@ import { DESC_LIMIT } from '../../src/trello/cards.ts';
 import { emptyStats } from '../../src/run/stats.ts';
 import { FakeTrello } from '../support/fake-trello.ts';
 import { createTrelloClient } from '../../src/trello/client.ts';
-import { scopeClient } from '../../src/trello/scoped.ts';
+import { scopeBotClient } from '../../src/trello/scoped.ts';
 import type { Recording } from '../../tools/sample/scrub.ts';
 
 const DIR = join(import.meta.dirname, '..', 'fixtures', 'trello');
@@ -239,7 +239,7 @@ test('findRunsList creates Runs only when asked (FakeTrello from System recordin
   const bid = getBoardId(rec);
   const fake = FakeTrello.fromRecordings(rec);
   const inner = createTrelloClient({ key: 'k', token: 't', fetchImpl: fake.fetch, sleep: async () => {} });
-  const api = scopeClient(inner, { boards: [bid] });
+  const api = scopeBotClient(inner, { boards: [bid] });
 
   // Confirm the fixture has a Runs list, then rename it away
   const listsBefore = await api.lists(bid, 'open');
