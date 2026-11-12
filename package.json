@@ -5,6 +5,10 @@
   "engines": {
     "node": ">=24"
   },
+  "imports": {
+    "#career-ops/liveness-core.mjs": "./career-ops/liveness-core.mjs",
+    "#career-ops/liveness-api.mjs": "./career-ops/liveness-api.mjs"
+  },
   "scripts": {
     "test": "node --test \"test/**/*.test.ts\"",
     "typecheck": "tsc --noEmit"

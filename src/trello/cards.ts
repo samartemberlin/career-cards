@@ -76,6 +76,18 @@ export function parseJobKey(desc: string): string | null {
   return KEY_RE.exec(desc)?.[1] ?? null;
 }
 
+// --- link parsing --------------------------------------------------------
+
+// Matches `**Link:** <url>` where url starts with http(s), on its own line.
+const LINK_RE = /^\*\*Link:\*\* (https?:\/\/\S+)/m;
+
+/** The first `**Link:** <url>` line in the head (before the first `---` separator). */
+export function parseJobLink(desc: string): string | null {
+  const sepIdx = desc.search(/\n---(?:\n|$)/);
+  const head = sepIdx >= 0 ? desc.slice(0, sepIdx) : desc;
+  return LINK_RE.exec(head)?.[1] ?? null;
+}
+
 // --- score parsing -------------------------------------------------------
 
 /** The score encoded in a card title ("8 · Company — Title"): integer 0-10, else null. */
