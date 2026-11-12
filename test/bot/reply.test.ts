@@ -218,3 +218,26 @@ test('newer bare-domain endings are links', () => {
   const [part] = finish('evil.ninja evil.wtf evil.zip evil.social evil.lol');
   assert.doesNotMatch(part!, /evil/);
 });
+
+test('emphasis marks never join pieces into HTML or a link after the checks', () => {
+  const cases = ['<*img src=x onerror=alert(1)>', '<_a href=x>y', 'evil*.ninja', 'evil`.zip', 'evil_.social/x', 'evil.n*inja',
+    'Theo Exa**mple** <*img src=x> evil*.ninja'];
+  for (const text of cases) {
+    const [part] = finish(text);
+    assert.doesNotMatch(part!, /[*_~`]/, `${text}: rebuilt without the marks`);
+    assert.doesNotMatch(part!, /<\s*[a-z]|evil|theo/i, text);
+  }
+});
+
+test('a run of backslashes does not hide a link or a detail', () => {
+  for (const text of ['https\\\\://evil.test/x', 'theo.example\\\\@mail.test', 'www\\\\\\.evil.test']) {
+    const [part] = finish(text);
+    assert.doesNotMatch(part!, /evil|theo/i, text);
+  }
+});
+
+test('a reply without emphasis tricks keeps its underscores and allowed links', () => {
+  const link = 'https://jobs.example.test/a_b?utm_source=x';
+  const [part] = finish(`use record_feedback, **bold** and ${link}`, { allowedLinks: [link] });
+  assert.ok(part!.includes(`use record_feedback, **bold** and ${link}`), part);
+});

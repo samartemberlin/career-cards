@@ -46,9 +46,9 @@ function decodeEntities(text: string): string {
 const STRIPPED = /[\u0000-\u0008\u000E-\u001F\u007F\u00AD\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF\uE000-\uF8FF]/g;
 const LINE_BREAK = /\r\n?|[\u000B\u000C\u0085\u2028\u2029]/g;
 // Markdown renders `https\://` and `jane\@mail.test` without the backslash, so the checks must not see it either.
-const MD_ESCAPE = /\\([!-/:-@[-`{-~])/g;
+const MD_ESCAPE = /\\+(?=[!-/:-@[-`{-~])/g;
 const normalize = (text: string): string =>
-  decodeEntities(text).normalize('NFKC').replace(STRIPPED, '').replace(LINE_BREAK, '\n').replace(MD_ESCAPE, '$1');
+  decodeEntities(text).normalize('NFKC').replace(STRIPPED, '').replace(LINE_BREAK, '\n').replace(MD_ESCAPE, '');
 
 const AUTOLINK = /<(https?:\/\/[^\s<>]+)>/gi;
 const HTML_COMMENT = /<!--[\s\S]*?(?:-->|$)/g;
@@ -195,11 +195,21 @@ export function finishReply(r: {
   const firstMax = REPLY_MAX - 2 - marker.length;
   if (firstMax < 100) throw new Error('reply: marker leaves no room for the reply');
 
-  const guarded = guardLinks(dropMarkerLines(dropMarkup(normalize(r.text))), r.allowedLinks);
-  // Emphasis marks inside or around a word render as nothing, so `Th_eo_ Exa**mple**` would show a masked name.
-  const masked = r.masker.mask(guarded.text.replace(EMPHASIS_IN_WORD, ''));
-  const body = dropMarkerLines(restoreLinks(masked, guarded.links, r.masker)).replace(IMAGE_START, '[').trim();
-  if (r.masker.hasDetail(body)) throw new PrivacyError('reply: a personal detail is left after masking');
+  // Emphasis marks inside or around a word render as nothing, so `Th_eo_ Exa**mple**` shows a name the masker didn't
+  // see, and `evil*.ninja` may show a link. A reply whose text, without those marks, would not pass the checks
+  // unchanged is rebuilt from the text without them, through every check again.
+  const check = (text: string): { body: string; unsafe: boolean } => {
+    const guarded = guardLinks(dropMarkerLines(dropMarkup(text)), r.allowedLinks);
+    const masked = r.masker.mask(guarded.text).replace(IMAGE_START, '[');
+    const bare = masked.replace(EMPHASIS_IN_WORD, '');
+    const unsafe = r.masker.hasDetail(bare) || guardLinks(dropMarkerLines(dropMarkup(bare)), []).text !== bare;
+    return { body: dropMarkerLines(restoreLinks(masked, guarded.links, r.masker)).trim(), unsafe };
+  };
+  const text = normalize(r.text);
+  let result = check(text);
+  if (result.unsafe) result = check(text.replace(EMPHASIS_IN_WORD, ''));
+  if (result.unsafe || r.masker.hasDetail(result.body)) throw new PrivacyError('reply: a personal detail or link is left after the checks');
+  const body = result.body;
 
   let parts = split(body ? `@${r.author} ${body}` : `@${r.author}`, firstMax);
   if (parts.length > REPLY_PARTS_MAX) {
