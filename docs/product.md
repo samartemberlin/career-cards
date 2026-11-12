@@ -37,7 +37,7 @@ Each user runs their own copy of this bot. Status: built = on `main` with tests;
 | Nightly run: run column, status card, `--dry-run` | [run-once.ts](../src/run/run-once.ts), CLI [run.ts](../src/run.ts) |
 | `@bot` catalogue and static commands | [catalogue.ts](../src/bot/catalogue.ts) |
 | Webhook service, gate, caps, `yes`/`no`, `open`/`why`/`last`/`run`, reply checks | [serve.ts](../src/serve.ts), [app.ts](../src/serve/app.ts), [gate.ts](../src/serve/gate.ts), [caps.ts](../src/bot/caps.ts), [confirm.ts](../src/bot/confirm.ts), [dispatch.ts](../src/bot/dispatch.ts), [handlers.ts](../src/bot/handlers.ts), [reply.ts](../src/bot/reply.ts), [safe-fetch.ts](../src/net/safe-fetch.ts) |
-| Deploy template, onboarding tool | [deploy/northflank/template.json](../deploy/northflank/template.json), onboarding tool planned (PR 5) |
+| Deploy template, onboarding tool | [deploy/northflank/template.json](../deploy/northflank/template.json), [onboard.ts](../tools/onboard.ts) ([plan](../tools/onboard/plan.ts), [apply](../tools/onboard/apply.ts)) |
 | Migration from samjobs | planned (PR 6) |
 | Router, `needs`, `legit`, `fit`, `cv`, `feedback` | planned (PR 7) |
 | Research: `company`, `deep` | planned (PR 8) |
@@ -60,8 +60,8 @@ Each user runs their own copy of this bot. Status: built = on `main` with tests;
 
 **Onboarding**
 1. Fork, deploy to Northflank from the template, add secrets.
-2. Run the onboarding tool: three private boards (Jobs, Profiles, System), bot added, webhooks registered.
-3. Create the one Trello automation rule by hand (Trello has no API for it).
+2. Run the [onboarding tool](../tools/onboard.ts) (`--dry-run` first): three private boards (Jobs, Profiles, System), bot added, webhooks registered.
+3. Create the one Trello automation rule by hand, as the tool prints it (Trello has no API for it).
 4. Fill `Settings`, `Personal details`, `CV` and one profile column; comment `@bot run` on the System board.
 
 **Migration from samjobs** (per user, samjobs keeps running until cutover)

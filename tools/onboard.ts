@@ -1,22 +1,19 @@
-// Sets up a user's three boards. Only `--dry-run` exists so far: it reads the boards and prints the plan.
-// Usage: node --env-file=<file> tools/onboard.ts --dry-run [--state <file>] [--workspace <id>] [--owner-user <username>]
+// Sets up a user's three boards: reads them, prints the plan, and (without --dry-run) creates what is missing.
+// Usage: node --env-file=<file> tools/onboard.ts [--dry-run] [--state <file>] [--workspace <id>] [--owner-user <username>]
 //          [--name <prefix>] [--url <https base>]
 // Env: TRELLO_KEY, TRELLO_TOKEN (the bot); optional OWNER_TRELLO_KEY, OWNER_TRELLO_TOKEN (the board owner).
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createTrelloClient } from '../src/trello/client.ts';
-import type { BotApi, TrelloApi } from '../src/trello/api.ts';
-import { scopeBotClient, scopeUserBoards } from '../src/trello/scoped.ts';
 import { readOnlyClient } from '../src/trello/read-only.ts';
 import { denyBoardListing } from './sample/guard.ts';
 import { formatPlan, planOnboarding, readBoards } from './onboard/plan.ts';
-import type { BoardIds } from './onboard/plan.ts';
+import type { BoardIds, Role } from './onboard/plan.ts';
+import { USERNAME, applyPlan, automationRule, ensureWebhooks, scopedTo } from './onboard/apply.ts';
 
 const DEFAULT_STATE = join(import.meta.dirname, '.onboard.json');
-const USAGE = 'usage: tools/onboard.ts --dry-run [--state <file>] [--workspace <id>] [--owner-user <username>] [--name <prefix>] [--url <https base>]';
+const USAGE = 'usage: tools/onboard.ts [--dry-run] [--state <file>] [--workspace <id>] [--owner-user <username>] [--name <prefix>] [--url <https base>]';
 const TRELLO_ID = /^[0-9a-f]{24}$/;
-// Also keeps a username from turning `/members/<username>` into another path.
-const USERNAME = /^[a-z0-9_]{1,100}$/i;
 
 class UsageError extends Error {}
 
@@ -72,36 +69,46 @@ function boardIds(raw: unknown): Partial<BoardIds> {
   return ids;
 }
 
-/** Scoped to the given ids only; with all three it is exactly the run's own scope. */
-function scoped(raw: TrelloApi, ids: Partial<BoardIds>): BotApi {
-  if (ids.jobs && ids.profiles && ids.system) return scopeUserBoards(raw, { jobs: ids.jobs, profiles: ids.profiles, system: ids.system });
-  return scopeBotClient(raw, { boards: Object.values(ids), ...(ids.profiles ? { profilesBoard: ids.profiles } : {}) });
+/** Keeps whatever else the state file holds. */
+function writeStateFile(file: string, ids: Partial<BoardIds>): void {
+  const prev = readStateFile(file);
+  const base = prev !== null && typeof prev === 'object' && !Array.isArray(prev) ? prev : {};
+  writeFileSync(file, JSON.stringify({ ...base, ...ids }, null, 2) + '\n');
 }
+
+const TITLE: Record<Role, string> = { jobs: 'Jobs', profiles: 'Profiles', system: 'System' };
 
 export async function main(
   argv: string[],
   env: Record<string, string | undefined>,
-  o: { fetch?: typeof fetch; out?: (s: string) => void; readState?: (file: string) => unknown } = {},
+  o: {
+    fetch?: typeof fetch;
+    out?: (s: string) => void;
+    readState?: (file: string) => unknown;
+    writeState?: (file: string, ids: Partial<BoardIds>) => void;
+    sleep?: (ms: number) => Promise<void>;
+  } = {},
 ): Promise<number> {
   const out = o.out ?? ((s: string) => process.stdout.write(s + '\n'));
   const f = o.fetch ?? fetch;
   try {
     const args = parseArgs(argv);
-    if (!args.dryRun) throw new UsageError('only --dry-run exists so far; applying the plan comes in a later change');
     const ids = boardIds((o.readState ?? readStateFile)(args.state));
 
     const { TRELLO_KEY: key, TRELLO_TOKEN: token, OWNER_TRELLO_KEY: ownerKey, OWNER_TRELLO_TOKEN: ownerToken } = env;
     if (!key || !token) throw new UsageError('TRELLO_KEY and TRELLO_TOKEN (the bot) must be set');
     if (Boolean(ownerKey) !== Boolean(ownerToken)) throw new UsageError('set both OWNER_TRELLO_KEY and OWNER_TRELLO_TOKEN, or neither');
 
-    const botRaw = createTrelloClient({ key, token, fetchImpl: denyBoardListing(f) });
-    const ownerRaw = ownerKey && ownerToken ? createTrelloClient({ key: ownerKey, token: ownerToken, fetchImpl: denyBoardListing(f) }) : botRaw;
-    const bot = readOnlyClient(scoped(botRaw, ids));
-    const owner = ownerRaw === botRaw ? bot : readOnlyClient(scoped(ownerRaw, ids));
+    const botRaw = createTrelloClient({ key, token, fetchImpl: denyBoardListing(f), ...(o.sleep ? { sleep: o.sleep } : {}) });
+    const ownerRaw = ownerKey && ownerToken ? createTrelloClient({ key: ownerKey, token: ownerToken, fetchImpl: denyBoardListing(f), ...(o.sleep ? { sleep: o.sleep } : {}) }) : botRaw;
+    const read = (ids: Partial<BoardIds>) => {
+      const bot = readOnlyClient(scopedTo(botRaw, ids));
+      return readBoards(ownerRaw === botRaw ? bot : readOnlyClient(scopedTo(ownerRaw, ids)), bot, ids);
+    };
 
     let ownerUser: string;
     if (ownerRaw !== botRaw) {
-      const me = (await owner.me()).username;
+      const me = (await ownerRaw.me()).username;
       if (args.ownerUser !== undefined && args.ownerUser.toLowerCase() !== me.toLowerCase()) {
         throw new UsageError(`--owner-user ${args.ownerUser} is not the account of OWNER_TRELLO_TOKEN`);
       }
@@ -116,11 +123,49 @@ export async function main(
       }
     }
 
-    const observed = await readBoards(owner, bot, ids);
-    const plan = planOnboarding({ observed, owner: ownerUser, name: args.name, ...(args.url !== undefined ? { url: args.url } : {}) });
+    const plan = planOnboarding({ observed: await read(ids), owner: ownerUser, name: args.name, ...(args.url !== undefined ? { url: args.url } : {}) });
     out(formatPlan(plan));
-    out('Dry run: nothing was changed.');
-    return plan.refuse.length ? 1 : 0;
+    if (args.dryRun) {
+      out('Dry run: nothing was changed.');
+      return plan.refuse.length ? 1 : 0;
+    }
+    if (plan.refuse.length) {
+      out('Nothing was changed: fix the refusals first.');
+      return 1;
+    }
+
+    let saved = { ...ids };
+    const r = await applyPlan(plan, {
+      owner: ownerRaw, bot: botRaw, ids, out,
+      ...(args.workspace !== undefined ? { workspace: args.workspace } : {}),
+      saveIds: (next) => {
+        saved = { ...saved, ...next };
+        (o.writeState ?? writeStateFile)(args.state, saved);
+      },
+    });
+    // Without the url: webhooks cannot be read back, so they would always show as to do.
+    const after = planOnboarding({ observed: await read(saved), owner: ownerUser, name: args.name });
+    out('After apply:');
+    out(formatPlan(after));
+    let ok = r.failed.length === 0 && after.refuse.length === 0 && after.actions.length === 0;
+
+    if (!saved.jobs || !saved.profiles || !saved.system) {
+      out('Not all three boards exist yet: run again.');
+      return 1;
+    }
+    const all: BoardIds = { jobs: saved.jobs, profiles: saved.profiles, system: saved.system };
+    if (args.url !== undefined) {
+      for (const w of await ensureWebhooks(botRaw, all, args.url)) {
+        out(`${TITLE[w.board as Role]}: webhook ${w.result}`);
+        ok &&= w.result === 'created' || w.result === 'exists';
+      }
+    }
+    out(`JOBS_BOARD_ID=${all.jobs} PROFILES_BOARD_ID=${all.profiles} SYSTEM_BOARD_ID=${all.system}`);
+    if (args.url !== undefined) {
+      out('Create this automation rule on the System board:');
+      out(automationRule(args.url));
+    }
+    return ok ? 0 : 1;
   } catch (e) {
     if (e instanceof UsageError) {
       out(`${e.message}\n${USAGE}`);

@@ -432,12 +432,6 @@ describe('tools/onboard.ts', () => {
     assert.ok(fake.requests.every((r) => r.method === 'GET' && !r.path.startsWith('/boards')));
   });
 
-  it('without --dry-run it refuses to run (apply is not built yet)', async () => {
-    const { code, out } = await runCli(['--owner-user', 'usera'], new FakeTrello());
-    assert.equal(code, 2);
-    assert.match(out, /--dry-run/);
-  });
-
   it('needs --owner-user without owner credentials', async () => {
     const { code, out } = await runCli(['--dry-run'], new FakeTrello());
     assert.equal(code, 2);

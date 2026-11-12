@@ -111,7 +111,7 @@ export function planOnboarding(o: { observed: Observed; owner: string; url?: str
   return { refuse, actions, notes };
 }
 
-const actionLine = (a: Action): string => {
+export const actionLine = (a: Action): string => {
   const t = TITLE[a.board];
   switch (a.kind) {
     case 'createBoard': return `${t}: create board "${a.name}"`;
