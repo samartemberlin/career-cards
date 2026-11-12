@@ -83,6 +83,13 @@ describe('privacy masking', () => {
     assert.throws(() => maskText('[US\u200BER]', m), PrivacyError);
   });
 
+  it('hasDetail finds a listed detail, also behind invisible characters, and nothing else', () => {
+    const m = buildMasker(['Theo Example', 'link: social.example.test/in/theo-example']);
+    assert.equal(m.hasDetail('https://social.example.test/in/theo-example?x=1'), true);
+    assert.equal(m.hasDetail('hi THEO\u200B  EXAMPLE'), true);
+    assert.equal(m.hasDetail('https://jobs.example.test/acme/123'), false);
+  });
+
   it('bare-domain personal links are masked', () => {
     const m = buildMasker(['Jane Roe']);
     const out = maskText('see linkedin.com/in/jane-roe and github.com/janeroe, janeroe.de', m);

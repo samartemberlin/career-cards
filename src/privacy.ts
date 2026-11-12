@@ -8,14 +8,19 @@ export class PrivacyError extends Error {
   }
 }
 
-export type Masker = { mask(text: string): string };
+export type Masker = {
+  mask(text: string): string;
+  /** True when a listed detail is in `text`; for text that must stay verbatim, such as an allowed link. */
+  hasDetail(text: string): boolean;
+};
 
 // Ported from samjobs' anonymize.mjs. All matching runs on NFKC text without soft hyphens or zero-width characters,
 // so artefacts of text pasted from a PDF cannot hide a name from the masking or from the fail-closed check.
 const INVISIBLE = /[\u00AD\u200B-\u200D\u2060\uFEFF]/g;
 const normalize = (s: string): string => s.normalize('NFKC').replace(INVISIBLE, '');
 
-const EMAIL = /[\p{L}\p{N}._%+-]+@[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)+/gu;
+// Starts only where the run starts, or a long run of letters without `@` takes quadratic time.
+const EMAIL = /(?<![\p{L}\p{N}._%+-])[\p{L}\p{N}._%+-]+@[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)+/gu;
 const URL_RE = /(?:https?:\/\/|www\.)\S+/giu;
 // Links without a scheme, such as linkedin.com/in/x. A fixed TLD list keeps Node.js, e.g. and 3.91 out.
 const TLDS = 'com|de|org|net|io|eu|co|uk|me|app|dev|info|berlin|fm|ly|at|ch|nl|fr|it|es|us|edu|gov|ai|tv|xyz|blog|page|site|online|cc';
@@ -131,7 +136,13 @@ export function buildMasker(details: string[]): Masker {
     .map((raw, i) => compileDetail(raw, i))
     .sort((a, b) => b.strippedLen - a.strippedLen);
 
-  return { mask: (text: string) => applyMask(text, compiled) };
+  return {
+    mask: (text: string) => applyMask(text, compiled),
+    hasDetail: (text: string) => {
+      const out = normalize(text);
+      return compiled.some(({ checkRe }) => checkRe.test(out));
+    },
+  };
 }
 
 export function maskText(text: string, m: Masker): string {
