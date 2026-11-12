@@ -103,7 +103,6 @@ export type TComment = z.infer<typeof TCommentActionSchema>;
 
 export interface TrelloApi {
   me(): Promise<TMember>;
-  /** GET /members/{idOrUsername}?fields=username */
   member(idOrUsername: string): Promise<TMember>;
   board(id: string): Promise<TBoard>;
   boardMembers(id: string): Promise<TMember[]>;

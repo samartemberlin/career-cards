@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { createTrelloClient, TrelloError, WebhookExists } from '../../src/trello/client.ts';
+import { createTrelloClient, TrelloError, WebhookExists, WEBHOOK_EXISTS_MSG } from '../../src/trello/client.ts';
 import type { FetchLike } from '../../src/trello/client.ts';
 import { replayFetch } from '../support/replay.ts';
 import type { Recording } from '../../tools/sample/scrub.ts';
@@ -510,8 +510,7 @@ test('createWebhook sends idModel, callbackURL and description in the JSON body,
 });
 
 test('createWebhook maps the duplicate 400 to WebhookExists', async () => {
-  const dup = 'A webhook with that callback, model, and token already exists';
-  const { fetchImpl } = makeFetch([statusResponse(400, dup)]);
+  const { fetchImpl } = makeFetch([statusResponse(400, WEBHOOK_EXISTS_MSG)]);
   const client = createTrelloClient({ key: 'k', token: 't', fetchImpl, sleep: async () => {} });
   await assert.rejects(
     () => client.createWebhook('model1', 'https://example.com/hook', 'dup'),
@@ -544,6 +543,5 @@ test('addBoardMember uses PUT with type=normal', async () => {
   const [url, init] = calls[0]!;
   assert.equal(init!.method, 'PUT');
   assert.ok(url.pathname.includes('/boards/b1/members/member1'), `unexpected path: ${url.pathname}`);
-  const body = JSON.parse(init!.body as string) as Record<string, unknown>;
-  assert.equal(body['type'], 'normal');
+  assert.equal(url.searchParams.get('type'), 'normal', 'type must be in the query string');
 });

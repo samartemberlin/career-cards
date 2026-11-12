@@ -39,7 +39,7 @@ export class WebhookExists extends TrelloError {
   }
 }
 
-const WEBHOOK_EXISTS_MSG = 'A webhook with that callback, model, and token already exists';
+export const WEBHOOK_EXISTS_MSG = 'A webhook with that callback, model, and token already exists';
 
 // Methods whose side effects are unknown after a non-429 failure: never retry.
 const IDEMPOTENT_METHODS = new Set(['GET', 'PUT']);
@@ -96,7 +96,8 @@ export function createTrelloClient(o: {
       body?: unknown;
       form?: FormData;
       schema?: z.ZodType<T, z.ZodTypeDef, unknown>;
-      /** Called with the raw (pre-redact) body on a non-ok response. Return an error to throw it instead of TrelloError. */
+      /** Called with the raw (pre-redact) body on a non-ok response. Return an error to throw instead of TrelloError.
+       *  The returned error must not carry rawBody — it has not been redacted. */
       mapError?: (status: number, rawBody: string) => Error | undefined;
     } = {},
   ): Promise<T> {
@@ -331,13 +332,13 @@ export function createTrelloClient(o: {
     }),
 
     member: (idOrUsername) => call('GET', `/members/${idOrUsername}`, {
-      query: { fields: 'id,username' },
+      query: { fields: 'username' },
       schema: TMemberSchema,
     }),
 
     addBoardMember: async (boardId, memberId) => {
       await call('PUT', `/boards/${boardId}/members/${memberId}`, {
-        body: { type: 'normal' },
+        query: { type: 'normal' },
         schema: z.object({}).passthrough(),
       });
     },
@@ -347,7 +348,7 @@ export function createTrelloClient(o: {
       schema: z.object({ id: z.string() }).strip(),
       mapError: (status, rawBody) =>
         status === 400 && rawBody.includes(WEBHOOK_EXISTS_MSG)
-          ? new WebhookExists('POST', '/webhooks', rawBody)
+          ? new WebhookExists('POST', '/webhooks', WEBHOOK_EXISTS_MSG)
           : undefined,
     }),
   };

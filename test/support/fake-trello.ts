@@ -4,6 +4,7 @@ import type { Recording } from '../../tools/sample/scrub.ts';
 import type {
   TBoard, TMember, TList, TCard, TChecklist, TCheckItem, TLabel, TCardWithList, TComment,
 } from '../../src/trello/api.ts';
+import { WEBHOOK_EXISTS_MSG } from '../../src/trello/client.ts';
 
 const NOT_FOUND_BODY = 'The requested resource was not found.';
 
@@ -352,8 +353,7 @@ export class FakeTrello {
         const { idModel, callbackURL, description } = await readJson() as { idModel: string; callbackURL: string; description: string };
         const key = `${idModel}\0${callbackURL}`;
         if (this._webhooks.has(key)) {
-          const dupBody = 'A webhook with that callback, model, and token already exists';
-          return new Response(dupBody, { status: 400 });
+          return new Response(WEBHOOK_EXISTS_MSG, { status: 400 });
         }
         const id = this._genId();
         this._webhooks.set(key, id);
@@ -410,10 +410,8 @@ export class FakeTrello {
 
     let m: RegExpExecArray | null;
 
-    // /members/{idOrUsername} — look up by id or username
     if ((m = /^\/members\/([^/]+)$/.exec(path)) && m[1] !== 'me') {
       const idOrUsername = m[1]!;
-      // Search by id first, then by username
       let found: TMember | undefined;
       if (idOrUsername === this._me.id || idOrUsername === this._me.username) {
         found = this._me;

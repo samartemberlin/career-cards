@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { createTrelloClient, WebhookExists } from '../../src/trello/client.ts';
+import { createTrelloClient, TrelloError, WebhookExists, WEBHOOK_EXISTS_MSG } from '../../src/trello/client.ts';
 import { replayFetch } from './replay.ts';
 import { FakeTrello } from './fake-trello.ts';
 import type { Recording } from '../../tools/sample/scrub.ts';
@@ -396,7 +396,6 @@ test('FakeTrello: a second createWebhook for the same model and callback throws 
 });
 
 test('FakeTrello: webhookHeadOk=false makes createWebhook throw TrelloError with status 400', async () => {
-  const { TrelloError: TE } = await import('../../src/trello/client.ts');
   const fake = new FakeTrello();
   fake.webhookHeadOk = false;
   const api = client(fake.fetch);
@@ -404,9 +403,9 @@ test('FakeTrello: webhookHeadOk=false makes createWebhook throw TrelloError with
   await assert.rejects(
     () => api.createWebhook('board1', 'https://example.com/hook', 'bad'),
     (err: unknown) => {
-      assert.ok(err instanceof TE, `expected TrelloError, got ${String(err)}`);
+      assert.ok(err instanceof TrelloError, `expected TrelloError, got ${String(err)}`);
       assert.ok(!(err instanceof WebhookExists), 'must not be WebhookExists');
-      assert.equal((err as { status: number }).status, 400);
+      assert.equal(err.status, 400);
       return true;
     },
   );
