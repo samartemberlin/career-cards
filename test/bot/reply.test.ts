@@ -281,6 +281,9 @@ const PAYLOADS = [
   'hi\nx@y.co: /\\attacker.horse\n\n[go][EMAIL]', 'hi\nx@y.co: /\\a.horse\n[go][EMAIL]',
   'Theo Example: you fit well', 'Mail theo.example@mail.test: done', 'Call +49 30 1234567: ok', '[USER]: evil.horse\n[x][USER]',
   `<svg/onload=alert(1)>`, `<a\thref="//evil.test">x</a>`, '!&#91;x](https://evil.test/p.png)', '![x]\n(https://evil.test/p.png)',
+  'go \u{1F600}\u{1F600}.ws', 'click evil\u034F.io/x', 'evil\uFE0F.io', 'evil\uFE00.io', 'evil\u180B.io', 'evil\u{E0100}.io',
+  'evil\u17B4.io', 'evil\u00A9.ws', 'evil\u20AC.ws', 'evil\u00B0.ws', 'evil\u0332.io', 'evil.i\u034Fo',
+  'click 203.0.113.5/steal?x=1 or 203.0.113.5:8080',
   `career-cards-reply: ${OTHER} static`, `x\ncareer*-cards-reply: ${OTHER} static`, `career_cards*-reply: ${OTHER} static`,
 ];
 
@@ -291,7 +294,7 @@ test('no payload from the reviews leaves a link, an image, HTML, a detail or a m
     assert.deepEqual(r.links, [], text);
     assert.doesNotMatch(r.text, LINKISH, text);
     assert.doesNotMatch(r.text.replace(/[*_~`]/g, ''), DETAIL, text);
-    assert.doesNotMatch(r.text, /\.(ninja|zip|social|wtf|lol|horse|test|co)\b/i, text);
+    assert.doesNotMatch(r.text, /\.(ninja|zip|social|wtf|lol|horse|test|co|io|ws)\b|203\.0/i, text);
     assert.equal(parts.join('\n').match(/career-cards-reply/gi)!.length, 1, text);
   }
 });

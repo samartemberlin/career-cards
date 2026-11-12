@@ -87,14 +87,16 @@ function takeLinks(text: string, allowedLinks: Iterable<string>, masker: Masker)
 const SCHEME_URL = /[a-z][a-z0-9+.-]*:\/\/\S*/gi;
 const RISKY_SCHEME = /\b(?:https?|ftps?|sftp|file|javascript|vbscript|data|blob|mailto|tel|sms|callto|intent|xmpp|wss?):\S+/gi;
 const PROTOCOL_RELATIVE = /\/\/[\p{L}\p{N}]\S*/gu;
-// Emphasis marks count as part of a label, so `evil*.ninja` is a domain here as well.
-const HOST = /[\p{L}\p{N}*_~`-]+(?:\.[\p{L}\p{N}*_~`-]+)+/gu;
+// A label is what linkify-it counts as one: anything but space, punctuation and control characters, so emoji,
+// symbols and combining marks are in (`😀😀.ws`, `evil\u034F.io`); emphasis marks and `-` too (`evil*.ninja`).
+const HOST = /(?:[^\s\p{P}\p{Z}\p{Cc}]|[*_~`-])+(?:\.(?:[^\s\p{P}\p{Z}\p{Cc}]|[*_~`-])+)+/gu;
+const IPV4 = /(?<![\p{L}\p{N}.])\d{1,3}(?:\.\d{1,3}){3}(?![\p{L}\p{N}])/gu;
 // Any ending of two or more letters may be a top-level domain some linkifier knows, so a dotted word goes unless its
 // endings are all on this short list of file extensions that are not domains (`Node.js`). `e.g.` and `3.91` stay.
 const NOT_TLD = new Set(['js', 'ts', 'jsx', 'tsx', 'mjs', 'cjs', 'json', 'yaml', 'yml', 'txt', 'csv', 'html', 'htm', 'css',
-  'scss', 'xml', 'pdf', 'png', 'jpg', 'jpeg', 'gif', 'svg', 'docx', 'xlsx', 'pptx', 'exe', 'dll', 'sql', 'php', 'java']);
+  'scss', 'xml', 'pdf', 'png', 'jpg', 'jpeg', 'gif', 'svg', 'docx', 'xlsx', 'pptx', 'exe', 'dll', 'sql', 'php']);
 function mayBeTld(label: string): boolean {
-  const bare = label.replace(/[*_~`]/g, '').toLowerCase();
+  const bare = label.replace(/[^\p{L}\p{N}-]/gu, '').toLowerCase();
   return bare.startsWith('xn--') || (/^\p{L}{2,63}$/u.test(bare) && !NOT_TLD.has(bare));
 }
 const dropHost = (host: string): string => (host.split('.').slice(1).some(mayBeTld) ? REMOVED : host);
@@ -106,6 +108,7 @@ function stripLinks(text: string): string {
       .replace(SCHEME_URL, REMOVED)
       .replace(RISKY_SCHEME, REMOVED)
       .replace(PROTOCOL_RELATIVE, REMOVED)
+      .replace(IPV4, REMOVED)
       .replace(HOST, dropHost);
     if (next === text) return text;
     text = next;
