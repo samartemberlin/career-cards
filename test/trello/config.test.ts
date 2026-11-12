@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createTrelloClient } from '../../src/trello/client.ts';
 import { scopeUserBoards } from '../../src/trello/scoped.ts';
-import { ConfigInvalid, readUserConfig } from '../../src/trello/config.ts';
+import { ConfigInvalid, readSettings, readUserConfig } from '../../src/trello/config.ts';
 import type { ConfigProblem, UserBoards } from '../../src/trello/config.ts';
 import { FakeTrello } from '../support/fake-trello.ts';
 import type { Recording } from '../../tools/sample/scrub.ts';
@@ -273,4 +273,30 @@ test('readUserConfig works through scopeUserBoards', async () => {
   const api = scopeUserBoards(inner, boards);
   const config = await readUserConfig(api, boards);
   assert.ok(config.profiles.length > 0, 'at least one profile loaded');
+});
+
+test('readSettings returns Settings and throws ConfigInvalid naming the card', async () => {
+  const s = setup();
+  const settings = await readSettings(s.api, s.boards);
+  assert.deepEqual(settings.providers, ['claude', 'gemini']);
+  assert.deepEqual(settings.allowed_members, ['samplebot']);
+  assert.equal(settings.caps.model_per_day, 30);
+  assert.ok(s.fake.requests.every((r) => r.path.includes(s.boards.system)), 'reads only the System board');
+
+  const broken = setup(({ system }) => {
+    system.cards.find((c) => c.name === 'Settings')!.desc = '```yaml\nproviders: [x\n```';
+  });
+  const e = await readSettings(broken.api, broken.boards).catch((x: unknown) => x);
+  assert.ok(e instanceof ConfigInvalid, `expected ConfigInvalid, got ${String(e)}`);
+  assert.equal(e.problems.length, 1);
+  assert.equal(e.problems[0]!.where, 'System › Settings');
+  assert.match(e.problems[0]!.card!.url, /^https:\/\/trello\.com\//);
+
+  const invalid = setup(({ system }) => {
+    system.cards.find((c) => c.name === 'Settings')!.desc = '```yaml\nproviders: [x]\nlocations: [berlin]\nscoring_cap: -1\n```';
+  });
+  const e2 = await readSettings(invalid.api, invalid.boards).catch((x: unknown) => x);
+  assert.ok(e2 instanceof ConfigInvalid);
+  assert.deepEqual(e2.problems.map((p) => p.where), ['System › Settings']);
+  assert.match(e2.problems[0]!.message, /scoring_cap/);
 });
