@@ -33,12 +33,11 @@ export function commentWebhook(o: {
   };
 }
 
-/** Serializes `payload` once and signs those exact bytes the way Trello does. */
-export function signedWebhook(
-  payload: unknown,
-  callbackUrl: string,
-  appSecret: string,
-): { body: Buffer; signature: string } {
-  const body = Buffer.from(JSON.stringify(payload), 'utf8');
-  return { body, signature: trelloSignature(body, callbackUrl, appSecret) };
+/** Serializes `body` once and signs those exact bytes the way Trello does. */
+export function signedRequest(
+  body: unknown,
+  o: { callbackUrl: string; appSecret: string },
+): { raw: Buffer; signature: string } {
+  const raw = Buffer.from(JSON.stringify(body), 'utf8');
+  return { raw, signature: trelloSignature(raw, o.callbackUrl, o.appSecret) };
 }

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { trelloSignature, verifyTrelloSignature, secretMatches, callbackUrl } from '../../src/serve/auth.ts';
-import { signedWebhook } from '../support/webhook.ts';
+import { signedRequest } from '../support/webhook.ts';
 
 const cb = 'https://worker.example.test/trello';
 const SECRET = 'test-app-secret';
@@ -49,9 +49,9 @@ test('fails on an empty app secret', () => {
   assert.equal(verifyTrelloSignature(utf8, sig, cb, ''), false);
 });
 
-test('signedWebhook produces a body and header that verify', () => {
-  const req = signedWebhook({ action: { id: 'a1' } }, cb, SECRET);
-  assert.equal(verifyTrelloSignature(req.body, req.signature, cb, SECRET), true);
+test('signedRequest produces bytes and a header that verify', () => {
+  const req = signedRequest({ action: { id: 'a1' } }, { callbackUrl: cb, appSecret: SECRET });
+  assert.equal(verifyTrelloSignature(req.raw, req.signature, cb, SECRET), true);
 });
 
 test('secretMatches', () => {
