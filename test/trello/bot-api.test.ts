@@ -49,8 +49,8 @@ test('scopeUserBoards exposes no unarchive, checklist or list-close method', () 
     assert.equal(m in api, false, `${m} must not be on BotApi`);
   }
   assert.deepEqual(Object.keys(api).sort(), [
-    'allCards', 'archiveCard', 'attachText', 'board', 'boardMembers', 'card', 'cards', 'checklist', 'comment',
-    'createCard', 'createLabel', 'createList', 'labels', 'list', 'lists', 'me',
+    'allCards', 'archiveCard', 'attachText', 'board', 'boardComments', 'boardMembers', 'card', 'cardComments',
+    'cards', 'checklist', 'comment', 'createCard', 'createLabel', 'createList', 'labels', 'list', 'lists', 'me',
   ]);
 });
 

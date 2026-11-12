@@ -1,7 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { createTrelloClient, TrelloError } from '../../src/trello/client.ts';
 import type { FetchLike } from '../../src/trello/client.ts';
+import { replayFetch } from '../support/replay.ts';
+import type { Recording } from '../../tools/sample/scrub.ts';
+
+const FIXTURES = join(import.meta.dirname, '..', 'fixtures', 'trello');
+const loadRec = (name: string): Recording =>
+  JSON.parse(readFileSync(join(FIXTURES, `${name}.recording.json`), 'utf8')) as Recording;
 
 // --- fake clock / sleep --------------------------------------------------
 
@@ -371,7 +379,8 @@ test('a timed-out attempt is retried like a network error (GET)', async () => {
 test('the client has no method that edits a card: cards are only created, archived, commented on or given attachments', () => {
   const client = createTrelloClient({ key: 'k', token: 't', fetchImpl: async () => okJson({}) });
   assert.deepEqual(Object.keys(client).sort(), [
-    'addCheckItem', 'allCards', 'attachText', 'board', 'boardMembers', 'card', 'cards', 'checklist', 'comment',
+    'addCheckItem', 'allCards', 'attachText', 'board', 'boardComments', 'boardMembers', 'card', 'cardComments',
+    'cards', 'checklist', 'comment',
     'createBoard', 'createCard', 'createChecklist', 'createLabel', 'createList', 'labels', 'list', 'lists', 'me',
     'myOrganizations', 'organizationMembers', 'setCardClosed', 'setListClosed',
   ].sort(), 'a new client method: if it edits a card, it must not exist');
@@ -436,4 +445,47 @@ test('drops unknown fields and rejects a malformed card', async () => {
   assert.equal(cards.length, 1);
   assert.equal(cards[0]!.id, 'c1');
   assert.ok(!('unknownField' in cards[0]!), 'unknown fields must be stripped');
+});
+
+// --- cardComments / boardComments ----------------------------------------
+
+test('cardComments parses the captured actions into TComment', async () => {
+  const rec = loadRec('comments');
+  const cardEntry = rec.find((c) => c.method === 'GET' && /^\/cards\/[^/]+\/actions$/.test(c.path) && c.status === 200);
+  assert.ok(cardEntry, 'comments fixture must hold a GET /cards/{id}/actions entry');
+  const cardId = cardEntry.path.split('/')[2]!;
+  const clock = makeClock();
+  const api = createTrelloClient({ key: 'k', token: 't', fetchImpl: replayFetch(rec), sleep: clock.sleep, now: clock.now });
+  const comments = await api.cardComments(cardId);
+  assert.ok(comments.length > 0, 'at least one comment');
+  const c = comments[0]!;
+  assert.equal(typeof c.id, 'string');
+  assert.equal(typeof c.idMemberCreator, 'string');
+  assert.equal(typeof c.date, 'string');
+  assert.equal(typeof c.text, 'string');
+  assert.equal(c.cardId, cardId);
+  assert.equal(typeof c.boardId, 'string');
+});
+
+test('cardComments sends filter=commentCard and limit=50', async () => {
+  const clock = makeClock();
+  const { fetchImpl, calls } = makeFetch([okJson([])]);
+  const api = createTrelloClient({ key: 'k', token: 't', fetchImpl, sleep: clock.sleep, now: clock.now });
+  await api.cardComments('c1');
+  const url = calls[0]![0];
+  assert.equal(url.searchParams.get('filter'), 'commentCard');
+  assert.equal(url.searchParams.get('limit'), '50');
+  assert.equal(url.searchParams.get('memberCreator'), 'true');
+});
+
+test('boardComments passes since', async () => {
+  const clock = makeClock();
+  const since = '2026-11-01T00:00:00.000Z';
+  const { fetchImpl, calls } = makeFetch([okJson([])]);
+  const api = createTrelloClient({ key: 'k', token: 't', fetchImpl, sleep: clock.sleep, now: clock.now });
+  await api.boardComments('b1', { since });
+  const url = calls[0]![0];
+  assert.equal(url.searchParams.get('filter'), 'commentCard');
+  assert.equal(url.searchParams.get('since'), since);
+  assert.equal(url.searchParams.get('limit'), '1000');
 });

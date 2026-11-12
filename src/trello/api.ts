@@ -79,6 +79,28 @@ export type NewCard = {
   due?: string;
 };
 
+/** Flattened from a Trello `commentCard` action. */
+export const TCommentActionSchema = z.object({
+  id: z.string(),
+  idMemberCreator: z.string(),
+  date: z.string(),
+  memberCreator: z.object({ username: z.string() }).strip().optional(),
+  data: z.object({
+    text: z.string(),
+    card: z.object({ id: z.string() }).strip(),
+    board: z.object({ id: z.string() }).strip(),
+  }).strip(),
+}).strip().transform((a) => ({
+  id: a.id,
+  idMemberCreator: a.idMemberCreator,
+  username: a.memberCreator?.username,
+  date: a.date,
+  text: a.data.text,
+  cardId: a.data.card.id,
+  boardId: a.data.board.id,
+}));
+export type TComment = z.infer<typeof TCommentActionSchema>;
+
 export interface TrelloApi {
   me(): Promise<TMember>;
   board(id: string): Promise<TBoard>;
@@ -108,6 +130,10 @@ export interface TrelloApi {
   attachText(cardId: string, name: string, text: string): Promise<{ id: string }>;
   createChecklist(cardId: string, name: string): Promise<TChecklist>;
   addCheckItem(checklistId: string, name: string, checked?: boolean): Promise<TCheckItem>;
+  /** GET /cards/{id}/actions?filter=commentCard&limit=50&memberCreator=true — newest first */
+  cardComments(cardId: string, o?: { limit?: number }): Promise<TComment[]>;
+  /** GET /boards/{id}/actions?filter=commentCard&since=...&limit=1000 — newest first */
+  boardComments(boardId: string, o: { since: string }): Promise<TComment[]>;
 }
 
 /** The only Trello surface `src/` sees. It can create, archive and comment, and cannot change an existing card:
@@ -116,6 +142,7 @@ export type BotApi = Pick<
   TrelloApi,
   | 'me' | 'board' | 'boardMembers' | 'lists' | 'list' | 'cards' | 'allCards' | 'card' | 'checklist' | 'labels'
   | 'createLabel' | 'createList' | 'createCard' | 'comment' | 'attachText'
+  | 'cardComments' | 'boardComments'
 > & {
   archiveCard(cardId: string): Promise<TCard>;
 };

@@ -11,8 +11,8 @@ const files = readdirSync(DIR).filter((f) => f.endsWith('.json'));
 const load = (name: string): Recording => JSON.parse(readFileSync(join(DIR, `${name}.recording.json`), 'utf8')) as Recording;
 const client = (rec: Recording) => createTrelloClient({ key: 'k', token: 't', fetchImpl: replayFetch(rec), sleep: async () => {} });
 
-test('all five recordings are present', () => {
-  assert.deepEqual(files.sort(), ['jobs', 'lookups', 'profiles', 'system', 'writes'].map((n) => `${n}.recording.json`));
+test('all six recordings are present', () => {
+  assert.deepEqual(files.sort(), ['comments', 'jobs', 'lookups', 'profiles', 'system', 'writes'].map((n) => `${n}.recording.json`));
 });
 
 test('fixtures hold no real ids', () => {
