@@ -10,6 +10,7 @@ import { callbackUrl } from './serve/auth.ts';
 import { createRecentIds } from './serve/gate.ts';
 import { createQueue } from './serve/queue.ts';
 import type { Queue } from './serve/queue.ts';
+import { selectStarter } from './serve/northflank.ts';
 import { localRunStarter, serialStarter } from './serve/runs.ts';
 import type { RunStarter } from './serve/runs.ts';
 import { handleComment } from './bot/dispatch.ts';
@@ -93,11 +94,14 @@ export async function main(
     keep: 0,
   }).log;
 
+  const starter = serialStarter(
+    o.starter ?? selectStarter(env, () => localRunStarter({ env, log, lockFile: runLockPath(env, cfg.boards) })),
+  );
+
   const api = scopeUserBoards(o.trello ?? createTrelloClient(cfg.trello), cfg.boards);
   const me = await api.me();
   for (const id of [cfg.boards.jobs, cfg.boards.profiles, cfg.boards.system]) await api.board(id);
 
-  const starter = serialStarter(o.starter ?? localRunStarter({ env, log, lockFile: runLockPath(env, cfg.boards) }));
   const deps: DispatchDeps = {
     api,
     boards: cfg.boards,

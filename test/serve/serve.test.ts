@@ -140,6 +140,16 @@ test('startup fails fast on a wrong board id', async () => {
   await assert.rejects(main({ ...ENV, SYSTEM_BOARD_ID: 'fa4e0000000000000000dead' }, { trello: s.trello, starter: s.starter, listen: false }));
 });
 
+test('startup fails before any Trello call on a partial NORTHFLANK_* set, naming only the missing variables', async () => {
+  const s = setup();
+  const env = { ...ENV, NORTHFLANK_API_TOKEN: 'nf-token-sample-0123456789', NORTHFLANK_JOB_ID: 'job-sample' };
+  await assert.rejects(main(env, { trello: s.trello, listen: false }), (e: Error) => {
+    assert.equal(e.message, 'NORTHFLANK_* variables are incomplete: missing NORTHFLANK_PROJECT_ID');
+    return true;
+  });
+  assert.equal(s.fake.requests.length, 0);
+});
+
 test('why through the real wiring: ATS and LinkedIn links are read with the guarded fetch only, no child process', async () => {
   const hits: string[] = [];
   const page = `<html><head><script type="application/ld+json">${JSON.stringify({

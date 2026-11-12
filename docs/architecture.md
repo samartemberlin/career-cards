@@ -14,7 +14,7 @@ run:  lock → config cards → job keys → scan → dedup → filter → JD �
 
 | Component | Code |
 |---|---|
-| `serve`: webhooks, `/trigger/run`, gate, caps, job start | [serve.ts](../src/serve.ts), [app.ts](../src/serve/app.ts), [gate.ts](../src/serve/gate.ts), [dispatch.ts](../src/bot/dispatch.ts), [runs.ts](../src/serve/runs.ts) |
+| `serve`: webhooks, `/trigger/run`, gate, caps, job start | [serve.ts](../src/serve.ts), [app.ts](../src/serve/app.ts), [gate.ts](../src/serve/gate.ts), [dispatch.ts](../src/bot/dispatch.ts), [runs.ts](../src/serve/runs.ts), [northflank.ts](../src/serve/northflank.ts) |
 | `run`: one run end to end | [run-once.ts](../src/run/run-once.ts) |
 | Pipeline (ported from samjobs) | [src/pipeline/](../src/pipeline/) |
 | Trello: card formats, paced client | [cards.ts](../src/trello/cards.ts), [api.ts](../src/trello/api.ts), [client.ts](../src/trello/client.ts) |
@@ -54,7 +54,8 @@ No stage gets untrusted content, private data and a way out at once. Stage runne
 - List moves and title edits are not feedback; only `@bot feedback` is — users move cards for their own tracking. [catalogue.ts](../src/bot/catalogue.ts)
 - A Trello automation rule triggers the run — nothing polls, and the user edits the schedule in Trello. [app.ts](../src/serve/app.ts)
 - One worker per user on their own Northflank — separation of data, tokens and quota; image stays cloud-neutral. planned (PR 5)
-- One run at a time is a lock outside Trello, since no card is ever edited: a lock file locally, the platform's job concurrency when deployed (PR 4/5). [lock.ts](../src/run/lock.ts)
+- One run at a time is a lock outside Trello, since no card is ever edited: a lock file locally, the platform check when deployed. [lock.ts](../src/run/lock.ts)
+- Deployed, one run at a time is the service asking Northflank for active runs before starting one, serialised in one instance, with a 1 h job deadline; Northflank's concurrency policy does not cover API-started runs. [northflank.ts](../src/serve/northflank.ts)
 - A broken config card fails the run before scanning, no stale fallback — the user sees the exact card. [schema.ts](../src/config/schema.ts)
 - Masking with placeholders replaces samjobs' employer rewriting — users score on their own accounts; employers matter for fit. [privacy.ts](../src/privacy.ts)
 - Router output is a strict zod union of catalogue ids with closed args — a forged action fails validation. [catalogue.ts](../src/bot/catalogue.ts)
