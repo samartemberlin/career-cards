@@ -19,9 +19,10 @@ import { createRunLog, secretsFromEnv } from '../run/log.ts';
 import type { Env } from '../pipeline/llm.ts';
 import type { UserConfig } from '../config/schema.ts';
 
-export type DispatchDeps = GateDeps & { starter: RunStarter; net: NetDeps; env: Env };
+export type DispatchDeps = GateDeps & { starter: RunStarter; net: NetDeps; env: Env; commentTimeoutMs?: number };
 
 export const COMMENT_MAX = 2000;
+export const COMMENT_TIMEOUT_MS = 300_000;
 const CONFIG_BROKEN = "I can't answer until the config cards are fixed. The next run's status card names the problem.";
 const IDENTITY: Masker = { mask: (t) => t, hasDetail: () => false };
 
@@ -35,12 +36,23 @@ type Reply = HandlerResult & { cls: ReplyClass; resolves?: string };
 const tails = new Map<string, Promise<void>>();
 
 export function handleComment(d: DispatchDeps, a: CommentAction): Promise<void> {
-  const run = (tails.get(a.cardId) ?? Promise.resolve()).then(() => handle(d, a));
+  const run = (tails.get(a.cardId) ?? Promise.resolve()).then(() => bounded(d, a));
   tails.set(a.cardId, run);
   void run.then(() => {
     if (tails.get(a.cardId) === run) tails.delete(a.cardId);
   });
   return run;
+}
+
+/** A hung handler must not hold its card (and the service's queue) forever; it keeps running unawaited. */
+async function bounded(d: DispatchDeps, a: CommentAction): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<'timeout'>((r) => { timer = setTimeout(() => r('timeout'), d.commentTimeoutMs ?? COMMENT_TIMEOUT_MS); });
+  try {
+    if ((await Promise.race([handle(d, a), timeout])) === 'timeout') d.log(`comment ${a.id} timed out`);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function handle(d: DispatchDeps, a: CommentAction): Promise<void> {

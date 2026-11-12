@@ -71,10 +71,21 @@ const isoDate = (v: unknown): string | undefined => {
   return undefined;
 };
 
+const line = (v: unknown): string | undefined => {
+  const t = typeof v === 'string' ? htmlToText(v).replace(/\s+/g, ' ').slice(0, 300) : '';
+  return t || undefined;
+};
+const field = (v: unknown, k: string): unknown => (v && typeof v === 'object' ? (v as Record<string, unknown>)[k] : undefined);
+
 export function fromJobPosting(jp: JobPosting): Partial<Job> {
   const jd = htmlToText(String(jp.description ?? '')).slice(0, MAX_TEXT);
+  const place = ([] as unknown[]).concat(jp['jobLocation'] ?? [])[0];
+  // The run takes only the dates and employment type from here; title, company and location serve `@bot why`.
   return {
     jd,
+    title: line(jp['title']),
+    company: line(typeof jp['hiringOrganization'] === 'string' ? jp['hiringOrganization'] : field(jp['hiringOrganization'], 'name')),
+    location: line(field(field(place, 'address'), 'addressLocality')),
     deadline: isoDate(jp.validThrough),
     posted: isoDate(jp.datePosted),
     employment_type: normalizeEmploymentType(jp.employmentType) ?? undefined,

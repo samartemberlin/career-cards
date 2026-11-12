@@ -86,7 +86,7 @@ export type LookupAll = (host: string) => Promise<{ address: string; family: 4 |
 const systemLookup: LookupAll = async (host) =>
   (await dns.lookup(host, { all: true })).map((a) => ({ address: a.address, family: a.family === 6 ? 6 : 4 }));
 
-type Guard = { lookup?: LookupAll; allow?: (ip: string) => boolean };
+export type UrlGuard = { lookup?: LookupAll; allow?: (ip: string) => boolean };
 
 /** Resolves and checks every address; throws BlockedUrlError unless all of them pass `allow`. */
 async function resolveAllowed(url: string, host: string, lookup: LookupAll, allow: (ip: string) => boolean) {
@@ -101,7 +101,7 @@ function hostOf(u: URL): string {
   return u.hostname.startsWith('[') ? u.hostname.slice(1, -1) : u.hostname;
 }
 
-export async function assertPublicUrl(url: string, o: Guard = {}): Promise<URL> {
+export async function assertPublicUrl(url: string, o: UrlGuard = {}): Promise<URL> {
   const { lookup = systemLookup, allow = isPublicAddress } = o;
   let u: URL;
   try { u = new URL(url); } catch { throw new BlockedUrlError(url, 'not a URL'); }
@@ -121,7 +121,7 @@ export async function assertPublicUrl(url: string, o: Guard = {}): Promise<URL> 
 
 export type SafeResponse = { ok: boolean; status: number; url: string; text: string };
 
-export type SafeFetchOpts = Guard & {
+export type SafeFetchOpts = UrlGuard & {
   maxRedirects?: number;
   timeoutMs?: number;
   maxBytes?: number;
@@ -152,7 +152,7 @@ function guardedLookup(url: string, lookup: LookupAll, allow: (ip: string) => bo
 const REDIRECTS = new Set([301, 302, 303, 307, 308]);
 
 type Hop = { status: number; location?: string; text: string };
-type HopOpts = Guard & { maxBytes: number; headers: Record<string, string>; signal: AbortSignal };
+type HopOpts = UrlGuard & { maxBytes: number; headers: Record<string, string>; signal: AbortSignal };
 
 function hop(u: URL, o: HopOpts): Promise<Hop> {
   const { lookup = systemLookup, allow = isPublicAddress } = o;

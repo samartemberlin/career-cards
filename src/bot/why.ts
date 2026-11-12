@@ -21,11 +21,9 @@ export async function explainFilter(ctx: CommandCtx, args: { link: string }): Pr
     };
   }
 
-  // assertPublicUrl must run before fetchJd: the link comes from a user comment, and
-  // the real bot fetchJd (Task 13) must not shell out to career-ops for ATS keys — it
-  // has no public-address guard and would follow the URL without this check.
+  // The bot's fetchJd checks every hop itself (src/bot/net.ts); this check only gives the clearer reply.
   try {
-    await assertPublicUrl(link);
+    await assertPublicUrl(link, ctx.net.urlGuard);
   } catch (e) {
     if (e instanceof BlockedUrlError) {
       return { text: "I can't check that link: it doesn't point to a public web address." };

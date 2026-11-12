@@ -307,3 +307,22 @@ test('the gate drops silently: a comment without a mention gets no reply', async
   const { posted } = await say(s, 'just a note');
   assert.deepEqual(posted, []);
 });
+
+test('a hung handler times out, is logged, and the next comment on the card runs', async () => {
+  const s = await ready(setup());
+  s.deps.commentTimeoutMs = 50;
+  const restore = withHandler('show_last_run', () => new Promise(() => {}));
+  try {
+    const hung = action('@samplebot last');
+    const next = action('@samplebot help');
+    const first = handleComment(s.deps, hung);
+    await handleComment(s.deps, next);
+    await first;
+    assert.ok(s.logs.includes(`comment ${hung.id} timed out`));
+    const posted = s.fake.commentsOn(JOB_CARD);
+    assert.equal(posted.length, 1);
+    assert.equal(markerOf(posted[0]!).actionId, next.id);
+  } finally {
+    restore();
+  }
+});
