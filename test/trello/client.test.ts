@@ -377,6 +377,19 @@ test('the client has no method that edits a card: cards are only created, archiv
   ].sort(), 'a new client method: if it edits a card, it must not exist');
 });
 
+test('createCard sends only the NewCard fields: an extra key such as idCardSource never reaches Trello', async () => {
+  const card = { id: 'c1', name: 'Job', desc: 'd', idList: 'l1', idBoard: 'b1', closed: false, pos: 1, shortUrl: 'https://trello.com/c/sample001' };
+  const { fetchImpl, calls } = makeFetch([okJson(card)]);
+  const client = createTrelloClient({ key: 'k', token: 't', fetchImpl, sleep: async () => {} });
+  const full = {
+    idList: 'l1', name: 'Job', desc: 'd', pos: 'bottom' as const, idLabels: ['x'], start: '2026-11-01', due: '2026-12-01T12:00:00.000Z',
+  };
+  await client.createCard({ ...full, idCardSource: 'existing', keepFromSource: 'all', closed: true } as typeof full);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(JSON.parse(calls[0]![1]!.body as string), full);
+  assert.ok(!calls[0]![0].search.includes('idCardSource'), 'not in the query either');
+});
+
 // --- schema validation tests ---------------------------------------------
 
 test('drops unknown fields and rejects a malformed card', async () => {

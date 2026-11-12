@@ -5,7 +5,7 @@
 // Every call that takes a board id is checked before any network request is made.
 // Id-addressed reads (card, list, checklist) do one lookup to verify the board.
 // Every write does a fresh lookup (never cached) so a card moved into Originals is caught.
-import type { TrelloApi, TCardWithList, TList } from './api.ts';
+import type { BotApi, TrelloApi, TCardWithList, TList } from './api.ts';
 
 export class ScopeError extends Error {
   readonly target: string;
@@ -31,9 +31,18 @@ export class OriginalsWriteError extends Error {
   }
 }
 
+export class ImmutableCardError extends Error {
+  readonly cardId: string;
+  constructor(cardId: string) {
+    super(`Write to card ${cardId} rejected: the bot only changes cards it has just created`);
+    this.name = 'ImmutableCardError';
+    this.cardId = cardId;
+  }
+}
+
 /** A guard refused the call: the bug is in the caller, so it must end the run, never become a count or a warning. */
 export function isGuardError(e: unknown): boolean {
-  return e instanceof ScopeError || e instanceof OriginalsWriteError;
+  return e instanceof ScopeError || e instanceof OriginalsWriteError || e instanceof ImmutableCardError;
 }
 
 /** Returns true for any list name that trims to "originals" (case-insensitive). */
@@ -183,10 +192,46 @@ export function scopeClient(api: TrelloApi, scope: Scope): TrelloApi {
   };
 }
 
+/** Narrows a scoped client to `BotApi`. Members are listed one by one (never spread), so no `TrelloApi`
+ *  method can leak through at runtime. Cards created through this instance are the only ones `attachText` accepts. */
+export function scopeBotClient(api: TrelloApi, scope: Scope): BotApi {
+  const inner = scopeClient(api, scope);
+  const created = new Set<string>();
+
+  return {
+    me: () => inner.me(),
+    board: (id) => inner.board(id),
+    boardMembers: (id) => inner.boardMembers(id),
+    lists: (boardId, filter) => inner.lists(boardId, filter),
+    list: (id) => inner.list(id),
+    cards: (boardId, opts) => inner.cards(boardId, opts),
+    allCards: (boardId) => inner.allCards(boardId),
+    card: (id) => inner.card(id),
+    checklist: (id) => inner.checklist(id),
+    labels: (boardId) => inner.labels(boardId),
+    createLabel: (boardId, name, color) => inner.createLabel(boardId, name, color),
+    createList: (boardId, name, pos) => inner.createList(boardId, name, pos),
+    comment: (cardId, text) => inner.comment(cardId, text),
+
+    createCard: async (c) => {
+      const card = await inner.createCard(c);
+      created.add(card.id);
+      return card;
+    },
+
+    attachText: async (cardId, name, text) => {
+      if (!created.has(cardId)) throw new ImmutableCardError(cardId);
+      return inner.attachText(cardId, name, text);
+    },
+
+    archiveCard: (cardId) => inner.setCardClosed(cardId, true),
+  };
+}
+
 /** Entry point for src/: scopes the client to the user's three boards with Originals protection always on.
- * Use this instead of scopeClient when profilesBoard is known — it cannot be accidentally omitted. */
-export function scopeUserBoards(api: TrelloApi, boards: UserBoards): TrelloApi {
-  return scopeClient(api, {
+ * Use this instead of scopeBotClient when profilesBoard is known — it cannot be accidentally omitted. */
+export function scopeUserBoards(api: TrelloApi, boards: UserBoards): BotApi {
+  return scopeBotClient(api, {
     boards: [boards.jobs, boards.profiles, boards.system],
     profilesBoard: boards.profiles,
   });

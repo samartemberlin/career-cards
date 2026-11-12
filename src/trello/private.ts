@@ -1,4 +1,4 @@
-import type { TrelloApi } from './api.ts';
+import type { BotApi } from './api.ts';
 
 export type PrivacyProblem = {
   board: string;
@@ -14,7 +14,7 @@ export type PrivacyProblem = {
  * Comparisons are case-insensitive. Empty result means all boards are fine.
  */
 export async function checkBoardsPrivate(
-  api: TrelloApi,
+  api: BotApi,
   boards: string[],
   o: { allowedMembers: string[]; botUsername: string },
 ): Promise<PrivacyProblem[]> {

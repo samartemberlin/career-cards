@@ -37,8 +37,8 @@ function setup(edit: (b: { profiles: Board; system: Board }) => void = () => {})
   const view = (rec: Recording): Board => ({ lists: part(rec, '/lists'), cards: part(rec, '/cards/open') });
   edit({ profiles: view(profiles), system: view(system) });
   const fake = FakeTrello.fromRecordings(profiles, system);
-  const api = createTrelloClient({ key: 'k', token: 't', fetchImpl: fake.fetch, sleep: async () => {} });
   const boards: UserBoards = { jobs: 'fa4e00000000000000000fff', profiles: boardId(profiles), system: boardId(system) };
+  const api = scopeUserBoards(createTrelloClient({ key: 'k', token: 't', fetchImpl: fake.fetch, sleep: async () => {} }), boards);
   return { fake, api, boards };
 }
 

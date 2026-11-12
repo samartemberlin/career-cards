@@ -1,4 +1,4 @@
-import type { TrelloApi } from './api.ts';
+import type { BotApi } from './api.ts';
 
 export class DryRunWriteError extends Error {
   readonly method: string;
@@ -9,9 +9,9 @@ export class DryRunWriteError extends Error {
   }
 }
 
-/** Wraps a TrelloApi so every read passes through and every write throws DryRunWriteError
+/** Wraps a BotApi so every read passes through and every write throws DryRunWriteError
  *  before any network request. Used by --dry-run. */
-export function readOnlyClient(api: TrelloApi): TrelloApi {
+export function readOnlyClient(api: BotApi): BotApi {
   async function deny(method: string): Promise<never> {
     throw new DryRunWriteError(method);
   }
@@ -21,8 +21,6 @@ export function readOnlyClient(api: TrelloApi): TrelloApi {
     me: () => api.me(),
     board: (id) => api.board(id),
     boardMembers: (id) => api.boardMembers(id),
-    organizationMembers: (orgId) => api.organizationMembers(orgId),
-    myOrganizations: () => api.myOrganizations(),
     lists: (boardId, filter) => api.lists(boardId, filter),
     list: (id) => api.list(id),
     cards: (boardId, opts) => api.cards(boardId, opts),
@@ -32,15 +30,11 @@ export function readOnlyClient(api: TrelloApi): TrelloApi {
     labels: (boardId) => api.labels(boardId),
 
     // Writes — async so the guard fires as a rejected Promise, not a synchronous throw
-    createBoard: (_name, _idOrg) => deny('createBoard'),
-    createLabel: (_boardId, _name, _color) => deny('createLabel'),
-    createList: (_boardId, _name, _pos) => deny('createList'),
-    setListClosed: (_listId, _closed) => deny('setListClosed'),
-    createCard: (_c) => deny('createCard'),
-    setCardClosed: (_cardId, _closed) => deny('setCardClosed'),
-    comment: (_cardId, _text) => deny('comment'),
+    archiveCard: (_cardId) => deny('archiveCard'),
     attachText: (_cardId, _name, _text) => deny('attachText'),
-    createChecklist: (_cardId, _name) => deny('createChecklist'),
-    addCheckItem: (_checklistId, _name, _checked) => deny('addCheckItem'),
+    comment: (_cardId, _text) => deny('comment'),
+    createCard: (_c) => deny('createCard'),
+    createList: (_boardId, _name, _pos) => deny('createList'),
+    createLabel: (_boardId, _name, _color) => deny('createLabel'),
   };
 }

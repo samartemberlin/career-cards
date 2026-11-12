@@ -1,4 +1,4 @@
-import type { TCard, TList, TrelloApi } from '../trello/api.ts';
+import type { TCard, TList, BotApi } from '../trello/api.ts';
 import { DESC_LIMIT } from '../trello/cards.ts';
 import type { RunState, RunTrigger, RunStats } from './stats.ts';
 
@@ -202,7 +202,7 @@ export function parseStatusCard(c: { name: string; desc: string }): { state: Run
 
 /** Returns the open list named 'Runs' on the system board, creating it at the bottom when asked. */
 export async function findRunsList(
-  api: TrelloApi,
+  api: BotApi,
   systemBoard: string,
   o: { create: boolean },
 ): Promise<TList | null> {
@@ -215,7 +215,7 @@ export async function findRunsList(
 
 /** Creates a new status card at the top of the given list. */
 export async function createStatusCard(
-  api: TrelloApi,
+  api: BotApi,
   listId: string,
   v: StatusView,
 ): Promise<TCard> {
