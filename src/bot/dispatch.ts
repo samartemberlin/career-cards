@@ -29,7 +29,7 @@ const firstLine = (e: unknown) => (e instanceof Error ? `${e.name}: ${e.message}
 
 const unavailable = (spec: ActionSpec) => `\`${spec.verbs[0]}\` isn't available yet.`;
 
-type Reply =HandlerResult & { cls: ReplyClass; resolves?: string };
+type Reply = HandlerResult & { cls: ReplyClass; resolves?: string };
 
 // Two webhooks for one card must not both read the same pending proposal, so each card's comments run in order.
 const tails = new Map<string, Promise<void>>();
