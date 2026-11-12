@@ -103,6 +103,8 @@ export type TComment = z.infer<typeof TCommentActionSchema>;
 
 export interface TrelloApi {
   me(): Promise<TMember>;
+  /** GET /members/{idOrUsername}?fields=username */
+  member(idOrUsername: string): Promise<TMember>;
   board(id: string): Promise<TBoard>;
   boardMembers(id: string): Promise<TMember[]>;
   organizationMembers(orgId: string): Promise<TMember[]>;
@@ -134,6 +136,11 @@ export interface TrelloApi {
   cardComments(cardId: string, o?: { limit?: number }): Promise<TComment[]>;
   /** GET /boards/{id}/actions?filter=commentCard&since=...&limit=1000 — newest first */
   boardComments(boardId: string, o: { since: string }): Promise<TComment[]>;
+  /** PUT /boards/{id}/members/{memberId}?type=normal — adds the member as a normal member */
+  addBoardMember(boardId: string, memberId: string): Promise<void>;
+  /** POST /webhooks — idModel, callbackURL, description in the JSON body.
+   *  Throws WebhookExists when Trello returns its "already exists" 400. */
+  createWebhook(idModel: string, callbackURL: string, description: string): Promise<{ id: string }>;
 }
 
 /** The only Trello surface `src/` sees. It can create, archive and comment, and cannot change an existing card:

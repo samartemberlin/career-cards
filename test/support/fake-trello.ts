@@ -60,6 +60,10 @@ export class FakeTrello {
     return max + 16384;
   }
 
+  /** Set to false to make POST /webhooks simulate a failed HEAD check (returns 400, not WebhookExists). */
+  public webhookHeadOk: boolean = true;
+  private _webhooks = new Map<string, string>();  // key: `${idModel}\0${callbackURL}` → id
+
   // ── fail queue and request log ────────────────────────────────────────────
   private _failQueue: FailEntry[] = [];
   public requests: { method: string; path: string }[] = [];
@@ -340,9 +344,35 @@ export class FakeTrello {
         cl.checkItems.push(item);
         return ok({ id, name, nameData: { emoji: {} }, pos, state, due: null, dueReminder: null, idMember: null, idChecklist: cl.id, limits: {} });
       }
+      // POST /webhooks
+      if (path === '/webhooks') {
+        if (!this.webhookHeadOk) {
+          return new Response('HEAD request to callback URL returned a non-200 response', { status: 400 });
+        }
+        const { idModel, callbackURL, description } = await readJson() as { idModel: string; callbackURL: string; description: string };
+        const key = `${idModel}\0${callbackURL}`;
+        if (this._webhooks.has(key)) {
+          const dupBody = 'A webhook with that callback, model, and token already exists';
+          return new Response(dupBody, { status: 400 });
+        }
+        const id = this._genId();
+        this._webhooks.set(key, id);
+        return ok({ id, idModel, callbackURL, description, active: true, consecutiveFailures: 0, firstConsecutiveFailDate: null });
+      }
     }
 
     if (method === 'PUT') {
+      // PUT /boards/{id}/members/{memberId}
+      if ((m = /^\/boards\/([^/]+)\/members\/([^/]+)$/.exec(path))) {
+        const boardId = m[1]!;
+        const memberId = m[2]!;
+        if (!this._boards.has(boardId)) return notFound();
+        const existing = this._boardMembers.get(boardId) ?? [];
+        if (!existing.some((mb) => mb.id === memberId)) {
+          this._boardMembers.set(boardId, [...existing, { id: memberId, username: memberId }]);
+        }
+        return ok({ id: boardId });
+      }
       // PUT /lists/{id}/closed
       if ((m = /^\/lists\/([^/]+)\/closed$/.exec(path))) {
         const list = this._lists.get(m[1]!);
@@ -379,6 +409,28 @@ export class FakeTrello {
     if (path === '/members/me/organizations') return ok(this._myOrgs);
 
     let m: RegExpExecArray | null;
+
+    // /members/{idOrUsername} — look up by id or username
+    if ((m = /^\/members\/([^/]+)$/.exec(path)) && m[1] !== 'me') {
+      const idOrUsername = m[1]!;
+      // Search by id first, then by username
+      let found: TMember | undefined;
+      if (idOrUsername === this._me.id || idOrUsername === this._me.username) {
+        found = this._me;
+      } else {
+        for (const members of this._boardMembers.values()) {
+          found = members.find((mb) => mb.id === idOrUsername || mb.username === idOrUsername);
+          if (found) break;
+        }
+        if (!found) {
+          for (const members of this._orgMembers.values()) {
+            found = members.find((mb) => mb.id === idOrUsername || mb.username === idOrUsername);
+            if (found) break;
+          }
+        }
+      }
+      return found ? ok({ id: found.id, username: found.username }) : notFound();
+    }
 
     if ((m = /^\/boards\/([^/]+)$/.exec(path))) {
       const b = this._boards.get(m[1]!);

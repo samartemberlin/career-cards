@@ -31,6 +31,16 @@ export class TrelloError extends Error {
   }
 }
 
+/** A webhook with the same (idModel, callbackURL, token) already exists. */
+export class WebhookExists extends TrelloError {
+  constructor(method: string, path: string, body: string) {
+    super(400, method, path, body);
+    this.name = 'WebhookExists';
+  }
+}
+
+const WEBHOOK_EXISTS_MSG = 'A webhook with that callback, model, and token already exists';
+
 // Methods whose side effects are unknown after a non-429 failure: never retry.
 const IDEMPOTENT_METHODS = new Set(['GET', 'PUT']);
 
@@ -86,6 +96,8 @@ export function createTrelloClient(o: {
       body?: unknown;
       form?: FormData;
       schema?: z.ZodType<T, z.ZodTypeDef, unknown>;
+      /** Called with the raw (pre-redact) body on a non-ok response. Return an error to throw it instead of TrelloError. */
+      mapError?: (status: number, rawBody: string) => Error | undefined;
     } = {},
   ): Promise<T> {
     await pace();
@@ -134,8 +146,12 @@ export function createTrelloClient(o: {
       }
 
       if (!res.ok) {
-        const body = redact(await res.text());
-        throw new TrelloError(res.status, method, path, body);
+        const rawBody = await res.text();
+        if (opts.mapError) {
+          const mapped = opts.mapError(res.status, rawBody);
+          if (mapped) throw mapped;
+        }
+        throw new TrelloError(res.status, method, path, redact(rawBody));
       }
 
       const json = await res.json() as unknown;
@@ -312,6 +328,27 @@ export function createTrelloClient(o: {
     boardComments: (boardId, o) => call('GET', `/boards/${boardId}/actions`, {
       query: { filter: 'commentCard', since: o.since, limit: 1000 },
       schema: z.array(TCommentActionSchema),
+    }),
+
+    member: (idOrUsername) => call('GET', `/members/${idOrUsername}`, {
+      query: { fields: 'id,username' },
+      schema: TMemberSchema,
+    }),
+
+    addBoardMember: async (boardId, memberId) => {
+      await call('PUT', `/boards/${boardId}/members/${memberId}`, {
+        body: { type: 'normal' },
+        schema: z.object({}).passthrough(),
+      });
+    },
+
+    createWebhook: (idModel, callbackURL, description) => call('POST', '/webhooks', {
+      body: { idModel, callbackURL, description },
+      schema: z.object({ id: z.string() }).strip(),
+      mapError: (status, rawBody) =>
+        status === 400 && rawBody.includes(WEBHOOK_EXISTS_MSG)
+          ? new WebhookExists('POST', '/webhooks', rawBody)
+          : undefined,
     }),
   };
 }

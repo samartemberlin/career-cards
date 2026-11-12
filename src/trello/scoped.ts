@@ -105,6 +105,7 @@ export function scopeClient(api: TrelloApi, scope: Scope): TrelloApi {
 
   return {
     me: () => api.me(),
+    member: (idOrUsername) => api.member(idOrUsername),
     myOrganizations: () => api.myOrganizations(),
     organizationMembers: (orgId) => api.organizationMembers(orgId),
 
@@ -197,6 +198,10 @@ export function scopeClient(api: TrelloApi, scope: Scope): TrelloApi {
     },
 
     boardComments: async (boardId, o) => { assertBoard(boardId); return api.boardComments(boardId, o); },
+
+    addBoardMember: async (boardId, memberId) => { assertBoard(boardId); return api.addBoardMember(boardId, memberId); },
+
+    createWebhook: async (idModel, callbackURL, description) => { assertBoard(idModel); return api.createWebhook(idModel, callbackURL, description); },
   };
 }
 
