@@ -36,10 +36,10 @@ Each user runs their own copy of this bot. Status: built = on `main` with tests;
 | Trello client (paced, with backoff and allCards paging) | [api.ts](../src/trello/api.ts), [client.ts](../src/trello/client.ts); [key loading](../src/trello/job-index.ts) built; scope guard built; private-board check built ([private.ts](../src/trello/private.ts)) |
 | Nightly run: run column, status card, `--dry-run` | [run-once.ts](../src/run/run-once.ts), CLI [run.ts](../src/run.ts) |
 | `@bot` catalogue and static commands | [catalogue.ts](../src/bot/catalogue.ts) |
-| Webhook service, gate, caps, `yes`/`no`, `open`/`why`/`last`/`run` | [serve.ts](../src/serve.ts), [app.ts](../src/serve/app.ts), [gate.ts](../src/serve/gate.ts), [caps.ts](../src/bot/caps.ts), [confirm.ts](../src/bot/confirm.ts), [dispatch.ts](../src/bot/dispatch.ts), [handlers.ts](../src/bot/handlers.ts) |
+| Webhook service, gate, caps, `yes`/`no`, `open`/`why`/`last`/`run`, reply checks | [serve.ts](../src/serve.ts), [app.ts](../src/serve/app.ts), [gate.ts](../src/serve/gate.ts), [caps.ts](../src/bot/caps.ts), [confirm.ts](../src/bot/confirm.ts), [dispatch.ts](../src/bot/dispatch.ts), [handlers.ts](../src/bot/handlers.ts), [reply.ts](../src/bot/reply.ts), [safe-fetch.ts](../src/net/safe-fetch.ts) |
 | Deploy template, onboarding tool | planned (PR 5) |
 | Migration from samjobs | planned (PR 6) |
-| Router, `needs`, `legit`, `fit`, `cv`, `feedback`, reply checks | planned (PR 7) |
+| Router, `needs`, `legit`, `fit`, `cv`, `feedback` | planned (PR 7) |
 | Research: `company`, `deep` | planned (PR 8) |
 
 ## Key scenarios

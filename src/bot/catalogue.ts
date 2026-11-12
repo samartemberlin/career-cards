@@ -57,10 +57,10 @@ export const CATALOGUE: ActionSpec[] = [
     args: z.object({ text: z.string().min(1).max(FEEDBACK_MAX) }).strict(),
     textArgs: (rest) => ({ text: rest }),
     usage: `feedback <your words, 1 to ${FEEDBACK_MAX} characters>`,
-    about: 'your words posted verbatim on the active profile\'s Feedback card, after you confirm.',
+    about: 'your words posted verbatim on the active profile\'s Feedback card.',
   },
   simple('show_last_run', ['last'], 'code', 'a summary of the latest run, with a link.'),
-  { ...simple('start_run', ['run'], 'code', 'starts a manual run, after you confirm.'), router: 'confirm' },
+  { ...simple('start_run', ['run'], 'code', 'starts a manual run.'), router: 'confirm' },
 ];
 
 const BUILTINS = new Map<string, 'help' | 'yes' | 'no'>([['help', 'help'], ['hilfe', 'help'], ['yes', 'yes'], ['ja', 'yes'], ['no', 'no'], ['nein', 'no']]);

@@ -4,6 +4,7 @@ import { createInterface } from 'node:readline';
 import type { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import type { Env, SpawnLike } from '../pipeline/llm.ts';
+import { lockHeld } from '../run/lock.ts';
 import type { RunTrigger } from '../run/stats.ts';
 
 /** PR 5's platform starter implements this too: `isRunning` asks for an active job run, `start` creates one. */
@@ -32,6 +33,35 @@ export async function startRun(s: RunStarter, trigger: RunTrigger, log: (s: stri
   return 'started';
 }
 
+/**
+ * One check-and-start at a time across every caller (the trigger and `@bot run`), so two callers can't both see no
+ * run and both start one. A `false` from `isRunning` claims the slot until the `start` that follows settles, so a
+ * caller must start after a `false` (as `startRun` does).
+ */
+export function serialStarter(s: RunStarter): RunStarter {
+  let tail: Promise<unknown> = Promise.resolve();
+  let claimed = false;
+  return {
+    isRunning() {
+      const check = tail.then(async () => {
+        if (claimed) return true;
+        const running = await s.isRunning();
+        if (!running) claimed = true;
+        return running;
+      });
+      tail = check.catch(() => {});
+      return check;
+    },
+    async start(trigger) {
+      try {
+        await s.start(trigger);
+      } finally {
+        claimed = false;
+      }
+    },
+  };
+}
+
 export const SERVICE_ONLY_ENV = ['TRELLO_APP_SECRET', 'TRIGGER_SECRET', 'NORTHFLANK_API_TOKEN', 'PUBLIC_URL', 'PORT'] as const;
 
 export function runChildEnv(env: Env): Record<string, string> {
@@ -44,10 +74,16 @@ export function runChildEnv(env: Env): Record<string, string> {
 const RUN_SCRIPT = fileURLToPath(new URL('../run.ts', import.meta.url));
 
 /**
- * Runs the CLI as a child of the service (local use). `isRunning` only knows this service's own child; a run started
- * elsewhere on the same machine is still refused by the run's lock file.
+ * Runs the CLI as a child of the service (local use). `isRunning` sees this service's own child and, through
+ * `lockFile`, a run started elsewhere on the machine or left behind by a restarted service.
  */
-export function localRunStarter(o: { env: Env; log: (s: string) => void; spawn?: SpawnLike; script?: string }): RunStarter {
+export function localRunStarter(o: {
+  env: Env;
+  log: (s: string) => void;
+  spawn?: SpawnLike;
+  script?: string;
+  lockFile?: string;
+}): RunStarter {
   const spawn = o.spawn ?? nodeSpawn;
   let child: ChildProcess | null = null;
 
@@ -57,7 +93,7 @@ export function localRunStarter(o: { env: Env; log: (s: string) => void; spawn?:
 
   return {
     async isRunning() {
-      return child !== null;
+      return child !== null || (o.lockFile ? await lockHeld(o.lockFile) : false);
     },
     start(trigger) {
       if (child) return Promise.reject(new Error('a run started by this service is still running'));

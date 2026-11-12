@@ -2,8 +2,12 @@ import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
+import { mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { localRunStarter, runChildEnv, startRun, SERVICE_ONLY_ENV } from '../../src/serve/runs.ts';
+import { LOCK_STALE_MS } from '../../src/run/lock.ts';
+import { localRunStarter, runChildEnv, serialStarter, startRun, SERVICE_ONLY_ENV } from '../../src/serve/runs.ts';
 import type { RunStarter } from '../../src/serve/runs.ts';
 import type { SpawnLike } from '../../src/pipeline/llm.ts';
 
@@ -142,4 +146,79 @@ test('localRunStarter defaults to src/run.ts under the current node', async () =
   assert.equal(seen?.cmd, process.execPath);
   assert.equal(seen?.args[0], fileURLToPath(new URL('../../src/run.ts', import.meta.url)));
   assert.deepEqual(seen?.args.slice(1), ['--trigger', 'manual']);
+});
+
+function lockDir(t: { after: (fn: () => void) => void }): string {
+  const dir = mkdtempSync(join(tmpdir(), 'career-cards-runs-test-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  return dir;
+}
+
+function lockStarter(lockFile: string) {
+  let spawned = 0;
+  const s = localRunStarter({
+    env: { PATH: process.env.PATH },
+    script: FIXTURE,
+    log: () => {},
+    lockFile,
+    spawn: (cmd, args, options) => { spawned++; return trackedSpawn(cmd, args, options); },
+  });
+  return { s, spawned: () => spawned };
+}
+
+test('localRunStarter: a fresh run lock (a CLI run) → busy, nothing spawned', async (t) => {
+  const lock = join(lockDir(t), 'run.lock');
+  writeFileSync(lock, 'a CLI run');
+  const { s, spawned } = lockStarter(lock);
+  assert.equal(await startRun(s, 'manual', () => {}), 'busy');
+  assert.equal(spawned(), 0);
+});
+
+test('localRunStarter: a stale run lock → started', async (t) => {
+  const lock = join(lockDir(t), 'run.lock');
+  writeFileSync(lock, 'left by a crashed run');
+  const old = (Date.now() - LOCK_STALE_MS - 1000) / 1000;
+  utimesSync(lock, old, old);
+  const { s, spawned } = lockStarter(lock);
+  assert.equal(await startRun(s, 'manual', () => {}), 'started');
+  assert.equal(spawned(), 1);
+});
+
+test('localRunStarter: an unreadable run lock path → unknown, nothing spawned', async (t) => {
+  const file = join(lockDir(t), 'not-a-dir');
+  writeFileSync(file, '');
+  const { s, spawned } = lockStarter(join(file, 'run.lock'));
+  const lines: string[] = [];
+  assert.equal(await startRun(s, 'manual', (l) => lines.push(l)), 'unknown');
+  assert.equal(spawned(), 0);
+  assert.match(lines[0] ?? '', /^run state unknown: ENOTDIR/);
+});
+
+test('serialStarter: two concurrent starts → one started, one busy; free again once it ends', async () => {
+  let running = false;
+  const starts: string[] = [];
+  const inner: RunStarter = {
+    // A slow platform answer: both checks would see "no run" without the mutex.
+    isRunning: async () => { const r = running; await new Promise((ok) => setTimeout(ok, 20)); return r; },
+    start: async (t) => { await new Promise((r) => setTimeout(r, 20)); starts.push(t); running = true; },
+  };
+  const s = serialStarter(inner);
+  const results = await Promise.all([startRun(s, 'scheduled', () => {}), startRun(s, 'manual', () => {})]);
+  assert.deepEqual(results.sort(), ['busy', 'started']);
+  assert.equal(starts.length, 1);
+  running = false;
+  assert.equal(await startRun(s, 'manual', () => {}), 'started');
+});
+
+test('serialStarter: a failed start or check frees the slot', async () => {
+  let fail: 'check' | 'start' | null = 'start';
+  const s = serialStarter({
+    isRunning: async () => { if (fail === 'check') throw new Error('platform down'); return false; },
+    start: async () => { if (fail === 'start') throw new Error('no capacity'); },
+  });
+  assert.equal(await startRun(s, 'manual', () => {}), 'failed');
+  fail = 'check';
+  assert.equal(await startRun(s, 'manual', () => {}), 'unknown');
+  fail = null;
+  assert.equal(await startRun(s, 'manual', () => {}), 'started');
 });

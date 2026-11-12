@@ -4,6 +4,7 @@ import { createServer, request } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { BODY_MAX, createApp } from '../../src/serve/app.ts';
 import { trelloSignature } from '../../src/serve/auth.ts';
+import { serialStarter } from '../../src/serve/runs.ts';
 import type { AppDeps } from '../../src/serve/app.ts';
 import type { CommentAction } from '../../src/serve/gate.ts';
 import type { RunTrigger } from '../../src/run/stats.ts';
@@ -177,13 +178,13 @@ test('trigger: wrong key → 401, isRunning not called; no key → 401; nothing 
   assert.ok(s.logs.every((l) => !l.includes(TRIGGER_SECRET.slice(0, 12))), s.logs.join('\n'));
 });
 
-test('trigger: a second trigger while the first is starting → 409, start runs once', async () => {
+test('trigger: a second trigger while the first is starting → 409, start runs once (serialStarter)', async () => {
   let release!: () => void;
   const gateOpen = new Promise<void>((r) => { release = r; });
   const starts: RunTrigger[] = [];
   const app = createApp({
     appSecret: APP_SECRET, callbackUrl: CALLBACK, triggerSecret: TRIGGER_SECRET, onComment: () => true, log: () => {},
-    starter: { isRunning: async () => { await gateOpen; return false; }, start: async (t) => { starts.push(t); } },
+    starter: serialStarter({ isRunning: async () => { await gateOpen; return false; }, start: async (t) => { starts.push(t); } }),
   });
   const server = createServer(app);
   servers.push(server);
@@ -191,8 +192,9 @@ test('trigger: a second trigger while the first is starting → 409, start runs 
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   const first = trigger(base, TRIGGER_SECRET);
   await new Promise((r) => setTimeout(r, 50));
-  assert.equal((await trigger(base, TRIGGER_SECRET)).status, 409);
+  const second = trigger(base, TRIGGER_SECRET);
+  await new Promise((r) => setTimeout(r, 50));
   release();
-  assert.equal((await first).status, 202);
+  assert.deepEqual([(await first).status, (await second).status], [202, 409]);
   assert.deepEqual(starts, ['scheduled']);
 });

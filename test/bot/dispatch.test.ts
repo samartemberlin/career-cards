@@ -163,14 +163,25 @@ test('@samplebot what about this? → the help pointer, no handler called', asyn
   assert.equal(called, 0);
 });
 
-test('a public board → privacy refusal, no handler called', async () => {
+const NOT_PRIVATE = "@usera I can't work while the boards aren't private. The next run's status card names the problem.";
+
+test('a public board → privacy refusal naming no board, no handler called', async () => {
   const s = await ready(setup());
   s.fake.setBoardPermissionLevel(BOARDS.jobs, 'public');
   const { posted } = await say(s, '@samplebot run');
   assert.deepEqual(s.starts, []);
   assert.equal(posted.length, 1);
-  assert.equal(body(posted[0]!), "@usera I can't work while the boards aren't private: career-cards sample · Jobs: not private (public)");
+  assert.equal(body(posted[0]!), NOT_PRIVATE);
   assert.equal(markerOf(posted[0]!).cls, 'refusal');
+});
+
+test('a public board and a broken config → the privacy refusal, not the config one', async () => {
+  const s = await ready(setup());
+  s.fake.setBoardPermissionLevel(BOARDS.jobs, 'public');
+  await s.raw.setCardClosed(PERSONAL_DETAILS_CARD, true);
+  const { posted } = await say(s, '@samplebot run');
+  assert.equal(posted.length, 1);
+  assert.equal(body(posted[0]!), NOT_PRIVATE);
 });
 
 test('2,001 characters → length refusal', async () => {
