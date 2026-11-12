@@ -246,7 +246,7 @@ function readProfile(c: Collector, col: Column, path: string, basics: string): R
 }
 
 /** Reads the Profiles and System boards. Every problem is collected, then thrown once as ConfigInvalid. */
-export async function readUserConfig(api: BotApi, boards: UserBoards): Promise<UserConfig> {
+export async function readUserConfig(api: Pick<BotApi, 'lists' | 'cards'>, boards: UserBoards): Promise<UserConfig> {
   const [pLists, pCards, sLists, sCards] = await Promise.all([
     api.lists(boards.profiles, 'open'),
     api.cards(boards.profiles, { filter: 'open', checklists: true }),
@@ -265,7 +265,7 @@ export async function readUserConfig(api: BotApi, boards: UserBoards): Promise<U
 }
 
 /** Reads only the System board's Settings card, with the same problems as `readUserConfig`. */
-export async function readSettings(api: BotApi, boards: UserBoards): Promise<Settings> {
+export async function readSettings(api: Pick<BotApi, 'lists' | 'cards'>, boards: UserBoards): Promise<Settings> {
   const [lists, cards] = await Promise.all([api.lists(boards.system, 'open'), api.cards(boards.system, { filter: 'open' })]);
   const c = new Collector();
   const raw: Record<string, unknown> = {};
