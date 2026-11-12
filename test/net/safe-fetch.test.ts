@@ -60,7 +60,8 @@ test('isPublicAddress blocks every listed range and passes public addresses', ()
     '240.0.0.1', '255.255.255.255',
     '::', '::1', 'fc00::1', 'fd12:3456::1', 'fe80::1', 'febf::1', 'ff02::1',
     '::ffff:10.0.0.1', '::ffff:127.0.0.1', '::ffff:7f00:1', '64:ff9b::a9fe:a9fe', '64:ff9b::127.0.0.1',
-    'fe80::1%eth0', '::127.0.0.1', '2002:7f00:1::1', '64:ff9b:1::8.8.8.8',
+    'fe80::1%eth0', '::127.0.0.1', '2002:7f00:1::1', '64:ff9b:1::8.8.8.8', '::ffff:ffff:7f00:1', '::ffff:0:0:7f00:1',
+    'fec0::1', '100::1', '4000::1', 'FE80::1', '0:0:0:0:0:FFFF:7F00:0001',
     'not-an-ip', '', '0177.0.0.1', '0x7f.0.0.1', '127.1', '2130706433',
   ];
   for (const ip of blocked) assert.equal(isPublicAddress(ip), false, ip);
@@ -153,7 +154,17 @@ test('cuts the body at maxBytes', async () => {
 
 test('times out', async () => {
   const t0 = Date.now();
-  await assert.rejects(safeFetch(`http://public.test:${port}/slow`, { lookup: toLoopback, allow: onlyLoopback, timeoutMs: 100 }));
+  await assert.rejects(
+    safeFetch(`http://public.test:${port}/slow`, { lookup: toLoopback, allow: onlyLoopback, timeoutMs: 100 }),
+    { name: 'TimeoutError' },
+  );
+  assert.ok(Date.now() - t0 < 2000);
+});
+
+test('times out on a lookup that never answers', async () => {
+  const hanging: LookupAll = () => new Promise(() => {});
+  const t0 = Date.now();
+  await assert.rejects(safeFetch('http://hang.test/', { lookup: hanging, timeoutMs: 100 }), { name: 'TimeoutError' });
   assert.ok(Date.now() - t0 < 2000);
 });
 
@@ -169,6 +180,8 @@ test('safeFetchLike is a FetchLike that sends the caller headers', async () => {
   assert.equal(await r.text(), 'hello');
   assert.equal(lastHeaders['user-agent'], 'probe/1');
   await assert.rejects(f('http://10.0.0.1/'), BlockedUrlError);
+  await assert.rejects(f(`http://public.test:${port}/ok`, { method: 'POST', body: 'x' }));
+  assert.ok(!seen.some((p) => p === '/ok' && lastHeaders['content-length']));
 });
 
 test('safeFetchLike honours the caller abort signal', async () => {

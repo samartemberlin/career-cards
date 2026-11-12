@@ -78,12 +78,7 @@ export function isPublicAddress(ip: string): boolean {
   if (h[0] === 0x64 && h[1] === 0xff9b) return zeros(2, 6) && publicV4(v4Of(h, 6));
   if (h[0] === 0x2002) return publicV4(v4Of(h, 1));
   if (h[0] === 0x2001 && h[1] === 0) return false; // Teredo: the embedded client address can be anything
-  if (h[0] === 0x100 && zeros(1, 4)) return false; // discard-only 100::/64
-  const top = h[0]!;
-  if ((top & 0xfe00) === 0xfc00) return false;
-  if ((top & 0xffc0) === 0xfe80 || (top & 0xffc0) === 0xfec0) return false;
-  if ((top & 0xff00) === 0xff00) return false;
-  return true;
+  return (h[0]! & 0xe000) === 0x2000; // global unicast 2000::/3; ULA, link-local, multicast and the rest fall outside
 }
 
 export type LookupAll = (host: string) => Promise<{ address: string; family: 4 | 6 }[]>;
@@ -200,13 +195,25 @@ function hop(u: URL, o: HopOpts): Promise<Hop> {
   });
 }
 
+/** A resolver that hangs must not outlive the call's timeout. */
+function withSignal(lookup: LookupAll, signal: AbortSignal): LookupAll {
+  return (host) => new Promise((resolve, reject) => {
+    if (signal.aborted) { reject(signal.reason); return; }
+    const onAbort = (): void => reject(signal.reason);
+    signal.addEventListener('abort', onAbort, { once: true });
+    lookup(host).then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
+  });
+}
+
 export async function safeFetch(url: string, o: SafeFetchOpts = {}): Promise<SafeResponse> {
   const { maxRedirects = 5, timeoutMs = 15_000, maxBytes = 3_000_000, headers = {}, lookup, allow } = o;
   const signal = o.signal ? AbortSignal.any([AbortSignal.timeout(timeoutMs), o.signal]) : AbortSignal.timeout(timeoutMs);
+  const timedLookup = withSignal(lookup ?? systemLookup, signal);
   let current = url;
   for (let redirects = 0; ; redirects++) {
-    const u = await assertPublicUrl(current, { lookup, allow });
-    const r = await hop(u, { maxBytes, headers, lookup, allow, signal });
+    signal.throwIfAborted();
+    const u = await assertPublicUrl(current, { lookup: timedLookup, allow });
+    const r = await hop(u, { maxBytes, headers, lookup: timedLookup, allow, signal });
     if (r.location === undefined) {
       return { ok: r.status >= 200 && r.status < 300, status: r.status, url: u.href, text: r.text };
     }
@@ -217,12 +224,15 @@ export async function safeFetch(url: string, o: SafeFetchOpts = {}): Promise<Saf
   }
 }
 
-/** Adapter for fetchJd and the sources: init's headers and signal are kept; redirects are always followed by safeFetch. */
+/** Adapter for fetchJd and the sources: GET only; init's headers and signal are kept; redirects are always followed. */
 export function safeFetchLike(o: Omit<SafeFetchOpts, 'headers' | 'signal'> = {}): FetchLike {
   return async (url, init) => {
+    if ((init?.method ?? 'GET').toUpperCase() !== 'GET' || init?.body != null) {
+      throw new Error('safeFetchLike sends GET requests without a body only');
+    }
     const headers: Record<string, string> = {};
     new Headers(init?.headers).forEach((v, k) => { headers[k] = v; });
-    const r = await safeFetch(url, { ...o, headers, signal: init?.signal ?? undefined });
-    return { ok: r.status >= 200 && r.status < 300, status: r.status, text: async () => r.text };
+    const { ok, status, text } = await safeFetch(url, { ...o, headers, signal: init?.signal ?? undefined });
+    return { ok, status, text: async () => text };
   };
 }
