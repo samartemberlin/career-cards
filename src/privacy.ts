@@ -8,7 +8,11 @@ export class PrivacyError extends Error {
   }
 }
 
-export type Masker = { mask(text: string): string };
+export type Masker = {
+  mask(text: string): string;
+  /** True when a listed detail is in `text`; for text that must stay verbatim, such as an allowed link. */
+  hasDetail(text: string): boolean;
+};
 
 // Ported from samjobs' anonymize.mjs. All matching runs on NFKC text without soft hyphens or zero-width characters,
 // so artefacts of text pasted from a PDF cannot hide a name from the masking or from the fail-closed check.
@@ -131,7 +135,13 @@ export function buildMasker(details: string[]): Masker {
     .map((raw, i) => compileDetail(raw, i))
     .sort((a, b) => b.strippedLen - a.strippedLen);
 
-  return { mask: (text: string) => applyMask(text, compiled) };
+  return {
+    mask: (text: string) => applyMask(text, compiled),
+    hasDetail: (text: string) => {
+      const out = normalize(text);
+      return compiled.some(({ checkRe }) => checkRe.test(out));
+    },
+  };
 }
 
 export function maskText(text: string, m: Masker): string {
