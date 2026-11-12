@@ -46,8 +46,17 @@ export function checklistWriter(raw: TrelloApi, scope: Scope, created: Set<strin
   };
 }
 
-const stops = (e: unknown): boolean => isGuardError(e) || e instanceof SampleGuardError;
 const message = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+
+/** A board was created but its id could not be saved: a rerun would create another one. */
+export class SaveIdsFailed extends Error {
+  constructor(role: Role, id: string, cause: unknown) {
+    super(`the ${TITLE[role]} board ${id} was created but its id could not be saved (${message(cause)}); add it to the state file by hand`);
+    this.name = 'SaveIdsFailed';
+  }
+}
+
+const stops = (e: unknown): boolean => isGuardError(e) || e instanceof SampleGuardError || e instanceof SaveIdsFailed;
 
 export async function applyPlan(p: OnboardPlan, c: {
   owner: TrelloApi;
@@ -99,13 +108,23 @@ export async function applyPlan(p: OnboardPlan, c: {
   const run = async (a: Action): Promise<void> => {
     switch (a.kind) {
       case 'createBoard': {
-        const b = await c.owner.createBoard(a.name, c.workspace!);
+        let b;
+        try {
+          b = await c.owner.createBoard(a.name, c.workspace!);
+        } catch (e) {
+          // A timeout may come after Trello created the board, and the tool cannot list boards to find it.
+          throw new Error(`${message(e)} (if the board shows in Trello, put its id in the state file before running again)`);
+        }
         ids[a.board] = b.id;
-        c.saveIds({ ...ids });
         bot = scopedTo(c.bot, ids);
         owner = scopeClient(c.owner, scopeOf(ids));
         checklists = checklistWriter(c.bot, scopeOf(ids), created);
         read.add(a.board);
+        try {
+          c.saveIds({ ...ids });
+        } catch (e) {
+          throw new SaveIdsFailed(a.board, b.id, e);
+        }
         return;
       }
       case 'addMember':

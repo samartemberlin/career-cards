@@ -6,7 +6,7 @@ import type { TMember, TrelloApi } from '../../src/trello/api.ts';
 import { ImmutableCardError, OriginalsWriteError, scopeUserBoards } from '../../src/trello/scoped.ts';
 import { starterLayout } from '../../tools/onboard/starter.ts';
 import type { BoardIds, OnboardPlan, Role } from '../../tools/onboard/plan.ts';
-import { applyPlan, automationRule, checklistWriter, ensureWebhooks } from '../../tools/onboard/apply.ts';
+import { SaveIdsFailed, applyPlan, automationRule, checklistWriter, ensureWebhooks } from '../../tools/onboard/apply.ts';
 import { denyBoardListing } from '../../tools/sample/guard.ts';
 import { main } from '../../tools/onboard.ts';
 
@@ -226,6 +226,34 @@ describe('applyPlan', () => {
       /refus/i,
     );
     assert.deepEqual(calls, []);
+  });
+
+  it('a board id that cannot be saved stops the apply and names the board', async () => {
+    const fake = new FakeTrello();
+    const calls: Call[] = [];
+    const f = twoMembers(fake, calls);
+    const actions: OnboardPlan['actions'] = [
+      { kind: 'createBoard', board: 'jobs', name: 'career-cards · Jobs' },
+      { kind: 'createList', board: 'jobs', list: 'To apply' },
+      { kind: 'createBoard', board: 'profiles', name: 'career-cards · Profiles' },
+    ];
+    const lines: string[] = [];
+    const err = await applyPlan(plan(actions), {
+      owner: clientFor(f, 'owner'), bot: clientFor(f, 'bot'), ids: {}, workspace: WS, out: (s) => lines.push(s),
+      saveIds: () => { throw new Error('ENOENT: no such directory'); },
+    }).then(() => null, (e: unknown) => e);
+    assert.ok(err instanceof SaveIdsFailed);
+    assert.match(err.message, /Jobs board [0-9a-f]{24} was created/);
+    assert.equal(calls.filter((c) => c.method === 'POST').length, 1);
+  });
+
+  it('a failed board creation tells the user to look in Trello before rerunning', async () => {
+    const fake = new FakeTrello();
+    const f = twoMembers(fake, [], { failNth: { method: 'POST', path: /^\/boards$/, n: 1 } });
+    const r = await applyPlan(plan([{ kind: 'createBoard', board: 'jobs', name: 'career-cards · Jobs' }]), {
+      owner: clientFor(f, 'owner'), bot: clientFor(f, 'bot'), ids: {}, workspace: WS, out: () => {}, saveIds: () => {},
+    });
+    assert.match(r.failed[0]!, /if the board shows in Trello, put its id in the state file/);
   });
 
   it('no existing card is changed', async () => {
