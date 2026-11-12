@@ -59,8 +59,7 @@ test('starts a run when no run is active and passes the trigger', async () => {
 
 test('an active run means busy, and nothing is POSTed', async () => {
   const api = fakeApi({ list: { body: { data: { runs: [run('r2', false, 'RUNNING'), run('r1', true, 'SUCCESS')] } } } });
-  const logs: string[] = [];
-  assert.equal(await startRun(starter(api), 'manual', (l) => logs.push(l)), 'busy');
+  assert.equal(await startRun(starter(api), 'manual', () => {}), 'busy');
   assert.equal(api.posts(), 0);
 });
 

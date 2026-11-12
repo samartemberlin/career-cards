@@ -67,7 +67,7 @@ export function northflankStarter(o: NorthflankOpts): RunStarter {
       }
       if (!res.ok) {
         await res.body?.cancel().catch(() => {});
-        throw new NorthflankError(String(res.status), op, res.status >= 400 && res.status < 500);
+        throw new NorthflankError(String(res.status), op, res.status >= 400 && res.status < 500 && res.status !== 408);
       }
       let body: unknown;
       try {
