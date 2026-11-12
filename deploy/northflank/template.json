@@ -1,51 +1,23 @@
 {
   "apiVersion": "v1.2",
+  "name": "career-cards",
+  "description": "One nightly-job-search worker: a ManualJob (run) and a DeploymentService (serve).",
+  "arguments": {
+    "PROJECT_ID": "",
+    "IMAGE": "ghcr.io/samartemberlin/career-cards:main",
+    "JOBS_BOARD_ID": "",
+    "PROFILES_BOARD_ID": "",
+    "SYSTEM_BOARD_ID": "",
+    "PUBLIC_URL": "",
+    "SERVICE_PLAN": "nf-compute-20",
+    "JOB_PLAN": "nf-compute-100-2"
+  },
   "spec": {
-    "kind": "Template",
+    "kind": "Workflow",
     "spec": {
-      "name": "career-cards",
-      "description": "One nightly-job-search worker: a ManualJob (run) and a DeploymentService (serve).",
-      "arguments": {
-        "PROJECT_ID": {
-          "type": "string",
-          "description": "Northflank project ID",
-          "default": ""
-        },
-        "IMAGE": {
-          "type": "string",
-          "description": "Docker image (fork and push your own, or use the upstream public image)",
-          "default": "ghcr.io/samartemberlin/career-cards:main"
-        },
-        "JOBS_BOARD_ID": {
-          "type": "string",
-          "description": "Trello Jobs board ID (from tools/onboard.ts)",
-          "default": ""
-        },
-        "PROFILES_BOARD_ID": {
-          "type": "string",
-          "description": "Trello Profiles board ID (from tools/onboard.ts)",
-          "default": ""
-        },
-        "SYSTEM_BOARD_ID": {
-          "type": "string",
-          "description": "Trello System board ID (from tools/onboard.ts)",
-          "default": ""
-        },
-        "PUBLIC_URL": {
-          "type": "string",
-          "description": "Public HTTPS origin of the serve service, no path (fill after first deploy; see DEPLOY.md step 6)",
-          "default": ""
-        },
-        "SERVICE_PLAN": {
-          "type": "string",
-          "description": "Northflank plan for the serve service",
-          "default": "nf-compute-20"
-        },
-        "JOB_PLAN": {
-          "type": "string",
-          "description": "Northflank plan for the run job",
-          "default": "nf-compute-100-2"
-        }
+      "type": "sequential",
+      "context": {
+        "projectId": "${args.PROJECT_ID}"
       },
       "steps": [
         {
@@ -53,7 +25,6 @@
           "ref": "job",
           "spec": {
             "name": "run",
-            "projectId": "${args.PROJECT_ID}",
             "billing": {
               "deploymentPlan": "${args.JOB_PLAN}"
             },
@@ -64,11 +35,10 @@
               "docker": {
                 "configType": "customCommand",
                 "customCommand": "run"
+              },
+              "external": {
+                "imagePath": "${args.IMAGE}"
               }
-            },
-            "image": {
-              "imageType": "external",
-              "externalImage": "${args.IMAGE}"
             },
             "runtimeEnvironment": {
               "JOBS_BOARD_ID": "${args.JOBS_BOARD_ID}",
@@ -82,7 +52,6 @@
           "ref": "serve",
           "spec": {
             "name": "serve",
-            "projectId": "${args.PROJECT_ID}",
             "billing": {
               "deploymentPlan": "${args.SERVICE_PLAN}"
             },
@@ -90,11 +59,10 @@
               "instances": 1,
               "docker": {
                 "configType": "default"
+              },
+              "external": {
+                "imagePath": "${args.IMAGE}"
               }
-            },
-            "image": {
-              "imageType": "external",
-              "externalImage": "${args.IMAGE}"
             },
             "ports": [
               {
@@ -109,7 +77,11 @@
                 "type": "livenessProbe",
                 "protocol": "HTTP",
                 "path": "/healthz",
-                "port": 8080
+                "port": 8080,
+                "initialDelaySeconds": 10,
+                "periodSeconds": 10,
+                "timeoutSeconds": 5,
+                "failureThreshold": 3
               }
             ],
             "runtimeEnvironment": {

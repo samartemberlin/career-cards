@@ -11,8 +11,8 @@ DeploymentService (`serve`) in your project.
 | `PUBLIC_URL` (HTTPS origin, no path; fill after first deploy) | | ✓ |
 | `NORTHFLANK_PROJECT_ID` (injected via `${args.PROJECT_ID}`) | | ✓ |
 | `NORTHFLANK_JOB_ID` (injected via `${refs.job.id}`) | | ✓ |
-| `NORTHFLANK_API_TOKEN` (secret group `<worker>-service`, restricted to `serve`) | | ✓ |
-| `TRELLO_KEY`, `TRELLO_TOKEN`, `TRELLO_APP_SECRET`, `TRIGGER_SECRET` (secret group `<worker>`) | ✓ | ✓ |
+| `TRELLO_KEY`, `TRELLO_TOKEN` (secret group `<worker>`) | ✓ | ✓ |
+| `TRELLO_APP_SECRET`, `TRIGGER_SECRET`, `NORTHFLANK_API_TOKEN` (secret group `<worker>-service`, restricted to `serve`) | | ✓ |
 | LLM keys: `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `GROQ_API_KEY`, … (secret group `<worker>`) | ✓ | |
 
 ## Steps
@@ -21,8 +21,9 @@ DeploymentService (`serve`) in your project.
 2. Make the GHCR package public (GitHub package settings → Change visibility → Public), or add registry
    credentials to Northflank and pass the image in the `IMAGE` argument.
 3. Run `tools/onboard.ts` for the boards; it prints the three board IDs.
-4. Create secret group `<worker>` (Trello creds, `TRIGGER_SECRET`, LLM keys; assign to both resources) and
-   secret group `<worker>-service` (`NORTHFLANK_API_TOKEN` only, restricted to `serve`).
+4. Create secret group `<worker>` (`TRELLO_KEY`, `TRELLO_TOKEN`, LLM keys; assign to both resources) and
+   secret group `<worker>-service` (`TRELLO_APP_SECRET`, `TRIGGER_SECRET`, `NORTHFLANK_API_TOKEN`; restricted
+   to `serve` — the job never receives these).
 5. Run the template (Templates → Import JSON). Fill all no-default arguments; leave `PUBLIC_URL` empty.
 6. Copy the `serve` URL into `PUBLIC_URL` and re-run the template.
 7. Run `tools/onboard.ts --url <service url>` to register webhooks.
@@ -42,7 +43,7 @@ DeploymentService (`serve`) in your project.
 
 - Add a folder `deploy/<name>/` with the platform's template or manifest.
 - Supply the same env contract.
-- Run a long-running `serve` with public HTTPS. Then either add a one-shot job API and a [`JobStarter`](src/serve/northflank.ts),
+- Run a long-running `serve` with public HTTPS. Then either add a one-shot job API and a [`RunStarter`](src/serve/northflank.ts),
   or omit the `NORTHFLANK_*` variables and let `serve` run the job as a child process (needs ≥ 1 GB RAM).
 
 Some free LLM tiers may train on prompts; check each provider's terms before use.

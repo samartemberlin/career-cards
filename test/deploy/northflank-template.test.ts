@@ -7,7 +7,6 @@ import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const text = readFileSync(join(root, 'deploy/northflank/template.json'), 'utf-8');
 
-type Arg = { type: string; description: string; default: string };
 type Step = {
   kind: string;
   ref: string;
@@ -18,20 +17,32 @@ type Step = {
     deployment: {
       instances?: number;
       docker: { configType: string; customCommand?: string };
+      external?: { imagePath: string };
     };
     ports?: Array<{ name: string; internalPort: number; public: boolean; protocol: string }>;
-    healthChecks?: Array<{ type: string; protocol: string; path: string; port: number }>;
+    healthChecks?: Array<{
+      type: string;
+      protocol: string;
+      path: string;
+      port: number;
+      initialDelaySeconds: number;
+      periodSeconds: number;
+      timeoutSeconds: number;
+      failureThreshold: number;
+    }>;
     runtimeEnvironment: Record<string, string>;
   };
 };
 type Template = {
   apiVersion: string;
-  spec: { kind: string; spec: { name: string; arguments: Record<string, Arg>; steps: Step[] } };
+  name: string;
+  arguments: Record<string, string>;
+  spec: { kind: string; spec: { type: string; context: { projectId: string }; steps: Step[] } };
 };
 
 const tpl = JSON.parse(text) as Template;
 const steps = tpl.spec.spec.steps;
-const args = tpl.spec.spec.arguments;
+const args = tpl.arguments;
 const job = steps.find((s) => s.kind === 'ManualJob')!;
 const svc = steps.find((s) => s.kind === 'DeploymentService')!;
 
@@ -81,7 +92,7 @@ describe('Northflank template', () => {
 
   it('board ids have no defaults', () => {
     for (const name of ['JOBS_BOARD_ID', 'PROFILES_BOARD_ID', 'SYSTEM_BOARD_ID']) {
-      assert.equal(args[name]?.default, '', `${name} should have empty default`);
+      assert.equal(args[name], '', `${name} should have empty default`);
     }
   });
 });
