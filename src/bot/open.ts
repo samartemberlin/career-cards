@@ -89,7 +89,10 @@ export async function checkOpen(
       bodyText,
       applyControls,
     });
-    if (classified.result === 'expired') return { verdict: 'closed', reason: classified.reason };
+    // insufficient_content (page needs JS) and listing_page (redirect to a job
+    // board search page) are ambiguous — not a genuine expiry signal.
+    const ambiguous = classified.code === 'insufficient_content' || classified.code === 'listing_page';
+    if (classified.result === 'expired' && !ambiguous) return { verdict: 'closed', reason: classified.reason };
     if (classified.result === 'active') return { verdict: 'open', reason: classified.reason };
     return { verdict: 'unknown', reason: classified.reason };
   } catch (e) {

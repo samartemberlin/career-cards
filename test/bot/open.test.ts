@@ -91,6 +91,18 @@ test('checkOpen: api null, page 403 bot wall → unknown, never closed', async (
   assert.notEqual(result.verdict, 'closed');
 });
 
+test('checkOpen: api null, SPA page (insufficient_content) → unknown, not closed', async () => {
+  // Pages that need JS render near-empty HTML. classifyLiveness returns
+  // expired/insufficient_content — but that is ambiguous, not a real expiry signal.
+  const result = await checkOpen('https://8.8.8.8/jobs/4', {
+    env: ENV,
+    api: noApi,
+    fetch: async () => ({ ok: true, status: 200, url: 'https://8.8.8.8/jobs/4', text: '<html><body></body></html>' }),
+  });
+  assert.equal(result.verdict, 'unknown');
+  assert.notEqual(result.verdict, 'closed');
+});
+
 test('checkOpen: blocked address → unknown, neither api nor fetch called', async () => {
   let apiCalled = false;
   let fetchCalled = false;
