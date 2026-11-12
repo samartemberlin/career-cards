@@ -1,0 +1,7 @@
+.env*
+.worktrees
+tools/.*.json
+**/.git
+node_modules
+test
+docs

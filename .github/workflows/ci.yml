@@ -22,3 +22,67 @@ jobs:
       - run: npm run typecheck
 
       - run: npm test
+
+  image:
+    runs-on: ubuntu-latest
+    needs: test
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Build image
+        run: docker build -t cc:ci .
+
+      - name: Smoke test - check
+        run: |
+          out=$(docker run --rm cc:ci check)
+          echo "$out"
+          echo "$out" | grep -q "v24\."
+          echo "$out" | grep -q "(Claude Code)"
+
+      - name: Image runs as non-root
+        run: test "$(docker run --rm --entrypoint id cc:ci -u)" != 0
+
+      - name: Smoke career-ops import graph
+        run: |
+          out=$(docker run --rm --entrypoint node cc:ci career-ops/scan.mjs --help 2>&1 || true)
+          echo "$out"
+          if echo "$out" | grep -q ERR_MODULE_NOT_FOUND; then
+            echo "career-ops module not found in image"
+            exit 1
+          fi
+
+      - name: No secrets in image env
+        run: |
+          env_json=$(docker image inspect cc:ci --format '{{json .Config.Env}}')
+          echo "$env_json"
+          if echo "$env_json" | grep -qiE 'KEY|TOKEN|SECRET'; then
+            echo "Secret-looking variable found in image env"
+            exit 1
+          fi
+
+      - name: Get short SHA
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        id: sha
+        run: echo "short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+
+      - name: Log in to ghcr.io
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push to ghcr.io
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/build-push-action@v6
+        with:
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/career-cards:main
+            ghcr.io/${{ github.repository_owner }}/career-cards:sha-${{ steps.sha.outputs.short }}
