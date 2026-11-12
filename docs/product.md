@@ -15,7 +15,7 @@ Each user runs their own copy of this bot. Status: built = on `main` with tests;
 - As a user I see each night's new jobs as one Trello column, best first.
 - As a user I change search terms, filters, rubric or providers by editing a card; the next run uses them.
 - As a user I ask `@bot` about a job card and get the answer as a comment.
-- As a user I can tell why a job never got a card.
+- As a user I can tell why a job never got a card ([why.ts](../src/bot/why.ts)).
 - As a user I see on one board whether each run worked.
 - As the owner I help a friend set up their own worker without holding their data or tokens.
 

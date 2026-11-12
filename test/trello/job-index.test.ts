@@ -115,3 +115,31 @@ test('loadJobIndex works through scopeUserBoards', async () => {
   assert.equal(index.keys.size, 1061);
   assert.equal(index.toArchive.length, 1050);
 });
+
+test('loadJobIndex.byKey holds open and archived keyed cards, not summary cards', async () => {
+  const fake = new FakeTrello();
+  const inner = createTrelloClient({ key: 'k', token: 't', fetchImpl: fake.fetch, sleep: async () => {} });
+  const bid = 'fa4e00000000000000000005';
+  const api = scopeUserBoards(inner, { jobs: bid, profiles: 'fa4e0000000000000000000c', system: 'fa4e0000000000000000000d' });
+
+  const list = await api.createList(bid, 'Nov 12 · 01:00', 'bottom');
+  const openCard = await api.createCard({
+    idList: list.id, name: '7 · Acme — Engineer', pos: 'bottom',
+    desc: 'Full job text.\n\n---\ncareer-cards-key: test:open-job',
+  });
+  const archivedCard = await api.createCard({
+    idList: list.id, name: '5 · Widgets — Designer', pos: 'bottom',
+    desc: 'Some text.\n\n---\ncareer-cards-key: test:archived-job',
+  });
+  await api.archiveCard(archivedCard.id);
+  // A keyless card (e.g. a summary card) must not appear in byKey
+  await api.createCard({ idList: list.id, name: 'ℹ️ Run summary', pos: 'bottom', desc: 'no key line' });
+
+  const index = await loadJobIndex(api, bid);
+
+  assert.ok(index.byKey.has('test:open-job'), 'open card in byKey');
+  assert.ok(index.byKey.has('test:archived-job'), 'archived card in byKey');
+  assert.equal(index.byKey.size, 2, 'summary card not in byKey');
+  assert.equal(index.byKey.get('test:open-job')!.shortUrl, openCard.shortUrl);
+  assert.equal(index.byKey.get('test:archived-job')!.closed, true, 'archived card has closed=true');
+});

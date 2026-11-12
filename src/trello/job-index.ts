@@ -3,6 +3,8 @@ import { parseJobKey, isRunColumnName } from './cards.ts';
 
 export type JobIndex = {
   keys: Set<string>;
+  /** Open and archived cards that carry a job key, keyed by that key. Summary and keyless cards are excluded. */
+  byKey: Map<string, TCard>;
   toArchive: TCard[];
   cardCount: number;
 };
@@ -23,16 +25,18 @@ export async function loadJobIndex(api: BotApi, jobsBoard: string): Promise<JobI
   );
 
   const keys = new Set<string>();
+  const byKey = new Map<string, TCard>();
   const toArchive: TCard[] = [];
 
   for (const card of cards) {
     const key = parseJobKey(card.desc);
     if (key === null) continue;
     keys.add(key);
+    byKey.set(key, card);
     if (!card.closed && archivableListIds.has(card.idList)) {
       toArchive.push(card);
     }
   }
 
-  return { keys, toArchive, cardCount: cards.length };
+  return { keys, byKey, toArchive, cardCount: cards.length };
 }

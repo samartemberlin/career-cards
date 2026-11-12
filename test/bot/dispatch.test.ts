@@ -156,7 +156,7 @@ test('@samplebot what about this? → the help pointer, no handler called', asyn
   const restore = withHandler('show_last_run', async () => { called++; return { text: 'x' }; });
   try {
     const { posted } = await say(s, '@samplebot what about this?');
-    assert.match(body(posted[0]!), /^@usera I only know these commands for now:\n@samplebot last — /);
+    assert.match(body(posted[0]!), /^@usera I only know these commands for now:\n@samplebot why /);
   } finally {
     restore();
   }

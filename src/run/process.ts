@@ -17,6 +17,16 @@ import type { RunStats } from './stats.ts';
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+/** Applies `filter(job)` first; if null and the job has an ISO deadline before `today`, returns EXPIRED. */
+export function describedRejection(job: Job, filter: (job: Job) => string | null, today: string): string | null {
+  const reason = filter(job);
+  if (reason !== null) return reason;
+  if (job.deadline && ISO_DATE.test(job.deadline) && job.deadline < today) {
+    return `EXPIRED: "deadline ${job.deadline}"`;
+  }
+  return null;
+}
+
 export function isoDateIn(d: Date, timeZone: string): string {
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(d);
   const get = (t: string) => parts.find((p) => p.type === t)!.value;
@@ -119,8 +129,7 @@ export async function processJobs(
       ...j, jd: r.jd,
       ...(employment_type ? { employment_type } : {}), ...(due ? { deadline: due } : {}), ...(posted ? { posted } : {}),
     };
-    const why = filter(full) ?? (full.deadline && ISO_DATE.test(full.deadline) && full.deadline < today
-      ? `EXPIRED: "deadline ${full.deadline}"` : null);
+    const why = describedRejection(full, filter, today);
     if (why) { reject(full, why); stats.rejectedPost++; } else ready.push(full);
   }
 
