@@ -80,6 +80,9 @@ function makeStub(opts: StubOpts = {}): { api: TrelloApi; log: CallLog } {
     addCheckItem: async (checklistId, name, checked) => { log.push({ method: 'addCheckItem', args: [checklistId, name, checked] }); return { id: 'ci1', name, state: 'incomplete', pos: 0 }; },
     cardComments: async (cardId, o) => { log.push({ method: 'cardComments', args: [cardId, o] }); return []; },
     boardComments: async (boardId, o) => { log.push({ method: 'boardComments', args: [boardId, o] }); return []; },
+    member: async (idOrUsername) => { log.push({ method: 'member', args: [idOrUsername] }); return { id: 'u1', username: idOrUsername }; },
+    addBoardMember: async (boardId, memberId) => { log.push({ method: 'addBoardMember', args: [boardId, memberId] }); },
+    createWebhook: async (idModel, callbackURL, description) => { log.push({ method: 'createWebhook', args: [idModel, callbackURL, description] }); return { id: 'wh1' }; },
   };
 
   return { api, log };
@@ -475,4 +478,42 @@ test('boardComments on an in-scope board passes through', async () => {
   const scoped = scopeClient(api, { boards: ['board1'] });
   await scoped.boardComments('board1', { since: '2026-01-01T00:00:00.000Z' });
   assert.equal(log.filter((c) => c.method === 'boardComments').length, 1);
+});
+
+// --- onboarding calls: scope checks ----------------------------------------
+
+test('createWebhook on a board outside the scope throws ScopeError before any request', async () => {
+  const { api, log } = makeStub();
+  const scoped = scopeClient(api, { boards: ['board1'] });
+  await assert.rejects(() => scoped.createWebhook('board-other', 'https://example.com/hook', 'desc'), ScopeError);
+  assert.equal(log.length, 0, 'no requests should be made before scope check');
+});
+
+test('createWebhook on an in-scope board passes through', async () => {
+  const { api, log } = makeStub();
+  const scoped = scopeClient(api, { boards: ['board1'] });
+  await scoped.createWebhook('board1', 'https://example.com/hook', 'desc');
+  assert.equal(log.filter((c) => c.method === 'createWebhook').length, 1);
+});
+
+test('addBoardMember outside the scope throws ScopeError before any request', async () => {
+  const { api, log } = makeStub();
+  const scoped = scopeClient(api, { boards: ['board1'] });
+  await assert.rejects(() => scoped.addBoardMember('board-other', 'member1'), ScopeError);
+  assert.equal(log.length, 0, 'no requests should be made before scope check');
+});
+
+test('addBoardMember inside the scope passes through', async () => {
+  const { api, log } = makeStub();
+  const scoped = scopeClient(api, { boards: ['board1'] });
+  await scoped.addBoardMember('board1', 'member1');
+  assert.equal(log.filter((c) => c.method === 'addBoardMember').length, 1);
+});
+
+test('member is a read and passes through without a scope check', async () => {
+  const { api, log } = makeStub();
+  const scoped = scopeClient(api, { boards: ['board1'] });
+  const result = await scoped.member('alice');
+  assert.equal(result.username, 'alice');
+  assert.equal(log.filter((c) => c.method === 'member').length, 1);
 });

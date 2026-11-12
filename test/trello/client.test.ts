@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { createTrelloClient, TrelloError } from '../../src/trello/client.ts';
+import { createTrelloClient, TrelloError, WebhookExists, WEBHOOK_EXISTS_MSG } from '../../src/trello/client.ts';
 import type { FetchLike } from '../../src/trello/client.ts';
 import { replayFetch } from '../support/replay.ts';
 import type { Recording } from '../../tools/sample/scrub.ts';
@@ -379,10 +379,10 @@ test('a timed-out attempt is retried like a network error (GET)', async () => {
 test('the client has no method that edits a card: cards are only created, archived, commented on or given attachments', () => {
   const client = createTrelloClient({ key: 'k', token: 't', fetchImpl: async () => okJson({}) });
   assert.deepEqual(Object.keys(client).sort(), [
-    'addCheckItem', 'allCards', 'attachText', 'board', 'boardComments', 'boardMembers', 'card', 'cardComments',
-    'cards', 'checklist', 'comment',
-    'createBoard', 'createCard', 'createChecklist', 'createLabel', 'createList', 'labels', 'list', 'lists', 'me',
-    'myOrganizations', 'organizationMembers', 'setCardClosed', 'setListClosed',
+    'addBoardMember', 'addCheckItem', 'allCards', 'attachText', 'board', 'boardComments', 'boardMembers', 'card',
+    'cardComments', 'cards', 'checklist', 'comment',
+    'createBoard', 'createCard', 'createChecklist', 'createLabel', 'createList', 'createWebhook', 'labels', 'list',
+    'lists', 'me', 'member', 'myOrganizations', 'organizationMembers', 'setCardClosed', 'setListClosed',
   ].sort(), 'a new client method: if it edits a card, it must not exist');
 });
 
@@ -488,4 +488,60 @@ test('boardComments passes since', async () => {
   assert.equal(url.searchParams.get('filter'), 'commentCard');
   assert.equal(url.searchParams.get('since'), since);
   assert.equal(url.searchParams.get('limit'), '1000');
+});
+
+// --- onboarding calls -------------------------------------------------------
+
+test('createWebhook sends idModel, callbackURL and description in the JSON body, none in the query', async () => {
+  const { fetchImpl, calls } = makeFetch([okJson({ id: 'wh1' })]);
+  const client = createTrelloClient({ key: 'k', token: 't', fetchImpl, sleep: async () => {} });
+  const result = await client.createWebhook('model1', 'https://example.com/hook', 'my webhook');
+  assert.equal(result.id, 'wh1');
+  assert.equal(calls.length, 1);
+  const [url, init] = calls[0]!;
+  const body = JSON.parse(init!.body as string) as Record<string, unknown>;
+  assert.equal(body['idModel'], 'model1');
+  assert.equal(body['callbackURL'], 'https://example.com/hook');
+  assert.equal(body['description'], 'my webhook');
+  // None of the three fields should appear in the query string
+  assert.ok(!url.searchParams.has('idModel'), 'idModel must not be in the query');
+  assert.ok(!url.searchParams.has('callbackURL'), 'callbackURL must not be in the query');
+  assert.ok(!url.searchParams.has('description'), 'description must not be in the query');
+});
+
+test('createWebhook maps the duplicate 400 to WebhookExists', async () => {
+  const { fetchImpl } = makeFetch([statusResponse(400, WEBHOOK_EXISTS_MSG)]);
+  const client = createTrelloClient({ key: 'k', token: 't', fetchImpl, sleep: async () => {} });
+  await assert.rejects(
+    () => client.createWebhook('model1', 'https://example.com/hook', 'dup'),
+    (err: unknown) => {
+      assert.ok(err instanceof WebhookExists, `expected WebhookExists, got ${String(err)}`);
+      return true;
+    },
+  );
+});
+
+test('createWebhook keeps other 400 errors as TrelloError', async () => {
+  const { fetchImpl } = makeFetch([statusResponse(400, 'HEAD request to callback URL failed')]);
+  const client = createTrelloClient({ key: 'k', token: 't', fetchImpl, sleep: async () => {} });
+  await assert.rejects(
+    () => client.createWebhook('model1', 'https://example.com/hook', 'bad url'),
+    (err: unknown) => {
+      assert.ok(err instanceof TrelloError, `expected TrelloError, got ${String(err)}`);
+      assert.ok(!(err instanceof WebhookExists), 'must not be WebhookExists');
+      assert.equal(err.status, 400);
+      return true;
+    },
+  );
+});
+
+test('addBoardMember uses PUT with type=normal', async () => {
+  const { fetchImpl, calls } = makeFetch([okJson({ id: 'b1' })]);
+  const client = createTrelloClient({ key: 'k', token: 't', fetchImpl, sleep: async () => {} });
+  await client.addBoardMember('b1', 'member1');
+  assert.equal(calls.length, 1);
+  const [url, init] = calls[0]!;
+  assert.equal(init!.method, 'PUT');
+  assert.ok(url.pathname.includes('/boards/b1/members/member1'), `unexpected path: ${url.pathname}`);
+  assert.equal(url.searchParams.get('type'), 'normal', 'type must be in the query string');
 });

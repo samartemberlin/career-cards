@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { createTrelloClient } from '../../src/trello/client.ts';
+import { createTrelloClient, TrelloError, WebhookExists, WEBHOOK_EXISTS_MSG } from '../../src/trello/client.ts';
 import { replayFetch } from './replay.ts';
 import { FakeTrello } from './fake-trello.ts';
 import type { Recording } from '../../tools/sample/scrub.ts';
@@ -376,4 +376,49 @@ test("FakeTrello: a client POST comment is authored by the bot (the client's _me
   assert.equal(comments[0]!.text, 'bot says hello');
   assert.equal(comments[0]!.idMemberCreator, fake['_me'].id);
   assert.equal(comments[0]!.username, fake['_me'].username);
+});
+
+// ── webhooks ──────────────────────────────────────────────────────────────────
+
+test('FakeTrello: a second createWebhook for the same model and callback throws WebhookExists', async () => {
+  const fake = new FakeTrello();
+  const api = client(fake.fetch);
+  const first = await api.createWebhook('board1', 'https://example.com/hook', 'first');
+  assert.equal(typeof first.id, 'string', 'first create returns an id');
+
+  await assert.rejects(
+    () => api.createWebhook('board1', 'https://example.com/hook', 'second'),
+    (err: unknown) => {
+      assert.ok(err instanceof WebhookExists, `expected WebhookExists, got ${String(err)}`);
+      return true;
+    },
+  );
+});
+
+test('FakeTrello: webhookHeadOk=false makes createWebhook throw TrelloError with status 400', async () => {
+  const fake = new FakeTrello();
+  fake.webhookHeadOk = false;
+  const api = client(fake.fetch);
+
+  await assert.rejects(
+    () => api.createWebhook('board1', 'https://example.com/hook', 'bad'),
+    (err: unknown) => {
+      assert.ok(err instanceof TrelloError, `expected TrelloError, got ${String(err)}`);
+      assert.ok(!(err instanceof WebhookExists), 'must not be WebhookExists');
+      assert.equal(err.status, 400);
+      return true;
+    },
+  );
+});
+
+test('FakeTrello: different callback or different model create distinct webhooks', async () => {
+  const fake = new FakeTrello();
+  const api = client(fake.fetch);
+  const r1 = await api.createWebhook('board1', 'https://example.com/hook1', 'wh1');
+  const r2 = await api.createWebhook('board1', 'https://example.com/hook2', 'wh2');
+  const r3 = await api.createWebhook('board2', 'https://example.com/hook1', 'wh3');
+  assert.notEqual(r1.id, r2.id);
+  assert.notEqual(r1.id, r3.id);
+  // Same (board1, hook1) should now throw
+  await assert.rejects(() => api.createWebhook('board1', 'https://example.com/hook1', 'dup'), WebhookExists);
 });
