@@ -333,11 +333,12 @@ test('random punctuation soup always comes out escaped, link-free and with one m
 
 test('long runs without a dot or a link do not make the checks slow', () => {
   const inputs = ['~`'.repeat(8000), `${'~'.repeat(20000)}!`, 'a'.repeat(30000), `${'\\'.repeat(20000)}a`,
-    `${'a-'.repeat(10000)}!`, `${'x'.repeat(20000)}://`, `${'a.'.repeat(10000)}`, `${'\u{1F600}'.repeat(10000)}.`];
+    `${'a-'.repeat(10000)}!`, `${'x'.repeat(20000)}://`, `${'a.'.repeat(10000)}`, `${'\u{1F600}'.repeat(10000)}.`,
+    '\u3316'.repeat(12000), '\u0436'.repeat(12000), '\u30AB'.repeat(12000), '\uFB03'.repeat(12000)];
   for (const text of inputs) {
     const start = performance.now();
     read(finish(text));
-    assert.ok(performance.now() - start < 1500, `${text.slice(0, 6)}: ${Math.round(performance.now() - start)} ms`);
+    assert.ok(performance.now() - start < 1000, `${text.slice(0, 6)}: ${Math.round(performance.now() - start)} ms`);
   }
 });
 
@@ -345,4 +346,15 @@ test('an over-long text is cut at a space before any check, never inside a liste
   const pad = 'w'.repeat(REPLY_MAX * REPLY_PARTS_MAX - 4);
   const r = read(finish(`${pad} Theo Example`).slice(0, 1));
   assert.doesNotMatch(r.text, /theo/i);
+});
+
+test('an over-long text without spaces is cut, not emptied', () => {
+  const text = '\u{1F600}\u6F22'.repeat(5000);
+  const r = read(finish(text));
+  assert.ok(r.text.length > REPLY_MAX, String(r.text.length));
+  assert.ok(text.startsWith(r.text.replace(/\n/g, '')));
+});
+
+test('a protocol-relative link with any first character is removed', () => {
+  for (const text of ['x //\u20AC.~', 'x //_.io', 'x //\u00A9/y']) assert.doesNotMatch(read(finish(text)).text, /\/\//, text);
 });

@@ -86,7 +86,7 @@ function takeLinks(text: string, allowedLinks: Iterable<string>, masker: Masker)
 
 const SCHEME_URL = /(?<![a-z0-9+.-])[a-z][a-z0-9+.-]*:\/\/\S*/gi;
 const RISKY_SCHEME = /\b(?:https?|ftps?|sftp|file|javascript|vbscript|data|blob|mailto|tel|sms|callto|intent|xmpp|wss?):\S+/gi;
-const PROTOCOL_RELATIVE = /\/\/[\p{L}\p{N}]\S*/gu;
+const PROTOCOL_RELATIVE = /\/\/[^\s/]\S*/gu;
 // A label is what linkify-it counts as one: anything but space, punctuation and control characters, so emoji,
 // symbols and combining marks are in (`😀😀.ws`, `evil\u034F.io`); emphasis marks and `-` too (`evil*.ninja`).
 // The alternatives must not overlap and a match may start only where a label starts, or a long run without a dot
@@ -129,17 +129,19 @@ const ACTIVE = /[!#$&()*+\-.:<=>@[\\\]^_`{|}~]/g;
 const escapeText = (line: string): string => line.replace(ACTIVE, '\\$&');
 
 /** The plain text of the reply: links taken out, details masked, one space between words, no marker line. */
-// Never more than fits the parts, and it bounds the time the patterns below take. Cut at a space, so the cut does not
-// leave half of a listed detail that the masking would no longer recognise.
+// Never more than fits the parts, and it bounds the time the patterns below take; again after normalising, because
+// NFKC can make text longer (`㌖` is six letters). Cut at a space if there is one in the second half, so the cut
+// does not leave half of a listed detail that the masking would no longer recognise.
 const TEXT_MAX = REPLY_MAX * REPLY_PARTS_MAX;
 function capped(text: string): string {
   if (text.length <= TEXT_MAX) return text;
   const space = text.slice(0, TEXT_MAX).search(/\s\S*$/);
-  return text.slice(0, space > 0 ? space : 0);
+  if (space > TEXT_MAX / 2) return text.slice(0, space);
+  return text.slice(0, /[\uD800-\uDBFF]/.test(text[TEXT_MAX - 1]!) ? TEXT_MAX - 1 : TEXT_MAX);
 }
 
 function plainText(r: { text: string; masker: Masker; allowedLinks: Iterable<string> }): { text: string; links: string[] } {
-  const taken = takeLinks(dropMarkerLines(normalize(capped(r.text))), r.allowedLinks, r.masker);
+  const taken = takeLinks(dropMarkerLines(capped(normalize(capped(r.text)))), r.allowedLinks, r.masker);
   let masked = r.masker.mask(taken.text);
   // Marks are shown, not rendered, but `Th_eo_ Exa**mple**` still reads as the name.
   if (r.masker.hasDetail(masked.replace(MARKS, ''))) masked = r.masker.mask(taken.text.replace(MARKS, ''));

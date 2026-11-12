@@ -19,7 +19,8 @@ export type Masker = {
 const INVISIBLE = /[\u00AD\u200B-\u200D\u2060\uFEFF]/g;
 const normalize = (s: string): string => s.normalize('NFKC').replace(INVISIBLE, '');
 
-const EMAIL = /[\p{L}\p{N}._%+-]+@[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)+/gu;
+// Starts only where the run starts, or a long run of letters without `@` takes quadratic time.
+const EMAIL = /(?<![\p{L}\p{N}._%+-])[\p{L}\p{N}._%+-]+@[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)+/gu;
 const URL_RE = /(?:https?:\/\/|www\.)\S+/giu;
 // Links without a scheme, such as linkedin.com/in/x. A fixed TLD list keeps Node.js, e.g. and 3.91 out.
 const TLDS = 'com|de|org|net|io|eu|co|uk|me|app|dev|info|berlin|fm|ly|at|ch|nl|fr|it|es|us|edu|gov|ai|tv|xyz|blog|page|site|online|cc';
