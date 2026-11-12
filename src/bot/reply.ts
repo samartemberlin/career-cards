@@ -46,7 +46,7 @@ const STRIPPED = /[\u0000-\u0008\u000E-\u001F\u007F\u00AD\u200B-‏‪-‮⁠-�
 const LINE_BREAK = /\r\n?|[\u000B\u000C\u0085\u2028\u2029]/g;
 // The output escapes every backslash, so none of these could unescape on Trello; they go so that the link and detail
 // checks see `https\://` and `jane\@mail.test` as what they would read as.
-const MD_ESCAPE = /\\+(?=[!-/:-@[-`{-~])/g;
+const MD_ESCAPE = /(?<!\\)\\+(?=[!-/:-@[-`{-~])/g;
 const normalize = (text: string): string =>
   decodeEntities(text).normalize('NFKC').replace(STRIPPED, '').replace(LINE_BREAK, '\n').replace(MD_ESCAPE, '');
 
@@ -84,20 +84,26 @@ function takeLinks(text: string, allowedLinks: Iterable<string>, masker: Masker)
   return { text, links };
 }
 
-const SCHEME_URL = /[a-z][a-z0-9+.-]*:\/\/\S*/gi;
+const SCHEME_URL = /(?<![a-z0-9+.-])[a-z][a-z0-9+.-]*:\/\/\S*/gi;
 const RISKY_SCHEME = /\b(?:https?|ftps?|sftp|file|javascript|vbscript|data|blob|mailto|tel|sms|callto|intent|xmpp|wss?):\S+/gi;
 const PROTOCOL_RELATIVE = /\/\/[\p{L}\p{N}]\S*/gu;
 // A label is what linkify-it counts as one: anything but space, punctuation and control characters, so emoji,
 // symbols and combining marks are in (`😀😀.ws`, `evil\u034F.io`); emphasis marks and `-` too (`evil*.ninja`).
-const HOST = /(?:[^\s\p{P}\p{Z}\p{Cc}]|[*_~`-])+(?:\.(?:[^\s\p{P}\p{Z}\p{Cc}]|[*_~`-])+)+/gu;
+// The alternatives must not overlap and a match may start only where a label starts, or a long run without a dot
+// backtracks for seconds.
+const HOST = /(?<![^\s\p{P}\p{Z}\p{Cc}]|[*_-])(?:[^\s\p{P}\p{Z}\p{Cc}]|[*_-])+(?:\.(?:[^\s\p{P}\p{Z}\p{Cc}]|[*_-])+)+/gu;
 const IPV4 = /(?<![\p{L}\p{N}.])\d{1,3}(?:\.\d{1,3}){3}(?![\p{L}\p{N}])/gu;
 // Any ending of two or more letters may be a top-level domain some linkifier knows, so a dotted word goes unless its
 // endings are all on this short list of file extensions that are not domains (`Node.js`). `e.g.` and `3.91` stay.
 const NOT_TLD = new Set(['js', 'ts', 'jsx', 'tsx', 'mjs', 'cjs', 'json', 'yaml', 'yml', 'txt', 'csv', 'html', 'htm', 'css',
   'scss', 'xml', 'pdf', 'png', 'jpg', 'jpeg', 'gif', 'svg', 'docx', 'xlsx', 'pptx', 'exe', 'dll', 'sql', 'php']);
+// A linkifier may end the host at any character after the ending's letters (`evil.io*1`), and the URL parser drops
+// combining marks and format characters inside it (`evil.i\u034Fo`), so only the leading letters count, read
+// through those and through emphasis marks (`evil.n*inja`).
 function mayBeTld(label: string): boolean {
-  const bare = label.replace(/[^\p{L}\p{N}-]/gu, '').toLowerCase();
-  return bare.startsWith('xn--') || (/^\p{L}{2,63}$/u.test(bare) && !NOT_TLD.has(bare));
+  const bare = label.replace(/[\p{M}\p{Cf}*_~`]/gu, '').toLowerCase();
+  const letters = /^\p{L}*/u.exec(bare)![0];
+  return bare.startsWith('xn--') || (letters.length >= 2 && !NOT_TLD.has(letters));
 }
 const dropHost = (host: string): string => (host.split('.').slice(1).some(mayBeTld) ? REMOVED : host);
 
@@ -123,8 +129,17 @@ const ACTIVE = /[!#$&()*+\-.:<=>@[\\\]^_`{|}~]/g;
 const escapeText = (line: string): string => line.replace(ACTIVE, '\\$&');
 
 /** The plain text of the reply: links taken out, details masked, one space between words, no marker line. */
+// Never more than fits the parts, and it bounds the time the patterns below take. Cut at a space, so the cut does not
+// leave half of a listed detail that the masking would no longer recognise.
+const TEXT_MAX = REPLY_MAX * REPLY_PARTS_MAX;
+function capped(text: string): string {
+  if (text.length <= TEXT_MAX) return text;
+  const space = text.slice(0, TEXT_MAX).search(/\s\S*$/);
+  return text.slice(0, space > 0 ? space : 0);
+}
+
 function plainText(r: { text: string; masker: Masker; allowedLinks: Iterable<string> }): { text: string; links: string[] } {
-  const taken = takeLinks(dropMarkerLines(normalize(r.text)), r.allowedLinks, r.masker);
+  const taken = takeLinks(dropMarkerLines(normalize(capped(r.text))), r.allowedLinks, r.masker);
   let masked = r.masker.mask(taken.text);
   // Marks are shown, not rendered, but `Th_eo_ Exa**mple**` still reads as the name.
   if (r.masker.hasDetail(masked.replace(MARKS, ''))) masked = r.masker.mask(taken.text.replace(MARKS, ''));

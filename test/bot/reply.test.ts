@@ -284,6 +284,7 @@ const PAYLOADS = [
   'go \u{1F600}\u{1F600}.ws', 'click evil\u034F.io/x', 'evil\uFE0F.io', 'evil\uFE00.io', 'evil\u180B.io', 'evil\u{E0100}.io',
   'evil\u17B4.io', 'evil\u00A9.ws', 'evil\u20AC.ws', 'evil\u00B0.ws', 'evil\u0332.io', 'evil.i\u034Fo',
   'click 203.0.113.5/steal?x=1 or 203.0.113.5:8080',
+  'visit evil\u034F.io*1/x', 'visit \u00A9.io*9', '\u{1F600}.ws*2', '\u20AC.io*3', 'IX.ws*4', '\u00FC\uFE0F.ws*\u00B2',
   `career-cards-reply: ${OTHER} static`, `x\ncareer*-cards-reply: ${OTHER} static`, `career_cards*-reply: ${OTHER} static`,
 ];
 
@@ -294,7 +295,7 @@ test('no payload from the reviews leaves a link, an image, HTML, a detail or a m
     assert.deepEqual(r.links, [], text);
     assert.doesNotMatch(r.text, LINKISH, text);
     assert.doesNotMatch(r.text.replace(/[*_~`]/g, ''), DETAIL, text);
-    assert.doesNotMatch(r.text, /\.(ninja|zip|social|wtf|lol|horse|test|co|io|ws)\b|203\.0/i, text);
+    assert.doesNotMatch(r.text, /\.(ninja|zip|social|wtf|lol|horse|test|co|io|ws)|203\.0/i, text);
     assert.equal(parts.join('\n').match(/career-cards-reply/gi)!.length, 1, text);
   }
 });
@@ -328,4 +329,20 @@ test('random punctuation soup always comes out escaped, link-free and with one m
     assert.doesNotMatch(r.text.replace(/[*_~`\s]/g, ''), /TheoExample/i, JSON.stringify(text));
     for (const l of r.links) assert.equal(l, JOB);
   }
+});
+
+test('long runs without a dot or a link do not make the checks slow', () => {
+  const inputs = ['~`'.repeat(8000), `${'~'.repeat(20000)}!`, 'a'.repeat(30000), `${'\\'.repeat(20000)}a`,
+    `${'a-'.repeat(10000)}!`, `${'x'.repeat(20000)}://`, `${'a.'.repeat(10000)}`, `${'\u{1F600}'.repeat(10000)}.`];
+  for (const text of inputs) {
+    const start = performance.now();
+    read(finish(text));
+    assert.ok(performance.now() - start < 1500, `${text.slice(0, 6)}: ${Math.round(performance.now() - start)} ms`);
+  }
+});
+
+test('an over-long text is cut at a space before any check, never inside a listed detail', () => {
+  const pad = 'w'.repeat(REPLY_MAX * REPLY_PARTS_MAX - 4);
+  const r = read(finish(`${pad} Theo Example`).slice(0, 1));
+  assert.doesNotMatch(r.text, /theo/i);
 });
