@@ -1,4 +1,3 @@
-// Service entrypoint: Trello webhooks and the scheduled trigger.
 import { createServer } from 'node:http';
 import type { Server } from 'node:http';
 import { createTrelloClient } from './trello/client.ts';
@@ -52,8 +51,9 @@ export function parseServeEnv(env: Env): ServeConfig {
   if (publicUrl) {
     let u: URL | null = null;
     try { u = new URL(publicUrl); } catch { /* reported below */ }
-    if (!u || u.protocol !== 'https:' || u.username || u.password || u.search || u.hash) {
-      problems.push('PUBLIC_URL must be an https:// URL without credentials, query or fragment');
+    if (!u || u.protocol !== 'https:' || u.username || u.password || u.search || u.hash || u.pathname !== '/') {
+      // The app routes `/trello` only, so a path would make every webhook a 404.
+      problems.push('PUBLIC_URL must be an https:// origin without path, credentials, query or fragment');
     }
   }
 

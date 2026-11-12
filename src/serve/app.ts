@@ -20,7 +20,7 @@ export type AppDeps = {
 const ALLOWED: Record<string, string[]> = {
   '/trello': ['HEAD', 'POST'],
   '/trigger/run': ['POST'],
-  '/healthz': ['GET', 'HEAD'],
+  '/healthz': ['GET'],
 };
 
 const START_STATUS: Record<StartResult, number> = { started: 202, busy: 409, unknown: 503, failed: 500 };
@@ -41,7 +41,7 @@ function readBody(req: IncomingMessage): Promise<Buffer> {
       if (size > BODY_MAX) {
         req.off('data', onData);
         chunks.length = 0;
-        // Keep reading so the client gets the 413, but drop the bytes; requestTimeout bounds how long.
+        // Drop the bytes; the 413 goes out with `connection: close`, which ends the socket.
         req.resume();
         reject(new TooLarge());
         return;

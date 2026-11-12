@@ -60,7 +60,7 @@ test('a short TRIGGER_SECRET is rejected', () => {
 });
 
 test('PUBLIC_URL must be https; PORT must be a port', () => {
-  for (const bad of ['http://bot.example', 'bot.example', 'https://u:p@bot.example', 'https://bot.example/?a=1', 'https://bot.example/#x']) {
+  for (const bad of ['http://bot.example', 'bot.example', 'https://u:p@bot.example', 'https://bot.example/?a=1', 'https://bot.example/#x', 'https://bot.example/base']) {
     assert.throws(() => parseServeEnv({ ...ENV, PUBLIC_URL: bad }), /PUBLIC_URL must be an https/, bad);
   }
   assert.throws(() => parseServeEnv({ ...ENV, PUBLIC_URL: '' }), /Missing environment variables: PUBLIC_URL/);
