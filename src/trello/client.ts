@@ -261,8 +261,14 @@ export function createTrelloClient(o: {
       schema: TListSchema,
     }),
 
+    // Allow-listed so a stray runtime key (idCardSource copies an existing card) can never reach Trello.
     createCard: (c: NewCard) => call('POST', '/cards', {
-      body: c,
+      body: {
+        idList: c.idList, name: c.name, desc: c.desc, pos: c.pos,
+        ...(c.idLabels !== undefined ? { idLabels: c.idLabels } : {}),
+        ...(c.start !== undefined ? { start: c.start } : {}),
+        ...(c.due !== undefined ? { due: c.due } : {}),
+      },
       schema: TCardSchema,
     }),
 
