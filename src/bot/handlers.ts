@@ -11,6 +11,7 @@ import { explainFilter } from './why.ts';
 import { handleOpen } from './open.ts';
 import { applyNeeds, checkLegit } from './stages/reader.ts';
 import { cvTips, explainFit } from './stages/advisor.ts';
+import { recordFeedback } from './feedback.ts';
 import type { UrlGuard } from '../net/safe-fetch.ts';
 import type { CallOpts, Env } from '../pipeline/llm.ts';
 
@@ -79,6 +80,7 @@ export const HANDLERS: Partial<Record<string, Handler>> = {
   apply_needs: applyNeeds,
   explain_fit: explainFit,
   cv_tips: cvTips,
+  record_feedback: recordFeedback,
 };
 
 export function helpText(botName: string): string {
