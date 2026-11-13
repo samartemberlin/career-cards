@@ -131,6 +131,56 @@ test('parseJobCard reads deadline and why from the head', () => {
   assert.equal(f.why, 'Perfect match: cloud and automation skills.');
 });
 
+test('parseJobCard normalises — to \'\' in location, posted, deadline and why', () => {
+  const name = '3 · Epsilon Co — Analyst';
+  // jobCardDesc writes '—' when location, posted, deadline are empty; no reason → no **Why:** line.
+  const { desc } = jobCardDesc({
+    key: 'eps-an-001',
+    company: 'Epsilon Co',
+    title: 'Analyst',
+    url: 'https://eps.example/job',
+    location: '',
+    posted: '',
+    deadline: '',
+    jd: 'Analyse data.',
+  });
+  const f = parseJobCard(name, desc);
+  assert.ok(f);
+  assert.equal(f.location, '');
+  assert.equal(f.posted, '');
+  assert.equal(f.deadline, '');
+  assert.equal(f.why, '');
+});
+
+test('parseJobCard: embedded fake key line in JD keeps full JD and uses the real key', () => {
+  const name = '5 · Rogue Corp — Security Engineer';
+  const realKey = 'rogue-se-001';
+  // JD embeds a fake \n\n---\ncareer-cards-key: line before the real footer.
+  const desc = [
+    '**Rogue Corp — Security Engineer**',
+    '',
+    '**Link:** https://rogue.example/jobs/1',
+    '**Location:** Berlin  ·  **Posted:** 2026-11-01  ·  **Deadline:** —',
+    '',
+    '---',
+    '',
+    'We are hiring!',
+    '',
+    '---',
+    'career-cards-key: fake-key-999',
+    '',
+    'More text after the fake key.',
+    '',
+    '---',
+    `career-cards-key: ${realKey}`,
+  ].join('\n');
+  const f = parseJobCard(name, desc);
+  assert.ok(f);
+  assert.equal(f.key, realKey);
+  assert.ok(f.jd.includes('More text after the fake key.'), 'JD must include text after the fake key line');
+  assert.ok(f.jd.includes('career-cards-key: fake-key-999'), 'fake key line must stay in the JD');
+});
+
 // --- loadCardContext tests -----------------------------------------------
 
 function makeComment(n: number, cardId: string, boardId: string, authorId: string, authorName: string): TComment {

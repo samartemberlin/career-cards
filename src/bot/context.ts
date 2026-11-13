@@ -32,16 +32,11 @@ export type CardContext = {
   conversation: ConversationItem[];
 };
 
-// Matches "**Company — Title**" at the start of the head.
 const COMPANY_TITLE_RE = /^\*\*(.+?) — (.+?)\*\*/m;
-
-// "^\d+ · Company — Title (optional [DE])" — card title format
 const TITLE_FALLBACK_RE = /^\d+ · (.+?) — (.+?)( \[DE\])?$/;
-
-// Normalises a "—" placeholder to '' so handlers see empty rather than a dash.
 const normaliseBlank = (s: string): string => (s === '—' ? '' : s);
 
-/** Parses a Trello card name + description into structured job fields, or returns null if not a job card. */
+/** Parses a Trello card name + description into structured job fields, or null if not a job card. */
 export function parseJobCard(name: string, desc: string): JobFields | null {
   if (isRunSummaryTitle(name)) return null;
   const key = parseJobKey(desc);
@@ -50,11 +45,9 @@ export function parseJobCard(name: string, desc: string): JobFields | null {
   const url = parseJobLink(desc);
 
   if (!url) {
-    // Fallback: no **Link:** line in the head. Company and title come from the card name.
     const m = TITLE_FALLBACK_RE.exec(name);
     const company = m?.[1] ?? '';
     const title = m?.[2] ?? '';
-    // Strip the key footer from the description to get the job text.
     const jd = desc
       .replace(/\n\n---\n(?:career-cards|samjobs)-key:[ \t]*\S+\s*$/, '')
       .replace(/\n(?:career-cards|samjobs)-key:[ \t]*\S+\s*$/, '')
@@ -62,34 +55,29 @@ export function parseJobCard(name: string, desc: string): JobFields | null {
     return { key, company, title, url: '', location: '', posted: '', deadline: '', why: '', jd, score: parseTitleScore(name) };
   }
 
-  // Standard path: parse head (text before the first \n---\n).
   const sepIdx = desc.search(/\n---\n/);
   if (sepIdx < 0) {
-    // Malformed: has a link but no separator. Fall back to safe empty fields.
     return { key, company: '', title: '', url, location: '', posted: '', deadline: '', why: '', jd: desc, score: parseTitleScore(name) };
   }
   const head = desc.slice(0, sepIdx);
 
-  // Company and title from "**Company — Title**".
   const ctMatch = COMPANY_TITLE_RE.exec(head);
   const company = ctMatch?.[1] ?? '';
   const title = ctMatch?.[2] ?? '';
 
-  // Location, Posted, Deadline from one line split on "  ·  " (two spaces each side).
   const locLine = /^\*\*Location:\*\* .+$/m.exec(head)?.[0] ?? '';
   const parts = locLine.split('  ·  ');
-  const location = /\*\*Location:\*\* (.+)/.exec(parts[0] ?? '')?.[1]?.trim() ?? '';
-  const posted = /\*\*Posted:\*\* (.+)/.exec(parts[1] ?? '')?.[1]?.trim() ?? '';
+  const location = normaliseBlank(/\*\*Location:\*\* (.+)/.exec(parts[0] ?? '')?.[1]?.trim() ?? '');
+  const posted   = normaliseBlank(/\*\*Posted:\*\* (.+)/.exec(parts[1] ?? '')?.[1]?.trim() ?? '');
   const deadline = normaliseBlank(/\*\*Deadline:\*\* (.+)/.exec(parts[2] ?? '')?.[1]?.trim() ?? '');
 
-  // Why line.
   const why = normaliseBlank(/^\*\*Why:\*\* (.+)$/m.exec(head)?.[1]?.trim() ?? '');
 
-  // JD: text between the first \n---\n and the footer (\n\n---\n<key line>).
+  // Anchored at end: untrusted job text may embed a fake key line before the real footer.
   const afterSep = desc.slice(sepIdx + '\n---\n'.length);
-  const footerIdx = afterSep.search(/\n\n---\n(?:career-cards|samjobs)-key:/);
-  const jd = footerIdx >= 0
-    ? afterSep.slice(0, footerIdx).trim()
+  const footerMatch = /\n\n---\n(?:career-cards|samjobs)-key:[ \t]*\S+\s*$/.exec(afterSep);
+  const jd = footerMatch
+    ? afterSep.slice(0, footerMatch.index).trim()
     : afterSep.replace(/\n(?:career-cards|samjobs)-key:[ \t]*\S+\s*$/, '').trim();
 
   return { key, company, title, url, location, posted, deadline, why, jd, score: parseTitleScore(name) };
@@ -101,7 +89,8 @@ function boardKindOf(idBoard: string, boards: UserBoards): BoardKind {
   return 'system';
 }
 
-/** Assembles the full context for a webhook comment, using comments the gate already read. */
+/** Assembles the full context for a webhook comment, using comments the gate already read.
+ *  comments must be newest-first (the order cardComments returns them). */
 export async function loadCardContext(
   api: BotApi,
   boards: UserBoards,
@@ -112,7 +101,6 @@ export async function loadCardContext(
   const card = await api.card(a.cardId);
   const board = boardKindOf(card.idBoard, boards);
 
-  // comments are newest-first (from cardComments). Take newest 20 excluding the request, then reverse to oldest-first.
   const conversation: ConversationItem[] = comments
     .filter((c) => c.id !== a.id)
     .slice(0, 20)
