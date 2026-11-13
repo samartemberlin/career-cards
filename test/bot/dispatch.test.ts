@@ -147,11 +147,17 @@ test('@samplebot run while a run is in progress → busy, no start', async () =>
   assert.equal(body(posted[0]!), '@usera A run is already in progress. Its status card will appear when it ends.');
 });
 
-test('@samplebot deep → `deep` isn\'t available yet.', async () => {
+test('a catalogued verb with no handler → `<verb>` isn\'t available yet.', async () => {
   const s = await ready(setup());
-  const { posted } = await say(s, '@samplebot deep');
-  assert.equal(body(posted[0]!), "@usera `deep` isn't available yet.");
-  assert.equal(markerOf(posted[0]!).cls, 'research');
+  const saved = HANDLERS.job_deep_dive;
+  delete HANDLERS.job_deep_dive;
+  try {
+    const { posted } = await say(s, '@samplebot deep');
+    assert.equal(body(posted[0]!), "@usera `deep` isn't available yet.");
+    assert.equal(markerOf(posted[0]!).cls, 'research');
+  } finally {
+    HANDLERS.job_deep_dive = saved;
+  }
 });
 
 test('free text goes to the router: one model call, its reply posted with class model', async () => {

@@ -11,6 +11,7 @@ import { explainFilter } from './why.ts';
 import { handleOpen } from './open.ts';
 import { applyNeeds, checkLegit } from './stages/reader.ts';
 import { cvTips, explainFit } from './stages/advisor.ts';
+import { jobDeepDive } from './stages/deep.ts';
 import { recordFeedback } from './feedback.ts';
 import { companyResearch } from './stages/company.ts';
 import type { Openings } from './stages/company.ts';
@@ -87,6 +88,7 @@ export const HANDLERS: Partial<Record<string, Handler>> = {
   explain_fit: explainFit,
   cv_tips: cvTips,
   company_research: companyResearch,
+  job_deep_dive: jobDeepDive,
   record_feedback: recordFeedback,
 };
 

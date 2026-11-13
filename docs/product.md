@@ -40,7 +40,7 @@ Each user runs their own copy of this bot. Status: built = on `main` with tests;
 | Deploy template, onboarding tool | [deploy/northflank/template.json](../deploy/northflank/template.json), [onboard.ts](../tools/onboard.ts) ([plan](../tools/onboard/plan.ts), [apply](../tools/onboard/apply.ts)) |
 | Migration from samjobs | planned (PR 6) |
 | Router, `needs`, `legit`, `fit`, `cv`, `feedback` | [router.ts](../src/bot/router.ts), [stages/](../src/bot/stages/), [feedback.ts](../src/bot/feedback.ts) |
-| Research: `company`, `deep` | [`company`](../src/bot/stages/company.ts); `deep` planned (PR 8) |
+| Research: `company`, `deep` | [company.ts](../src/bot/stages/company.ts), [deep.ts](../src/bot/stages/deep.ts), [researcher.ts](../src/bot/stages/researcher.ts) |
 
 ## Key scenarios
 
