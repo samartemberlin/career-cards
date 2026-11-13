@@ -17,8 +17,8 @@ test('settings defaults', () => {
 
 test('settings: bot_keyword defaults to /bot; an invalid one falls back to it', () => {
   assert.equal(SettingsSchema.parse(settingsIn).bot_keyword, '/bot');
-  for (const ok of ['/jobs', 'jobs', '/my-bot_2', 'ab']) assert.equal(SettingsSchema.parse({ ...settingsIn, bot_keyword: ok }).bot_keyword, ok);
-  for (const bad of ['bot keyword', '', '/' + 'a'.repeat(29), '/1x', '/', 'a', '@bot', '/bot.de', 5, null]) {
+  for (const ok of ['/jobs', '/my-bot_2', '/a', `/${'a'.repeat(19)}`]) assert.equal(SettingsSchema.parse({ ...settingsIn, bot_keyword: ok }).bot_keyword, ok);
+  for (const bad of ['bot keyword', '', '/' + 'a'.repeat(29), `/${'a'.repeat(20)}`, '/1x', '/', 'ok', 'jobs', 'is', '@bot', '/bot.de', '//bot', 5, null]) {
     assert.equal(SettingsSchema.parse({ ...settingsIn, bot_keyword: bad }).bot_keyword, '/bot', JSON.stringify(bad));
   }
 });

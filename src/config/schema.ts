@@ -13,7 +13,7 @@ export class ConfigError extends Error {
 const TIMEZONES = new Set(Intl.supportedValuesOf('timeZone'));
 
 const BOT_KEYWORD = '/bot';
-export const isBotKeyword = (s: string): boolean => s.length >= 2 && s.length <= 20 && /^\/?[A-Za-z][\w-]*$/.test(s);
+export const isBotKeyword = (s: string): boolean => s.length >= 2 && s.length <= 20 && /^\/[A-Za-z][\w-]*$/.test(s);
 
 export const SettingsSchema = z.object({
   timezone: z.string().default('Europe/Berlin')

@@ -28,8 +28,8 @@ test('afterTrigger: a custom keyword replaces /bot and is matched literally', ()
   assert.equal(afterTrigger('/jobs fit', jobs), ' fit');
   assert.equal(afterTrigger('/bot fit', jobs), null);
   assert.equal(afterTrigger('@samplebot fit', jobs), ' fit');
-  assert.equal(afterTrigger('my-bot fit', { ...T, keyword: 'my-bot' }), ' fit');
-  assert.equal(afterTrigger('myxbot fit', { ...T, keyword: 'my-bot' }), null);
+  assert.equal(afterTrigger('/my-bot fit', { ...T, keyword: '/my-bot' }), ' fit');
+  assert.equal(afterTrigger('/myxbot fit', { ...T, keyword: '/my-bot' }), null);
 });
 
 test('commandText: the request without the leading keyword and without any mention of the bot', () => {
@@ -40,8 +40,8 @@ test('commandText: the request without the leading keyword and without any menti
 });
 
 test('mayStartWithKeyword: whether the first token could be any valid keyword', () => {
-  for (const text of ['/bot fit', '  /jobs', 'open', 'Bot-2 x']) assert.equal(mayStartWithKeyword(text), true, text);
-  for (const text of ['', '   ', '- item', '1. first', '/bot, fit', 'a', '@samplebot fit', `/${'a'.repeat(20)}`]) {
+  for (const text of ['/bot fit', '  /jobs', '/Bot-2 x']) assert.equal(mayStartWithKeyword(text), true, text);
+  for (const text of ['', '   ', 'open', 'ok then', 'bot fit', '- item', '1. first', '/bot, fit', '@samplebot fit', `/${'a'.repeat(20)}`]) {
     assert.equal(mayStartWithKeyword(text), false, JSON.stringify(text));
   }
 });

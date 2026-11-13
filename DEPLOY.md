@@ -46,7 +46,7 @@ DeploymentService (`serve`) in your project.
 8. Create the Trello automation rule by hand (Automation → Rules; Trello has no API for it). The tool prints
    the rule with the placeholder `<TRIGGER_SECRET>`; replace it before saving.
 9. Fill the `Settings` card and `Personal details` card on your System board (see
-   [Onboarding step 4](docs/product.md)); then comment `@bot run` on a System board card.
+   [Onboarding step 4](docs/product.md)); then comment `/bot run` on a System board card.
 
 ## Web research (`company`, `deep`)
 

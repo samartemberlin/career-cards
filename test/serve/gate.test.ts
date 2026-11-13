@@ -156,9 +156,11 @@ test('a custom keyword from Settings replaces /bot; @<botUsername> still works',
 });
 
 test('a comment that cannot start with any keyword is dropped before any Trello read', async () => {
-  const s = setup();
-  await assertDrop(s, action({ text: '- a note to self' }), 'no mention');
-  assert.deepEqual(s.fake.requests, []);
+  for (const text of ['- a note to self', 'Applied today', 'ok']) {
+    const s = setup();
+    await assertDrop(s, action({ text }), 'no mention');
+    assert.deepEqual(s.fake.requests, [], text);
+  }
 });
 
 test('drops a comment on a foreign board', async () => {
