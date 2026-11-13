@@ -12,6 +12,9 @@ export class ConfigError extends Error {
 
 const TIMEZONES = new Set(Intl.supportedValuesOf('timeZone'));
 
+const BOT_KEYWORD = '/bot';
+export const isBotKeyword = (s: string): boolean => s.length >= 2 && s.length <= 20 && /^\/[A-Za-z][\w-]*$/.test(s);
+
 export const SettingsSchema = z.object({
   timezone: z.string().default('Europe/Berlin')
     // Intl's list leaves out names its own formatter accepts, such as UTC.
@@ -26,6 +29,8 @@ export const SettingsSchema = z.object({
   labels: z.array(z.object({ name: z.string().min(1), color: z.string().min(1) }).strict()).optional(),
   linkedin: z.boolean().default(false),
   allowed_members: z.array(z.string().min(1)).default([]),
+  // Falls back instead of failing: one bad word here would otherwise stop the bot from answering at all.
+  bot_keyword: z.string().refine(isBotKeyword).catch(BOT_KEYWORD),
   caps: z.object({
     model_per_day: z.number().int().nonnegative().default(30),
     model_per_card_per_day: z.number().int().nonnegative().default(8),

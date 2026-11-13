@@ -1,6 +1,8 @@
 // The only things the bot can do. The router model may return nothing but a catalogued id with args from its schema,
 // so RouterOutputSchema is a security boundary: keep every args schema strict and its values closed or format-checked.
 import { z } from 'zod';
+import { afterTrigger } from './command.ts';
+import type { Trigger } from './command.ts';
 
 export type Stage = 'code' | 'reader' | 'advisor' | 'researcher' | 'researcher+advisor';
 
@@ -80,11 +82,10 @@ export type StaticMatch =
   | { kind: 'none' }
   | { kind: 'bad_args'; spec: ActionSpec; message: string };
 
-const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-/** A comment that starts with `@<botName> <verb>`. Anything that isn't a full static command is `none` and goes to the router. */
-export function matchStatic(comment: string, botName: string): StaticMatch {
-  const m = new RegExp(`^\\s*@${escapeRe(botName)}(?=\\s|$)\\s*(\\S*)([\\s\\S]*)$`, 'i').exec(comment);
+/** A comment that starts with the keyword or `@<botUsername>`, then a verb. Anything that isn't a full static command is `none` and goes to the router. */
+export function matchStatic(comment: string, t: Trigger): StaticMatch {
+  const after = afterTrigger(comment, t);
+  const m = after === null ? null : /^\s*(\S*)([\s\S]*)$/.exec(after);
   if (!m) return { kind: 'none' };
   const word = m[1]!.toLowerCase();
   const rest = m[2]!.trim();

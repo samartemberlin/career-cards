@@ -57,8 +57,10 @@ test('router output: argument sets are closed', () => {
   assert.equal(ok({ id: 'record_feedback', args: { text: '' } }), false);
 });
 
+const T = { botUsername: 'bot', keyword: '/bot' };
+
 const action = (comment: string) => {
-  const m = matchStatic(comment, 'bot');
+  const m = matchStatic(comment, T);
   assert.equal(m.kind, 'action', JSON.stringify(m));
   return m as Extract<typeof m, { kind: 'action' }>;
 };
@@ -79,7 +81,7 @@ test('matchStatic: "@Bot OPEN" → check_open', () => {
 });
 
 test('matchStatic: "@bot company stocks" → bad_args listing the topics', () => {
-  const m = matchStatic('@bot company stocks', 'bot');
+  const m = matchStatic('@bot company stocks', T);
   assert.equal(m.kind, 'bad_args');
   if (m.kind !== 'bad_args') return;
   assert.equal(m.spec.id, 'company_research');
@@ -87,35 +89,49 @@ test('matchStatic: "@bot company stocks" → bad_args listing the topics', () =>
 });
 
 test('matchStatic: "@bot what is this?" → none', () => {
-  assert.deepEqual(matchStatic('@bot what is this?', 'bot'), { kind: 'none' });
-  assert.deepEqual(matchStatic('open', 'bot'), { kind: 'none' });
-  assert.deepEqual(matchStatic('hey @bot open', 'bot'), { kind: 'none' });
-  assert.deepEqual(matchStatic('@botany open', 'bot'), { kind: 'none' });
-  assert.deepEqual(matchStatic('@bot constructor', 'bot'), { kind: 'none' });
-  assert.deepEqual(matchStatic('@bot toString', 'bot'), { kind: 'none' });
-  assert.deepEqual(matchStatic('@bot yes, but what about the salary?', 'bot'), { kind: 'none' });
-  assert.deepEqual(matchStatic('@bot fit why so low?', 'bot'), { kind: 'none' });
-  assert.deepEqual(matchStatic('@bot open now please', 'bot'), { kind: 'none' });
+  assert.deepEqual(matchStatic('@bot what is this?', T), { kind: 'none' });
+  assert.deepEqual(matchStatic('open', T), { kind: 'none' });
+  assert.deepEqual(matchStatic('hey @bot open', T), { kind: 'none' });
+  assert.deepEqual(matchStatic('@botany open', T), { kind: 'none' });
+  assert.deepEqual(matchStatic('@bot constructor', T), { kind: 'none' });
+  assert.deepEqual(matchStatic('@bot toString', T), { kind: 'none' });
+  assert.deepEqual(matchStatic('@bot yes, but what about the salary?', T), { kind: 'none' });
+  assert.deepEqual(matchStatic('@bot fit why so low?', T), { kind: 'none' });
+  assert.deepEqual(matchStatic('@bot open now please', T), { kind: 'none' });
 });
 
 test('matchStatic: "@bot yes" → builtin yes', () => {
-  assert.deepEqual(matchStatic('@bot yes', 'bot'), { kind: 'builtin', name: 'yes' });
-  assert.deepEqual(matchStatic('@BOT No', 'bot'), { kind: 'builtin', name: 'no' });
-  assert.deepEqual(matchStatic('@bot ja', 'bot'), { kind: 'builtin', name: 'yes' });
-  assert.deepEqual(matchStatic('@bot help', 'bot'), { kind: 'builtin', name: 'help' });
+  assert.deepEqual(matchStatic('@bot yes', T), { kind: 'builtin', name: 'yes' });
+  assert.deepEqual(matchStatic('@BOT No', T), { kind: 'builtin', name: 'no' });
+  assert.deepEqual(matchStatic('@bot ja', T), { kind: 'builtin', name: 'yes' });
+  assert.deepEqual(matchStatic('@bot help', T), { kind: 'builtin', name: 'help' });
 });
 
 test('matchStatic: the bot name is matched literally', () => {
-  assert.equal(matchStatic('@career.bot open', 'career.bot').kind, 'action');
-  assert.deepEqual(matchStatic('@careerXbot open', 'career.bot'), { kind: 'none' });
+  assert.equal(matchStatic('@career.bot open', { botUsername: 'career.bot', keyword: '/bot' }).kind, 'action');
+  assert.deepEqual(matchStatic('@careerXbot open', { botUsername: 'career.bot', keyword: '/bot' }), { kind: 'none' });
 });
 
 test('matchStatic: arguments', () => {
   assert.deepEqual(action('@bot why https://jobs.example.com/42').args, { link: 'https://jobs.example.com/42' });
-  assert.equal(matchStatic('@bot why the rejection?', 'bot').kind, 'bad_args');
+  assert.equal(matchStatic('@bot why the rejection?', T).kind, 'bad_args');
   assert.deepEqual(action('@bot feedback  Too senior,\nskip these. ').args, { text: 'Too senior,\nskip these.' });
-  assert.equal(matchStatic('@bot feedback', 'bot').kind, 'bad_args');
-  assert.equal(matchStatic(`@bot feedback ${'x'.repeat(2001)}`, 'bot').kind, 'bad_args');
+  assert.equal(matchStatic('@bot feedback', T).kind, 'bad_args');
+  assert.equal(matchStatic(`@bot feedback ${'x'.repeat(2001)}`, T).kind, 'bad_args');
+});
+
+test('matchStatic: a leading keyword works exactly like a leading @<botUsername>', () => {
+  for (const cmd of ['company news', 'OPEN', 'yes', 'No', 'help', 'feedback  Too senior,\nskip these. ', 'why the rejection?', 'what is this?', 'fit why so low?']) {
+    assert.deepEqual(matchStatic(`/bot ${cmd}`, T), matchStatic(`@bot ${cmd}`, T), cmd);
+    assert.deepEqual(matchStatic(`/BOT ${cmd}`, T), matchStatic(`@bot ${cmd}`, T), cmd);
+  }
+  assert.deepEqual(matchStatic('\n  /bot yes', T), { kind: 'builtin', name: 'yes' });
+  assert.deepEqual(matchStatic('/botyes', T), { kind: 'none' });
+  assert.deepEqual(matchStatic('please /bot open', T), { kind: 'none' });
+  const jobs = { ...T, keyword: '/jobs' };
+  assert.deepEqual(matchStatic('/jobs no', jobs), { kind: 'builtin', name: 'no' });
+  assert.deepEqual(matchStatic('/bot no', jobs), { kind: 'none' });
+  assert.deepEqual(matchStatic('@bot no', jobs), { kind: 'builtin', name: 'no' });
 });
 
 test('catalogue: every row has a non-empty about', () => {

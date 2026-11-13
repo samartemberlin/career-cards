@@ -45,22 +45,22 @@ export function capClassOf(spec: ActionSpec | null): CapClass {
 export function overCap(cls: CapClass, cardId: string, u: Usage, caps: Settings['caps']): string | null {
   if (cls === 'static') {
     if (u.static >= caps.static_per_day) {
-      return `Daily limit reached: ${caps.static_per_day} commands a day (Settings › caps.static_per_day). Try again tomorrow.`;
+      return `Daily limit reached: ${caps.static_per_day} commands a day (raise \`static_per_day\` under caps on the Settings card). Try again tomorrow.`;
     }
     return null;
   }
 
   // Both model and research share the model-bucket checks.
   if (u.model + u.research >= caps.model_per_day) {
-    return `Daily limit reached: ${caps.model_per_day} model requests a day (Settings › caps.model_per_day). Try again tomorrow.`;
+    return `Daily limit reached: ${caps.model_per_day} model requests a day (raise \`model_per_day\` under caps on the Settings card). Try again tomorrow.`;
   }
   const cardCount = u.modelByCard.get(cardId) ?? 0;
   if (cardCount >= caps.model_per_card_per_day) {
-    return `Daily limit reached: ${caps.model_per_card_per_day} model requests on this card a day (Settings › caps.model_per_card_per_day). Try again tomorrow.`;
+    return `Daily limit reached: ${caps.model_per_card_per_day} model requests on this card a day (raise \`model_per_card_per_day\` under caps on the Settings card). Try again tomorrow.`;
   }
 
   if (cls === 'research' && u.research >= caps.research_per_day) {
-    return `Daily limit reached: ${caps.research_per_day} research requests a day (Settings › caps.research_per_day). Try again tomorrow.`;
+    return `Daily limit reached: ${caps.research_per_day} research requests a day (raise \`research_per_day\` under caps on the Settings card). Try again tomorrow.`;
   }
   return null;
 }

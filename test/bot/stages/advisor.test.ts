@@ -22,7 +22,7 @@ const NOW = new Date('2026-11-12T12:00:00Z');
 const cfg: UserConfig = {
   settings: {
     timezone: 'Europe/Berlin', providers: ['claude'], scoring_cap: 150, locations: ['berlin'],
-    linkedin_locations: [], linkedin: false, allowed_members: [],
+    linkedin_locations: [], linkedin: false, allowed_members: [], bot_keyword: '/bot',
     caps: { model_per_day: 30, model_per_card_per_day: 8, research_per_day: 10, static_per_day: 100 },
   },
   profiles: [{

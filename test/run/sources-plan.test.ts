@@ -14,7 +14,7 @@ function makeSettings(overrides: Partial<Settings> = {}): Settings {
     locations: ['berlin'],
     linkedin_locations: [],
     linkedin: false,
-    allowed_members: [],
+    allowed_members: [], bot_keyword: '/bot',
     caps: { model_per_day: 30, model_per_card_per_day: 8, research_per_day: 10, static_per_day: 100 },
     ...overrides,
   };

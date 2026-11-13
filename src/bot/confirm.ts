@@ -46,8 +46,8 @@ export function proposal(action: { id: string; args: unknown }, now: Date): Prop
   return capped;
 }
 
-export function proposalText(text: string, botName: string): string {
-  return `${text}\n\nReply \`@${botName} yes\` within 24 h to run it, or \`@${botName} no\`.`;
+export function proposalText(text: string, keyword: string): string {
+  return `${text}\n\nReply \`${keyword} yes\` within 24 h to run it, or \`${keyword} no\`.`;
 }
 
 const ELLIPSIS = '…';
@@ -55,7 +55,7 @@ const ELLIPSIS = '…';
 /** A proposal reply in one comment: `text` is cut until it and the yes/no line fit part 1 beside the marker. */
 export function finishProposal(r: {
   text: string;
-  botName: string;
+  keyword: string;
   author: string;
   marker: ReplyMarker & { proposal: Proposal };
   masker: Masker;
@@ -70,7 +70,7 @@ export function finishProposal(r: {
     const space = s.search(/\s\S*$/);
     return (space > s.length / 2 ? s.slice(0, space) : s) + ELLIPSIS;
   };
-  const attempt = (n: number) => finishReply({ ...r, text: proposalText(n < chars.length ? head(n) : masked, r.botName) });
+  const attempt = (n: number) => finishReply({ ...r, text: proposalText(n < chars.length ? head(n) : masked, r.keyword) });
   let parts = attempt(chars.length);
   if (parts.length === 1) return parts;
   // Masking and escaping can lengthen text, and not evenly, so the cut is searched for, not computed.

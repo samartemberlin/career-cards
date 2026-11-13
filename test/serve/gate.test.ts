@@ -28,12 +28,12 @@ const STRANGER: TMember = { id: 'fa4e0000000000000000a002', username: 'stranger'
 const NOW = new Date('2026-11-12T12:00:00.000Z');
 const ACTION_ID = 'fa4e0000000000000000b001';
 
-const settingsDesc = (allowed: string[]) =>
-  `\`\`\`yaml\nproviders: [claude]\nlocations: [berlin]\nallowed_members: [${allowed.join(', ')}]\n\`\`\``;
+const settingsDesc = (allowed: string[], extra = '') =>
+  `\`\`\`yaml\nproviders: [claude]\nlocations: [berlin]\nallowed_members: [${allowed.join(', ')}]\n${extra}\`\`\``;
 
-function setup(allowed: string[] = ['usera']) {
+function setup(allowed: string[] = ['usera'], extra = '') {
   const fake = FakeTrello.fromRecordings(load('jobs'), load('profiles'), load('system'));
-  fake.setCardDesc(SETTINGS_CARD, settingsDesc(allowed));
+  fake.setCardDesc(SETTINGS_CARD, settingsDesc(allowed, extra));
   const api = scopeUserBoards(createTrelloClient({ key: 'k', token: 't', fetchImpl: fake.fetch, sleep: async () => {} }), BOARDS);
   const logs: string[] = [];
   const deps: GateDeps = { api, boards: BOARDS, me: BOT, seen: createRecentIds(), now: () => NOW, log: (s) => logs.push(s) };
@@ -132,6 +132,35 @@ test('passes a fresh mention from an allowed member and returns Settings and the
 test('drops a comment without a mention', async () => {
   const s = setup();
   await assertDrop(s, action({ text: 'open' }), 'no mention');
+});
+
+test('the keyword at the start addresses the bot', async () => {
+  for (const text of ['/bot fit', '/BOT fit', '  /bot fit', '\n\n/bot', '@samplebot fit', 'fit please @samplebot']) {
+    const s = setup();
+    const r = await gate(s.deps, action({ text }));
+    assert.ok(r.ok, JSON.stringify(text));
+    assert.equal(r.settings.bot_keyword, '/bot');
+  }
+});
+
+test('a keyword that is not the first whole token, or an e-mail address, does not address the bot', async () => {
+  for (const text of ['/botfit', 'please ask /bot', 'x@samplebot.de fit', '/bot, fit']) {
+    await assertDrop(setup(), action({ text }), 'no mention');
+  }
+});
+
+test('a custom keyword from Settings replaces /bot; @<botUsername> still works', async () => {
+  assert.ok((await gate(setup(['usera'], 'bot_keyword: /jobs\n').deps, action({ text: '/jobs fit' }))).ok);
+  assert.ok((await gate(setup(['usera'], 'bot_keyword: /jobs\n').deps, action({ text: '@samplebot fit' }))).ok);
+  await assertDrop(setup(['usera'], 'bot_keyword: /jobs\n'), action({ text: '/bot fit' }), 'no mention');
+});
+
+test('a comment that cannot start with any keyword is dropped before any Trello read', async () => {
+  for (const text of ['- a note to self', 'Applied today', 'ok']) {
+    const s = setup();
+    await assertDrop(s, action({ text }), 'no mention');
+    assert.deepEqual(s.fake.requests, [], text);
+  }
 });
 
 test('drops a comment on a foreign board', async () => {

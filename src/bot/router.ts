@@ -16,18 +16,13 @@ import { llmConfig } from '../pipeline/llm.ts';
 import type { CallOpts, LlmConfig } from '../pipeline/llm.ts';
 import { PrivacyError, buildBotMasking } from '../privacy.ts';
 import { scoringProfile } from '../run/profiles.ts';
+import { commandText } from './command.ts';
+import type { Trigger } from './command.ts';
 
 export const SORRY_REPLY = (): string => {
   const verbs = CATALOGUE.filter((s) => HANDLERS[s.id]).map((s) => s.verbs[0]);
   return `Sorry, I couldn't work that out. Try again, or use one of: ${verbs.join(', ')}.`;
 };
-
-const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-/** The comment without any `@<botName>` mention. */
-export function requestOf(text: string, botName: string): string {
-  return text.replace(new RegExp(`@${escapeRe(botName)}(?![A-Za-z0-9_])`, 'gi'), ' ').replace(/[ \t]+/g, ' ').trim();
-}
 
 export async function route(
   input: RouterInput,
@@ -40,8 +35,8 @@ export async function route(
  * What the comment gets: the reply, or a proposal for `@bot yes` to run. Posting is the dispatcher's job.
  * `cls: 'research'`: a research action ran, so the comment counts once, as research instead of model.
  */
-export async function handleFreeText(ctx: CommandCtx, botName: string): Promise<HandlerResult & { proposal?: Proposal; cls?: 'research' }> {
-  const request = requestOf(ctx.action.text, botName);
+export async function handleFreeText(ctx: CommandCtx, t: Trigger): Promise<HandlerResult & { proposal?: Proposal; cls?: 'research' }> {
+  const request = commandText(ctx.action.text, t);
   const cc = await loadCardContext(ctx.api, ctx.boards, ctx.action, ctx.me.id, ctx.comments);
 
   const cfg = await ctx.config();

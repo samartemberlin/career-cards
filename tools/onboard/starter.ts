@@ -17,7 +17,7 @@ function settings(allowed: string[]): CardSpec {
   return {
     name: 'Settings',
     desc: yaml(
-      `timezone: Europe/Berlin\nproviders: [gemini]\nlocations: []\nlinkedin: false\nallowed_members: [${allowed.join(', ')}]\n`,
+      `timezone: Europe/Berlin\nproviders: [gemini]\nlocations: []\nlinkedin: false\nallowed_members: [${allowed.join(', ')}]\nbot_keyword: /bot\n`,
       'Settings for the run and the bot. Only the YAML block is read.',
     ),
   };

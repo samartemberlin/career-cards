@@ -15,6 +15,14 @@ test('settings defaults', () => {
   assert.deepEqual(s.caps, { model_per_day: 30, model_per_card_per_day: 8, research_per_day: 10, static_per_day: 100 });
 });
 
+test('settings: bot_keyword defaults to /bot; an invalid one falls back to it', () => {
+  assert.equal(SettingsSchema.parse(settingsIn).bot_keyword, '/bot');
+  for (const ok of ['/jobs', '/my-bot_2', '/a', `/${'a'.repeat(19)}`]) assert.equal(SettingsSchema.parse({ ...settingsIn, bot_keyword: ok }).bot_keyword, ok);
+  for (const bad of ['bot keyword', '', '/' + 'a'.repeat(29), `/${'a'.repeat(20)}`, '/1x', '/', 'ok', 'jobs', 'is', '@bot', '/bot.de', '//bot', 5, null]) {
+    assert.equal(SettingsSchema.parse({ ...settingsIn, bot_keyword: bad }).bot_keyword, '/bot', JSON.stringify(bad));
+  }
+});
+
 test('settings: one cap overridden keeps the other defaults', () => {
   const s = SettingsSchema.parse({ ...settingsIn, caps: { model_per_day: 5 } });
   assert.deepEqual(s.caps, { model_per_day: 5, model_per_card_per_day: 8, research_per_day: 10, static_per_day: 100 });
