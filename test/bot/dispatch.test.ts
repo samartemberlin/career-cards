@@ -11,6 +11,7 @@ import type { CommentAction } from '../../src/serve/gate.ts';
 import { handleComment } from '../../src/bot/dispatch.ts';
 import type { DispatchDeps } from '../../src/bot/dispatch.ts';
 import { HANDLERS } from '../../src/bot/handlers.ts';
+import { serialStarter, startRun } from '../../src/serve/runs.ts';
 import type { CommandCtx, Handler } from '../../src/bot/handlers.ts';
 import { formatMarker, parseMarker } from '../../src/bot/marker.ts';
 import type { ReplyMarker } from '../../src/bot/marker.ts';
@@ -391,10 +392,12 @@ test('a handler gets env, call and the gate\'s comments unchanged', async () => 
   }
   assert.equal(seen!.env, s.deps.env);
   assert.equal(seen!.call, call);
+  // Newest first, as the gate read them: everything on the card now except the reply.
+  assert.deepEqual(seen!.comments, (await s.api.cardComments(JOB_CARD, { limit: 50 })).slice(1));
   assert.deepEqual(seen!.comments.map((c) => c.text), ['newer', 'older']);
 });
 
-test('a timed-out handler cannot write after the timeout; only the timeout reply is posted', async () => {
+test('a timed-out handler cannot write after the timeout; its reply within the grace is posted', async () => {
   const s = await ready(setup());
   Object.assign(s.deps, FAST);
   const refused: string[] = [];
@@ -403,14 +406,14 @@ test('a timed-out handler cannot write after the timeout; only the timeout reply
     const tries: [string, () => Promise<unknown>][] = [
       ['comment', () => ctx.api.comment(JOB_CARD, 'late')],
       ['createList', () => ctx.api.createList(BOARDS.system, 'late', 'bottom')],
-      ['start', () => ctx.starter.start('manual')],
+      ['isRunning', () => ctx.starter.isRunning()],
     ];
     for (const [name, f] of tries) await f().catch((e: Error) => { if (e.name === 'AbortError') refused.push(name); });
     return { text: 'late answer' };
   });
   try {
     const { posted } = await say(s, '@samplebot last');
-    assert.deepEqual(refused, ['comment', 'createList', 'start']);
+    assert.deepEqual(refused, ['comment', 'createList', 'isRunning']);
     assert.deepEqual(s.starts, []);
     assert.deepEqual(posted.map(body), ['@usera late answer']);
   } finally {
@@ -503,6 +506,28 @@ test('two queued yes comments around a timeout run the action once: hung before 
   assert.deepEqual(s.starts, ['manual']);
   assert.deepEqual(s.fake.commentsOn(JOB_CARD).slice(1).map(body),
     ['@usera Confirmed: run.', '@usera Run started. Its status card will appear on top of System › Runs.']);
+});
+
+test('a run check refused at the timeout does not jam the serial starter', async () => {
+  const s = await ready(setup());
+  Object.assign(s.deps, FAST);
+  s.deps.starter = serialStarter(s.starter);
+  const hold = gate();
+  const r = withHandler('start_run', async (ctx) => {
+    await hold.p;
+    return { text: await startRun(ctx.starter, 'manual', ctx.log) };
+  });
+  const stale = action('@samplebot run');
+  try {
+    await handleComment(s.deps, stale);
+  } finally {
+    r();
+  }
+  hold.open();
+  await until(() => s.logs.some((l) => l.startsWith('run state unknown: ')), 'the stale check was refused');
+  const { posted } = await say(s, '@samplebot run');
+  assert.deepEqual(s.starts, ['manual']);
+  assert.deepEqual(posted.map(body), ['@usera Run started. Its status card will appear on top of System › Runs.']);
 });
 
 test('an uncounted result is posted as refusal and does not count', async () => {

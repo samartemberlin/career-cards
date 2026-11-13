@@ -59,9 +59,11 @@ export function guardWrites(api: BotApi, signal: AbortSignal): BotApi {
   };
 }
 
+// The check is refused, not the start: serialStarter's `false` claims the slot until the start that follows settles,
+// so refusing that start would leave every later caller "busy" until a restart.
 const guardStarter = (s: RunStarter, signal: AbortSignal): RunStarter => ({
-  isRunning: () => s.isRunning(),
-  start: (t) => (signal.aborted ? Promise.reject(signal.reason) : s.start(t)),
+  isRunning: () => (signal.aborted ? Promise.reject(signal.reason) : s.isRunning()),
+  start: (t) => s.start(t),
 });
 
 // Two webhooks for one card must not both read the same pending proposal, so each card's comments run in order.
@@ -197,6 +199,7 @@ async function respond(d: DispatchDeps, a: CommentAction, signal: AbortSignal): 
   if (over) return post(masker, { text: over, cls: 'refusal' });
 
   if (confirms) {
+    await allowedLinks();
     // Too late to run it: the proposal stays open for another `yes`.
     if (signal.aborted) return post(masker, { text: TIMEOUT_REPLY, cls: 'refusal' });
     // The resolution is on the card before the action runs: if posting it fails, nothing runs, and a later `yes`
