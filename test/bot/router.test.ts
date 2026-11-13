@@ -23,6 +23,7 @@ import type { RunTrigger } from '../../src/run/stats.ts';
 import { FakeTrello } from '../support/fake-trello.ts';
 import { commentWebhook } from '../support/webhook.ts';
 import { fakeModel } from '../support/fake-model.ts';
+import { withWeb } from '../support/fake-research.ts';
 import type { Recording } from '../../tools/sample/scrub.ts';
 
 // --- prompt ---
@@ -277,7 +278,7 @@ for (const row of ROUTER_OUTPUTS) {
 }
 
 test('SORRY_REPLY lists the registered verbs', () => {
-  assert.match(SORRY_REPLY(), /^Sorry, I couldn't work that out\. Try again, or use one of: open, legit, needs, fit, cv, company, why, feedback, last, run\.$/);
+  assert.match(SORRY_REPLY(), /^Sorry, I couldn't work that out\. Try again, or use one of: open, legit, needs, fit, cv, deep, company, why, feedback, last, run\.$/);
 });
 
 test('over the model cap: the refusal line and no model call', async () => {
@@ -315,6 +316,29 @@ test('a router-picked researcher action runs its handler and counts as research'
   } finally {
     spy.restore();
   }
+});
+
+// Needs Task 3's router-path research cap (C3); drop the todo once it is on main.
+test('a router-picked deep counts once as research', { todo: 'C3 (Task 3) not merged yet' }, async () => {
+  const s = await setup((stage) => stage === 'router'
+    ? JSON.stringify({ reply: 'x', action: { id: 'job_deep_dive', args: {} } })
+    : JSON.stringify({ fit: 'F', angle: 'A', risks: [], questions: [] }));
+  const page = 'https://acme.example/about';
+  const m = withWeb(s.m, () => ({
+    fetches: [{ url: page, ok: true }],
+    answer: { summary: 'S', points: [{ section: 'Day to day', text: 'T', source: page }] },
+  }));
+  s.deps.call = m.call;
+  s.deps.env = { ...s.deps.env, CLAUDE_RPM: '0' };
+  s.deps.net = { ...s.deps.net, urlGuard: { lookup: async () => [{ address: '203.0.113.7', family: 4 }] } };
+  const before = await loadUsage(s.api, BOARDS, { botId: s.deps.me.id, now: NOW });
+  const { a, posted } = await say(s, '@samplebot tell me everything about this role');
+  assert.deepEqual(m.calls.map((c) => c.stage), ['router', 'researcher/deep', 'advisor/deep']);
+  assert.equal(posted.length, 1);
+  assert.match(body(posted[0]!), /from the web, unverified, sources: \[link 1\]/);
+  assert.deepEqual(parseMarker(posted[0]!), { actionId: a.id, cls: 'research' });
+  const after = await loadUsage(s.api, BOARDS, { botId: s.deps.me.id, now: NOW });
+  assert.deepEqual([after.model - before.model, after.research - before.research], [0, 1]);
 });
 
 test('a router-picked explain_filter fetches only through ctx.net', async () => {
