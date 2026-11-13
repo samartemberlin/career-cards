@@ -1,4 +1,5 @@
 import { spawn as nodeSpawn } from 'node:child_process';
+import { readFile, unlink } from 'node:fs/promises';
 import type { ChildProcess } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import type { Readable } from 'node:stream';
@@ -74,8 +75,46 @@ export function runChildEnv(env: Env): Record<string, string> {
 const RUN_SCRIPT = fileURLToPath(new URL('../run.ts', import.meta.url));
 
 /**
+ * The job path has `activeDeadlineSeconds: 3600`; this is the same bound for a run the service starts itself. It stays
+ * below `LOCK_STALE_MS`, so a run is killed before another one could take over its lock.
+ */
+export const RUN_DEADLINE_MS = 3600_000;
+const KILL_GRACE_MS = 10_000;
+
+export type SetTimer = (fn: () => void, ms: number) => () => void;
+
+const realTimer: SetTimer = (fn, ms) => {
+  const t = setTimeout(fn, ms);
+  t.unref();
+  return () => clearTimeout(t);
+};
+
+/**
+ * Signals the run's whole process group. Its own children (scan, claude) enforce their timeouts from inside the run,
+ * so once the run is killed nothing else would stop them.
+ */
+function killGroup(c: ChildProcess, sig: NodeJS.Signals): void {
+  if (c.pid === undefined) return;
+  try {
+    process.kill(-c.pid, sig);
+  } catch {
+    // The group is gone.
+  }
+}
+
+/** Removes the lock only if `pid` wrote it (fileLock's content starts with the pid), so a later run's lock stays. */
+async function dropLockOf(path: string, pid: number): Promise<void> {
+  try {
+    if ((await readFile(path, 'utf8')).startsWith(`${pid} `)) await unlink(path);
+  } catch {
+    // Left in place, the lock goes stale after LOCK_STALE_MS.
+  }
+}
+
+/**
  * Runs the CLI as a child of the service (local use). `isRunning` sees this service's own child and, through
- * `lockFile`, a run started elsewhere on the machine or left behind by a restarted service.
+ * `lockFile`, a run started elsewhere on the machine or left behind by a restarted service. A child past the deadline
+ * gets SIGTERM, then SIGKILL, with its process group.
  */
 export function localRunStarter(o: {
   env: Env;
@@ -83,8 +122,10 @@ export function localRunStarter(o: {
   spawn?: SpawnLike;
   script?: string;
   lockFile?: string;
+  setTimer?: SetTimer;
 }): RunStarter {
   const spawn = o.spawn ?? nodeSpawn;
+  const setTimer = o.setTimer ?? realTimer;
   let child: ChildProcess | null = null;
 
   const forward = (stream: Readable | null) => {
@@ -100,20 +141,72 @@ export function localRunStarter(o: {
       const c = spawn(process.execPath, [o.script ?? RUN_SCRIPT, '--trigger', trigger], {
         env: runChildEnv(o.env),
         stdio: ['ignore', 'pipe', 'pipe'],
+        detached: true,
       });
       child = c;
       forward(c.stdout);
       forward(c.stderr);
+
+      let killed = false;
+      let exited: [number | null, NodeJS.Signals | null] | null = null;
+      let cancelKill = () => {};
+      const cancelDeadline = setTimer(() => {
+        killed = true;
+        if (exited) {
+          o.log('run output still open after deadline');
+          killGroup(c, 'SIGKILL');
+          void end(...exited);
+          return;
+        }
+        o.log('run killed after deadline');
+        killGroup(c, 'SIGTERM');
+        cancelKill = setTimer(() => killGroup(c, 'SIGKILL'), KILL_GRACE_MS);
+      }, RUN_DEADLINE_MS);
+
+      // Its own group no longer gets the terminal's Ctrl+C, so the service passes its own stop signal on, then re-raises
+      // it to stop as it would have without this listener. As PID 1 (the container) the re-raise is dropped, as SIGTERM
+      // was before; the platform's SIGKILL ends the container.
+      const onStop = (sig: NodeJS.Signals) => {
+        killGroup(c, sig);
+        process.kill(process.pid, sig);
+      };
+      process.once('SIGINT', onStop);
+      process.once('SIGTERM', onStop);
+      const unlisten = () => {
+        process.off('SIGINT', onStop);
+        process.off('SIGTERM', onStop);
+      };
+
+      let ended = false;
+      const end = async (code: number | null, signal: NodeJS.Signals | null) => {
+        if (ended) return;
+        ended = true;
+        unlisten();
+        cancelDeadline();
+        cancelKill();
+        // The killed run never releases its own lock.
+        // A grandchild that ignored SIGTERM outlives a run that didn't, and nothing else would time it out.
+        if (killed) killGroup(c, 'SIGKILL');
+        if (killed && o.lockFile && c.pid !== undefined) await dropLockOf(o.lockFile, c.pid);
+        if (child === c) child = null;
+        o.log(signal ? `run exited by signal ${signal}` : `run exited with code ${code}`);
+      };
+
       return new Promise<void>((resolve, reject) => {
         c.once('spawn', () => resolve());
         c.once('error', (e) => {
+          unlisten();
+          cancelDeadline();
           if (child === c) child = null;
           reject(e);
         });
-        c.once('close', (code, signal) => {
-          if (child === c) child = null;
-          o.log(signal ? `run exited by signal ${signal}` : `run exited with code ${code}`);
+        // A run's orphaned grandchildren (scan, claude) can keep its pipes open, so 'close' may never come. Past the
+        // deadline, 'exit' is enough.
+        c.once('exit', (code, signal) => {
+          exited = [code, signal];
+          if (killed) void end(code, signal);
         });
+        c.once('close', (code, signal) => void end(code, signal));
       });
     },
   };

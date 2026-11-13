@@ -208,3 +208,19 @@ test('end to end: the trigger and @samplebot run at once → one run started', a
   if (res.status === 202) assert.match(reply, /A run is already in progress/);
   else assert.equal(res.status, 409);
 });
+
+test('serve logs the local starter when no NORTHFLANK_* is set', async () => {
+  const s = setup();
+  const svc = await main(ENV, { trello: s.trello, listen: false, out: (l) => s.logs.push(l) });
+  closers.push(svc.close);
+  assert.ok(s.logs.includes('starter: local'), s.logs.join('\n'));
+});
+
+test('serve logs the northflank starter when all NORTHFLANK_* are set, and no value', async () => {
+  const s = setup();
+  const nf = { NORTHFLANK_API_TOKEN: 'nf-token-sample-0123456789', NORTHFLANK_PROJECT_ID: 'project-sample', NORTHFLANK_JOB_ID: 'job-sample' };
+  const svc = await main({ ...ENV, ...nf }, { trello: s.trello, listen: false, out: (l) => s.logs.push(l) });
+  closers.push(svc.close);
+  assert.ok(s.logs.includes('starter: northflank'), s.logs.join('\n'));
+  for (const v of Object.values(nf)) assert.ok(s.logs.every((l) => !l.includes(v)));
+});
