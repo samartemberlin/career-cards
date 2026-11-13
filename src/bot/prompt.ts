@@ -3,6 +3,10 @@ import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
+import type { Message } from '../pipeline/llm.ts';
+import { PrivacyError, isBotMasking } from '../privacy.ts';
+import type { BotMasking } from '../privacy.ts';
+import type { JobFields } from './context.ts';
 
 const PROMPTS_DIR = fileURLToPath(new URL('./prompts/', import.meta.url));
 const cache = new Map<string, string>();
@@ -37,3 +41,39 @@ export function untrusted(label: string, text: string, nonce: string): string {
 
 /** First line of every bot system prompt; test fakes read the stage from it. */
 export const STAGE_LINE = (name: string): string => `career-cards stage: ${name}`;
+
+/** `created` is `YYYY-MM-DD`, from the card id's timestamp. */
+export type EarlierPosting = { title: string; created: string; closed: boolean };
+export type ReaderInput = { job: JobFields; earlier: EarlierPosting[]; today: string };
+
+// A cast or a spread object passes the type check, so the brand is checked again here.
+function checkMasking(m: BotMasking): BotMasking {
+  if (!isBotMasking(m)) throw new PrivacyError('prompt text not from buildBotMasking');
+  return m;
+}
+
+/** The reader sees the job card only: no CV, no rubric, no conversation. */
+export function readerMessages(kind: 'legit' | 'needs', input: ReaderInput, masking: BotMasking): Message[] {
+  const mask = checkMasking(masking).details;
+  const nonce = newNonce();
+  const { job } = input;
+  const jobText = [
+    `Company: ${job.company}`,
+    `Title: ${job.title}`,
+    `Link: ${job.url}`,
+    `Location: ${job.location}`,
+    `Posted: ${job.posted}`,
+    `Deadline: ${job.deadline}`,
+    '',
+    job.jd,
+  ].join('\n');
+  const parts = [`Today: ${input.today}`, untrusted('JOB', mask(jobText), nonce)];
+  if (kind === 'legit') {
+    const lines = input.earlier.map((e) => `- ${e.created}: ${e.title}${e.closed ? ' (archived)' : ''}`);
+    parts.push(untrusted('EARLIER_CARDS', mask(lines.length ? lines.join('\n') : '(none)'), nonce));
+  }
+  return [
+    { role: 'system', content: `${STAGE_LINE(`reader/${kind}`)}\n${loadPrompt(`reader-${kind}`)}` },
+    { role: 'user', content: parts.join('\n\n') },
+  ];
+}

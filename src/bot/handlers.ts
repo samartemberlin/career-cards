@@ -9,6 +9,7 @@ import type { UserBoards } from '../trello/scoped.ts';
 import type { Settings, UserConfig } from '../config/schema.ts';
 import { explainFilter } from './why.ts';
 import { handleOpen } from './open.ts';
+import { applyNeeds, checkLegit } from './stages/reader.ts';
 import type { UrlGuard } from '../net/safe-fetch.ts';
 import type { CallOpts, Env } from '../pipeline/llm.ts';
 
@@ -73,6 +74,8 @@ export const HANDLERS: Partial<Record<string, Handler>> = {
   start_run: runNow,
   explain_filter: explainFilter as Handler,
   check_open: handleOpen,
+  check_legit: checkLegit,
+  apply_needs: applyNeeds,
 };
 
 export function helpText(botName: string): string {

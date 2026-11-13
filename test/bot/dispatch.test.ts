@@ -20,6 +20,7 @@ import { loadUsage } from '../../src/bot/caps.ts';
 import type { RunTrigger } from '../../src/run/stats.ts';
 import { FakeTrello } from '../support/fake-trello.ts';
 import { commentWebhook } from '../support/webhook.ts';
+import { fakeModel } from '../support/fake-model.ts';
 import type { Recording } from '../../tools/sample/scrub.ts';
 
 const DIR = join(import.meta.dirname, '..', 'fixtures', 'trello');
@@ -553,5 +554,26 @@ test('a reply that fails masking posts the constant line, counted', async () => 
   } finally {
     restore();
   }
+  assert.equal((await loadUsage(s.api, BOARDS, { botId: s.deps.me.id, now: NOW })).model, 1);
+});
+
+test('@samplebot legit on a job card posts one model-class reply', async () => {
+  const s = await ready(setup());
+  const m = fakeModel(() => JSON.stringify({
+    tier: 'proceed_with_caution',
+    signals: [{ signal: 'freshness', finding: 'Posted ten days ago.', weight: 'positive' }],
+    notes: 'A common role.',
+  }));
+  s.deps.env = { ...s.deps.env, PATH: '/usr/bin', HOME: '/home/app', CLAUDE_CODE_OAUTH_TOKEN: 'tok-claude-0000', LLM_RPM: '0' };
+  s.deps.call = m.call;
+  const { a, posted } = await say(s, '@samplebot legit');
+  assert.equal(m.calls.length, 1);
+  assert.equal(m.calls[0]!.stage, 'reader/legit');
+  assert.equal(posted.length, 1);
+  const lines = body(posted[0]!).split('\n');
+  assert.equal(lines[0], '@usera Mixed signals: proceed with caution');
+  assert.equal(lines[1], '- ✅ Freshness: Posted ten days ago.');
+  assert.equal(lines.at(-1), 'A common role.');
+  assert.deepEqual(markerOf(posted[0]!), { actionId: a.id, cls: 'model' });
   assert.equal((await loadUsage(s.api, BOARDS, { botId: s.deps.me.id, now: NOW })).model, 1);
 });
