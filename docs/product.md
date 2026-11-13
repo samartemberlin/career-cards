@@ -59,9 +59,9 @@ Each user runs their own copy of this bot. Status: built = on `main` with tests;
 4. Actions marked `confirm` wait 24 h for `@bot yes`. The reply is posted as a comment.
 
 **Onboarding**
-1. Fork, deploy to Northflank from the template, add secrets.
-2. Run the [onboarding tool](../tools/onboard.ts) (`--dry-run` first): three private boards (Jobs, Profiles, System), bot added, webhooks registered.
-3. Create the one Trello automation rule by hand, as the tool prints it (Trello has no API for it).
+1. Run the [onboarding tool](../tools/onboard.ts) (`--dry-run` first): three private boards (Jobs, Profiles, System), bot added; it prints the three board IDs.
+2. Fork, deploy to Northflank from the template using those board IDs, add secret groups.
+3. Run the tool again with `--url <service url>` to register webhooks; create the one Trello automation rule by hand, as the tool prints it (Trello has no API for it).
 4. Fill `Settings`, `Personal details`, `CV` and one profile column; comment `@bot run` on the System board.
 
 **Migration from samjobs** (per user, samjobs keeps running until cutover)
