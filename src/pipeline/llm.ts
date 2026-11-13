@@ -324,20 +324,35 @@ async function callClaudeCli(p: Provider, messages: Message[], execImpl: typeof 
   let out: any;
   try { out = JSON.parse(stdout); } catch { out = null; }
   if (!out || code !== 0 || out.is_error) {
-    const msg = String(out?.result ?? (stderr || stdout)).replace(/\s+/g, ' ').slice(0, 200);
-    const status = out?.api_error_status;
-    if (status === 401 || /not logged in|invalid (api key|token)|authentication|oauth/i.test(msg)) {
-      throw withCool(`claude CLI auth failed (refresh CLAUDE_CODE_OAUTH_TOKEN): ${msg}`, 6 * HOUR);
-    }
-    if (status === 429 || /usage limit|rate limit|limit reached|overloaded/i.test(msg)) {
-      throw withCool(`claude CLI limit: ${msg}`, /usage limit|limit reached|resets/i.test(msg) ? 6 * HOUR : 120000);
-    }
-    throw withCool(`claude CLI error (exit ${code}): ${msg}`, 120000);
+    throw classifyClaudeFailure({ result: out?.result, apiErrorStatus: out?.api_error_status, code, stderr, stdout });
   }
   if (typeof out.result !== 'string' || !out.result.trim()) throw new Error('empty completion');
-  const u = out.usage ?? {};
-  const prompt = (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0);
-  return { text: out.result, usage: { prompt_tokens: prompt, completion_tokens: u.output_tokens ?? 0, total_tokens: prompt + (u.output_tokens ?? 0) }, provider: p.name ?? 'claude', model: p.model };
+  return { text: out.result, usage: claudeUsage(out.usage), provider: p.name ?? 'claude', model: p.model };
+}
+
+/** A failed `claude -p` run as an error carrying how long to park the provider: hours for auth or a usage limit. */
+export function classifyClaudeFailure(o: {
+  result?: unknown; apiErrorStatus?: unknown; code: number | null; stderr: string; stdout: string;
+}): Error & { coolMs: number } {
+  const msg = String(o.result ?? (o.stderr || o.stdout)).replace(/\s+/g, ' ').slice(0, 200);
+  const status = o.apiErrorStatus;
+  if (status === 401 || /not logged in|invalid (api key|token)|authentication|oauth/i.test(msg)) {
+    return withCool(`claude CLI auth failed (refresh CLAUDE_CODE_OAUTH_TOKEN): ${msg}`, 6 * HOUR);
+  }
+  if (status === 429 || /usage limit|rate limit|limit reached|overloaded/i.test(msg)) {
+    return withCool(`claude CLI limit: ${msg}`, /usage limit|limit reached|resets/i.test(msg) ? 6 * HOUR : 120000);
+  }
+  return withCool(`claude CLI error (exit ${o.code}): ${msg}`, 120000);
+}
+
+/** The CLI's `usage` in the OpenAI shape; cache writes and reads are prompt tokens too. */
+export function claudeUsage(u: unknown): Usage {
+  const n = (k: string) => {
+    const v = u && typeof u === 'object' ? (u as Record<string, unknown>)[k] : undefined;
+    return typeof v === 'number' ? v : 0;
+  };
+  const prompt = n('input_tokens') + n('cache_creation_input_tokens') + n('cache_read_input_tokens');
+  return { prompt_tokens: prompt, completion_tokens: n('output_tokens'), total_tokens: prompt + n('output_tokens') };
 }
 
 type ProviderCallOpts = { fetchImpl: FetchJson; retries: number; execImpl: typeof runModelProcess; signal?: AbortSignal };
@@ -402,6 +417,11 @@ export class QuotaExhausted extends Error {
 }
 
 const coolUntil = new Map<string | undefined, number>(); // provider name → epoch ms until which it is skipped
+
+export const isCooling = (name: string): boolean => (coolUntil.get(name) ?? 0) > Date.now();
+export const coolDown = (name: string, ms: number): void => {
+  coolUntil.set(name, Math.max(coolUntil.get(name) ?? 0, Date.now() + ms));
+};
 const MAX_WAIT_MS = 60000;
 
 type CallError = Error & { coolMs?: number; modelGone?: boolean };
