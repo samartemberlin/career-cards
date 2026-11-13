@@ -318,6 +318,30 @@ test('a router-picked researcher action runs its handler and counts as research'
   }
 });
 
+test('@samplebot deep runs researcher then advisor, counted once as research, footer links kept', async () => {
+  const s = await setup((stage) => {
+    if (stage !== 'advisor/deep') throw new Error(`unexpected stage ${stage}`);
+    return JSON.stringify({ fit: 'F', angle: 'A', risks: [], questions: [] });
+  });
+  const page = 'https://acme.example/about';
+  const m = withWeb(s.m, () => ({
+    fetches: [{ url: page, ok: true }],
+    answer: { summary: 'S', points: [{ section: 'Day to day', text: 'T', source: page }] },
+  }));
+  s.deps.call = m.call;
+  s.deps.env = { ...s.deps.env, CLAUDE_RPM: '0' };
+  s.deps.net = { ...s.deps.net, urlGuard: { lookup: async () => [{ address: '203.0.113.7', family: 4 }] } };
+  const before = await loadUsage(s.api, BOARDS, { botId: s.deps.me.id, now: NOW });
+  const { a, posted } = await say(s, '@samplebot deep');
+  assert.deepEqual(m.calls.map((c) => c.stage), ['researcher/deep', 'advisor/deep']);
+  assert.equal(posted.length, 1);
+  assert.match(body(posted[0]!), /\nfrom the web, unverified, sources: \[link 1\]\n\nLinks:\nlink 1: <https:\/\/acme\.example\/about>/);
+  assert.doesNotMatch(body(posted[0]!), /link removed/);
+  assert.deepEqual(parseMarker(posted[0]!), { actionId: a.id, cls: 'research' });
+  const after = await loadUsage(s.api, BOARDS, { botId: s.deps.me.id, now: NOW });
+  assert.deepEqual([after.model - before.model, after.research - before.research], [0, 1]);
+});
+
 // Needs Task 3's router-path research cap (C3); drop the todo once it is on main.
 test('a router-picked deep counts once as research', { todo: 'C3 (Task 3) not merged yet' }, async () => {
   const s = await setup((stage) => stage === 'router'

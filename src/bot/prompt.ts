@@ -94,9 +94,9 @@ export type AdvisorInput = { job: JobFields; research?: string };
  */
 export function advisorMessages(kind: 'fit' | 'cv' | 'deep', input: AdvisorInput, masking: BotMasking): Message[] {
   const m = checkMasking(masking);
-  if (kind === 'deep' && input.research === undefined) throw new Error('advisorMessages: deep needs the research');
+  const { job, research } = input;
+  if (kind === 'deep' && research === undefined) throw new Error('advisorMessages: deep needs the research');
   const nonce = newNonce();
-  const { job } = input;
   const jobText = [
     `Score: ${job.score === null ? 'not scored' : `${job.score}/10`}`,
     `Scoring reason: ${job.why || 'not given'}`,
@@ -114,7 +114,7 @@ export function advisorMessages(kind: 'fit' | 'cv' | 'deep', input: AdvisorInput
     '=== CANDIDATE CV ===', m.profile.cv.trim(), '',
     untrusted('JOB', m.details(jobText), nonce),
     // From the web: masked like job text, which keeps a posting's public contacts.
-    ...(kind === 'deep' ? ['', untrusted('RESEARCH', m.details(input.research!), nonce)] : []),
+    ...(kind === 'deep' && research !== undefined ? ['', untrusted('RESEARCH', m.details(research), nonce)] : []),
   ].join('\n');
   return [
     { role: 'system', content: `${STAGE_LINE(`advisor/${kind}`)}\n${loadPrompt(`advisor-${kind}`)}` },

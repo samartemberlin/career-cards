@@ -15,6 +15,8 @@ import { DeepSchema, jobDeepDive, renderDeep } from '../../../src/bot/stages/dee
 import { RESEARCH_UNAVAILABLE, renderResearch, webFooter } from '../../../src/bot/stages/researcher.ts';
 import type { Research } from '../../../src/bot/stages/researcher.ts';
 import { JOB_ONLY_REPLY } from '../../../src/bot/stages/call.ts';
+import { finishReply } from '../../../src/bot/reply.ts';
+import { buildMasker } from '../../../src/privacy.ts';
 import type { LookupAll } from '../../../src/net/safe-fetch.ts';
 import { fakeModel } from '../../support/fake-model.ts';
 import { withWeb } from '../../support/fake-research.ts';
@@ -166,12 +168,39 @@ test('deep posts one reply with the advisor\'s sections, the research and the un
   assert.equal(r.text, [
     renderDeep(DEEP_OK),
     '',
-    'Research:',
+    'Research (from the web, unverified):',
     renderResearch(RESEARCH),
     '',
     webFooter([ABOUT, NEWS]),
   ].join('\n'));
   assert.ok(r.text.endsWith(`from the web, unverified, sources: ${ABOUT}, ${NEWS}`));
+});
+
+test('a maximal answer keeps the unverified footer once posted, citing only the points kept', async () => {
+  const words = (n: number, tag: string) => `${tag} ${'word '.repeat(n)}`.slice(0, n).trim();
+  const pages = Array.from({ length: 20 }, (_, i) => `https://site${i}.example/page-${i}`);
+  const big: Research = {
+    summary: words(600, 'summary'),
+    points: pages.map((source, i) => ({ section: words(60, `Section ${i}`), text: words(400, `point ${i}`), source })),
+  };
+  const s = await setup({
+    web: () => ({ fetches: pages.map((url) => ({ url, ok: true })), answer: big }),
+    advisor: JSON.stringify({
+      fit: words(600, 'fit'), angle: words(600, 'angle'),
+      risks: Array.from({ length: 5 }, (_, i) => words(200, `risk ${i}`)),
+      questions: Array.from({ length: 6 }, (_, i) => words(200, `question ${i}`)),
+    }),
+  });
+  const r = await jobDeepDive(s.ctx, {});
+  assert.ok(r.links!.length < pages.length, 'some points were left out');
+  for (const link of r.links!) assert.ok(r.text.includes(`(source: ${link})`));
+  const posted = finishReply({
+    text: r.text, author: 'usera', marker: { actionId: 'fa4e0000000000000000c001', cls: 'research' },
+    masker: buildMasker(cfg.personalDetails), allowedLinks: r.links!,
+  }).join('\n');
+  assert.match(posted, /Research \\\(from the web, unverified\\\)\\:/);
+  assert.match(posted, /\nfrom the web, unverified, sources\\: \\\[link 1\\\], \\\[link 2\\\]/);
+  assert.doesNotMatch(posted, /\(cut\)/);
 });
 
 test('renderDeep gives plain headings and leaves out empty lists', () => {
