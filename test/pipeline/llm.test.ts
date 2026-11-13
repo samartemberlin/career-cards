@@ -5,8 +5,8 @@ import type { ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import {
-  MODEL_TOOL_FLAGS, QuotaExhausted, callLLM, createLimiter, isDailyQuota, llmConfig, providerProblems, rankModels, retryHint,
-  runModelProcess,
+  MODEL_TOOL_FLAGS, QuotaExhausted, callLLM, claudeUsage, classifyClaudeFailure, coolDown, createLimiter, isCooling, isDailyQuota,
+  llmConfig, providerProblems, rankModels, retryHint, runModelProcess,
 } from '../../src/pipeline/llm.ts';
 import type { FetchJson, LlmConfig, Message, SpawnLike } from '../../src/pipeline/llm.ts';
 
@@ -218,6 +218,37 @@ test('claude provider: usage limit and auth errors park the provider; plain erro
   await assert.rejects(callLLM(cfg(), userMsg, { execImpl: errOnZero }), /claude CLI error/);
   const boom: typeof runModelProcess = async () => { throw new Error('spawn claude ENOENT'); };
   await assert.rejects(callLLM(cfg(), userMsg, { execImpl: boom }), QuotaExhausted);
+});
+
+test('classifyClaudeFailure: 401 → 6 h cool, usage limit → 6 h, other → 2 min', () => {
+  const HOUR = 3600 * 1000;
+  const base = { code: 1, stderr: '', stdout: '' };
+  const auth = classifyClaudeFailure({ ...base, apiErrorStatus: 401, result: 'Invalid authentication credentials' });
+  assert.match(auth.message, /auth failed/);
+  assert.equal(auth.coolMs, 6 * HOUR);
+  assert.equal(classifyClaudeFailure({ ...base, stderr: 'Not logged in' }).coolMs, 6 * HOUR);
+  const limit = classifyClaudeFailure({ ...base, apiErrorStatus: 429, result: 'Claude usage limit reached. Your limit resets at 5pm' });
+  assert.match(limit.message, /claude CLI limit/);
+  assert.equal(limit.coolMs, 6 * HOUR);
+  assert.equal(classifyClaudeFailure({ ...base, result: 'API overloaded' }).coolMs, 120000);
+  const other = classifyClaudeFailure({ ...base, result: 'something\n  broke' });
+  assert.equal(other.message, 'claude CLI error (exit 1): something broke');
+  assert.equal(other.coolMs, 120000);
+  assert.match(classifyClaudeFailure({ code: 2, stderr: '', stdout: 'raw out' }).message, /exit 2\): raw out/);
+});
+
+test('claudeUsage maps the CLI usage, cache reads counted as prompt tokens', () => {
+  assert.deepEqual(claudeUsage({ input_tokens: 2, cache_creation_input_tokens: 600, cache_read_input_tokens: 8, output_tokens: 50 }),
+    { prompt_tokens: 610, completion_tokens: 50, total_tokens: 660 });
+  assert.deepEqual(claudeUsage(undefined), { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 });
+});
+
+test('isCooling is true after coolDown and false after it passes', async () => {
+  assert.equal(isCooling('cool-test'), false);
+  coolDown('cool-test', 30);
+  assert.equal(isCooling('cool-test'), true);
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(isCooling('cool-test'), false);
 });
 
 test('claude paces on its own limit, so the free tiers keep theirs', () => {
