@@ -42,8 +42,9 @@ export function parseToolLog(stdout: string): ToolLog {
     } else if (ev.type === 'user') {
       const results = blocks(ev).filter((b) => b.type === 'tool_result');
       // The CLI does not set is_error on an HTTP error page (a 404 comes back as a normal result); only the event's
-      // `tool_use_result.code` shows it. That field belongs to the event, so it is read only when there is one result.
-      const status = results.length === 1 && isObj(ev.tool_use_result) ? ev.tool_use_result.code : undefined;
+      // `tool_use_result.code` shows it. That field belongs to the event, not a block, so a bad code marks every
+      // result in the event as failed.
+      const status = isObj(ev.tool_use_result) ? ev.tool_use_result.code : undefined;
       const badStatus = typeof status === 'number' && (status < 200 || status > 299);
       for (const b of results) {
         if (typeof b.tool_use_id === 'string') failed.set(b.tool_use_id, b.is_error === true || badStatus);

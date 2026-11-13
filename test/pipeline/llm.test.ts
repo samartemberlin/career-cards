@@ -243,11 +243,15 @@ test('claudeUsage maps the CLI usage, cache reads counted as prompt tokens', () 
   assert.deepEqual(claudeUsage(undefined), { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 });
 });
 
-test('isCooling is true after coolDown and false after it passes', async () => {
+test('isCooling is true after coolDown and false after it passes; a shorter cool never shortens a longer one', (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: 1_000_000 });
   assert.equal(isCooling('cool-test'), false);
-  coolDown('cool-test', 30);
+  coolDown('cool-test', 1000);
   assert.equal(isCooling('cool-test'), true);
-  await new Promise((r) => setTimeout(r, 50));
+  coolDown('cool-test', 10);
+  t.mock.timers.tick(999);
+  assert.equal(isCooling('cool-test'), true);
+  t.mock.timers.tick(1);
   assert.equal(isCooling('cool-test'), false);
 });
 

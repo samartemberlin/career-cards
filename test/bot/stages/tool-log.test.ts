@@ -78,3 +78,11 @@ test('parseToolLog: is_error or a non-2xx status makes a fetch not ok; other too
   assert.deepEqual(log.searches, ['acme engineering blog']);
   assert.deepEqual([log.isError, log.apiErrorStatus, log.result], [true, 429, 'limit']);
 });
+
+test('parseToolLog: a bad status on an event with two results fails both, since it cannot say which', () => {
+  const both = line({ type: 'user', message: { content: [
+    { type: 'tool_result', tool_use_id: 'a', content: 'x' }, { type: 'tool_result', tool_use_id: 'b', content: 'y' },
+  ] }, tool_use_result: { code: 404 } });
+  const log = parseToolLog([fetchUse('a', 'https://a.example'), fetchUse('b', 'https://b.example'), both, resultEvent()].join('\n'));
+  assert.deepEqual(log.fetches.map((f) => f.ok), [false, false]);
+});

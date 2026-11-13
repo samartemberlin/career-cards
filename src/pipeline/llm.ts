@@ -419,7 +419,9 @@ export class QuotaExhausted extends Error {
 const coolUntil = new Map<string | undefined, number>(); // provider name → epoch ms until which it is skipped
 
 export const isCooling = (name: string): boolean => (coolUntil.get(name) ?? 0) > Date.now();
-export const coolDown = (name: string, ms: number): void => { coolUntil.set(name, Date.now() + ms); };
+export const coolDown = (name: string, ms: number): void => {
+  coolUntil.set(name, Math.max(coolUntil.get(name) ?? 0, Date.now() + ms));
+};
 const MAX_WAIT_MS = 60000;
 
 type CallError = Error & { coolMs?: number; modelGone?: boolean };
