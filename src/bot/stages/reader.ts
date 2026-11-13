@@ -11,7 +11,7 @@ import type { JobFields } from '../context.ts';
 import type { CommandCtx, Handler, HandlerResult } from '../handlers.ts';
 import { readerMessages } from '../prompt.ts';
 import type { EarlierPosting, ReaderInput } from '../prompt.ts';
-import { JOB_ONLY_REPLY, MASKING_REPLY, callStage, stageErrorReply } from './call.ts';
+import { JOB_ONLY_REPLY, MASKING_REPLY, callStage, oneLine as line, stageErrorReply } from './call.ts';
 
 export const LEGIT_SIGNALS = ['freshness', 'description_quality', 'reposting', 'role_market_context',
   'employment_classification', 'benefits_country_mismatch', 'buzzword_mismatch', 'scam_markers'] as const;
@@ -88,9 +88,6 @@ const SIGNAL_LABEL: Record<(typeof LEGIT_SIGNALS)[number], string> = {
   scam_markers: 'Scam markers',
 };
 const WEIGHT_EMOJI: Record<Legit['signals'][number]['weight'], string> = { positive: '✅', neutral: '➖', concerning: '⚠️' };
-
-// Model strings are one line each, so they can't fake a line the code writes.
-const line = (s: string): string => s.replace(/\s+/g, ' ').trim();
 
 // Replies are posted as plain text (finishReply escapes Markdown), so the renders use none.
 export function renderLegit(v: Legit, earlier: EarlierPosting[]): string {

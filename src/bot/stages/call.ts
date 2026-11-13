@@ -16,6 +16,9 @@ export const QUOTA_REPLY = 'No AI provider is available right now (quota or outa
 export const MASKING_REPLY = (message: string): string =>
   `Masking failed, so nothing was sent to a model: ${message}. Check the Personal details card.`;
 export const JOB_ONLY_REPLY = (verb: string): string => `\`${verb}\` works on job cards only.`;
+// Model strings are rendered one line each, so they can't fake a line the code writes.
+export const oneLine = (s: string): string => s.replace(/\s+/g, ' ').trim();
+
 const INVALID_REPLY = "Sorry, the model's answer didn't check out. Try again.";
 export const TIMEOUT_REPLY = 'Sorry, that took too long.';
 const ERROR_REPLY = 'Sorry, something went wrong.';

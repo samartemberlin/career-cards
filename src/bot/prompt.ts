@@ -77,3 +77,37 @@ export function readerMessages(kind: 'legit' | 'needs', input: ReaderInput, mask
     { role: 'user', content: parts.join('\n\n') },
   ];
 }
+
+/** PR 8 adds an optional `research`. */
+export type AdvisorInput = { job: JobFields };
+
+/**
+ * The advisor sees the job card, the rubric and the CV. The rubric and CV go in the user message, not the system
+ * prompt: the `claude` provider passes the system prompt in argv, which other local users can read in `ps`.
+ */
+export function advisorMessages(kind: 'fit' | 'cv', input: AdvisorInput, masking: BotMasking): Message[] {
+  const m = checkMasking(masking);
+  const nonce = newNonce();
+  const { job } = input;
+  const jobText = [
+    `Score: ${job.score === null ? 'not scored' : `${job.score}/10`}`,
+    `Scoring reason: ${job.why || 'not given'}`,
+    `Company: ${job.company}`,
+    `Title: ${job.title}`,
+    `Link: ${job.url}`,
+    `Location: ${job.location}`,
+    `Posted: ${job.posted}`,
+    `Deadline: ${job.deadline}`,
+    '',
+    job.jd,
+  ].join('\n');
+  const user = [
+    '=== RUBRIC ===', m.profile.rubric.trim(), '',
+    '=== CANDIDATE CV ===', m.profile.cv.trim(), '',
+    untrusted('JOB', m.details(jobText), nonce),
+  ].join('\n');
+  return [
+    { role: 'system', content: `${STAGE_LINE(`advisor/${kind}`)}\n${loadPrompt(`advisor-${kind}`)}` },
+    { role: 'user', content: user },
+  ];
+}
