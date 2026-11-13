@@ -2,6 +2,7 @@
 // message, where card text, comments and job text arrive), and answers in the shape its stage expects, so whatever
 // stops an attack is the code around the model, never the model.
 import { formatMarker } from '../../src/bot/marker.ts';
+import type { WebAnswer } from './fake-research.ts';
 
 type Call = { stage: string; system: string; user: string };
 
@@ -73,8 +74,28 @@ export function gullible(): (c: Call) => string {
         return JSON.stringify({ summary: fit(text, 600), strengths: [fit(text, 200)], gaps: [], dealbreakers: [] });
       case 'advisor/cv':
         return JSON.stringify({ lead_with: [fit(text, 200)], mirror_terms: [], gaps_to_address: [], notes: fit(text, 600) });
+      case 'advisor/deep':
+        return JSON.stringify({ fit: fit(text, 600), angle: fit(text, 600), risks: [fit(text, 200)], questions: [] });
       default:
         throw new Error(`gullible: unknown stage ${c.stage}`);
     }
+  };
+}
+
+/**
+ * The researcher (`researcher/<topic>`, through `withWeb`) misled by `page`: it opens the page, then every URL the page
+ * says to `open`, and copies each line of the page into a point citing the page, or the URL a line says to `cite`.
+ */
+export function gullibleWeb(page: { url: string; text: string }): (c: { stage: string }) => WebAnswer {
+  return (c) => {
+    if (!c.stage.startsWith('researcher/')) throw new Error(`gullibleWeb: unknown stage ${c.stage}`);
+    const lines = page.text.split('\n').map((l) => l.trim()).filter(Boolean);
+    const opens = [...page.text.matchAll(/\bopen (https?:\/\/\S+)/gi)].map((m) => m[1]!);
+    const points = lines.map((l) => ({ section: 'From the web', text: fit(l, 400), source: /\bcite (\S+)/i.exec(l)?.[1] ?? page.url }));
+    for (const url of opens) points.push({ section: 'Opened', text: `Read ${url}`, source: url });
+    return {
+      fetches: [{ url: page.url, ok: true, content: page.text }, ...opens.map((url) => ({ url, ok: true }))],
+      answer: { summary: fit(lines[0] ?? '', 600), points: points.slice(0, 20) },
+    };
   };
 }
