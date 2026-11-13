@@ -1,13 +1,15 @@
 // The steps every model-stage handler shares: the job card, the masking, the call options.
 import { llmConfig } from '../../pipeline/llm.ts';
 import type { CallOpts, LlmConfig } from '../../pipeline/llm.ts';
-import { PrivacyError, buildBotMasking } from '../../privacy.ts';
+import { PrivacyError, buildBotMasking, buildMasker } from '../../privacy.ts';
 import type { BotMasking } from '../../privacy.ts';
 import { scoringProfile } from '../../run/profiles.ts';
 import { loadCardContext } from '../context.ts';
 import type { CardContext, JobFields } from '../context.ts';
 import type { CommandCtx, HandlerResult } from '../handlers.ts';
 import { JOB_ONLY_REPLY, MASKING_REPLY } from './call.ts';
+import { researchInputFromJob } from './research-input.ts';
+import type { ResearchInput, ResearchTopic } from './research-input.ts';
 
 /** True for a reply a helper returned instead of its value. */
 export const isReply = (x: unknown): x is HandlerResult =>
@@ -35,3 +37,19 @@ export async function withMasking<T>(ctx: CommandCtx, build: (m: BotMasking) => 
 }
 
 export const botMaskingFor = (ctx: CommandCtx): Promise<BotMasking | HandlerResult> => withMasking(ctx, (m) => m);
+
+/**
+ * The researcher's input, refused when the company, title or link holds a listed personal detail: those fields go to
+ * web search unmasked, so a card made from a person's own name (their own firm, say) must not be researched.
+ */
+export async function researchInputFor(ctx: CommandCtx, job: JobFields, topic: ResearchTopic): Promise<ResearchInput | HandlerResult> {
+  const input = researchInputFromJob(job, topic);
+  try {
+    const m = buildMasker((await ctx.config()).personalDetails, { patterns: false });
+    if (![input.company, input.title, input.postingUrl].some((s) => m.hasDetail(s))) return input;
+    return { text: MASKING_REPLY('a personal detail is in the company or title'), uncounted: true };
+  } catch (e) {
+    if (e instanceof PrivacyError) return { text: MASKING_REPLY(e.message), uncounted: true };
+    throw e;
+  }
+}
