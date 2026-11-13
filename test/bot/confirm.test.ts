@@ -98,6 +98,14 @@ test('two proposals: the newer unresolved one wins', () => {
   assert.deepEqual(r.pending.args, feedback.args);
 });
 
+test('a newer bot reply that is not a proposal closes the proposal', () => {
+  const comments = [
+    comment(BOT, ago(2), proposed(ASK1, RUN, ago(2))),
+    comment(BOT, ago(1), { actionId: ASK2, cls: 'model' }, 'Reply @cardbot yes to record it.'),
+  ];
+  assert.deepEqual(findPending(comments, opts), { kind: 'none' });
+});
+
 test('when the newer is resolved, the older is not revived', () => {
   const comments = [
     comment(BOT, ago(3), proposed(ASK1, RUN, ago(3))),

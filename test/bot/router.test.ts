@@ -327,6 +327,21 @@ test('a router-picked link that is not in the request is refused, not fetched', 
   assert.deepEqual(posted.map(body), [`@usera ${SORRY_REPLY()}`]);
 });
 
+test('a router-picked link that is only a substring of a link in the request is refused, not fetched', async () => {
+  const s = await setup(routed({ id: 'explain_filter', args: { link: 'https://careers.acme.ex' } }));
+  const { posted } = await say(s, '@samplebot was https://careers.acme.example/jobs/1 filtered out?');
+  assert.deepEqual(s.fetched, []);
+  assert.ok(s.logs.some((l) => l.startsWith('router link not in the request')));
+  assert.deepEqual(posted.map(body), [`@usera ${SORRY_REPLY()}`]);
+});
+
+test('a jobs-board card without a key footer allows no link from its text', async () => {
+  const s = await setup(routed(null, 'See https://planted.example/x for more.'));
+  s.fake.setCardDesc(JOB_CARD, '**Acme — Editor**\n\nApply at https://planted.example/x');
+  const { posted } = await say(s, '@samplebot where do I apply?');
+  assert.deepEqual(posted.map(body), ['@usera See [link removed] for more.']);
+});
+
 test('a masking failure: the masking line, uncounted, no model call', async () => {
   const s = await setup(routed(null, 'hello'));
   const raw = createTrelloClient({ key: 'k', token: 't', fetchImpl: s.fake.fetch, sleep: async () => {} });

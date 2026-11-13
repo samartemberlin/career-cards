@@ -80,14 +80,17 @@ export function parseJobKey(desc: string): string | null {
 
 // --- link parsing --------------------------------------------------------
 
-// Matches `**Link:** <url>` where url starts with http(s), on its own line.
-const LINK_RE = /^\*\*Link:\*\* (https?:\/\/\S+)/m;
+const LINK_RE = /^\*\*Link:\*\* (\S+)/gm;
 
-/** The first `**Link:** <url>` line in the head (before the first `---` separator). */
+/**
+ * The one `**Link:** <url>` line in the head (before the first `---` separator); null if there are several, since
+ * cards written before head fields were one-lined can carry a planted line from a multi-line title.
+ */
 export function parseJobLink(desc: string): string | null {
   const sepIdx = desc.search(/\n---(?:\n|$)/);
   const head = sepIdx >= 0 ? desc.slice(0, sepIdx) : desc;
-  return LINK_RE.exec(head)?.[1] ?? null;
+  const all = [...head.matchAll(LINK_RE)];
+  return all.length === 1 && /^https?:\/\//.test(all[0]![1]!) ? all[0]![1]! : null;
 }
 
 // --- score parsing -------------------------------------------------------

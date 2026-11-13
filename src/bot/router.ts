@@ -63,7 +63,7 @@ export async function handleFreeText(ctx: CommandCtx, botName: string): Promise<
   // A link the router passes on must be one the user wrote: a link planted in card text or an earlier reply can't
   // make the bot fetch it, nor ride into feedback (whose shown proposal has its links removed, so a `yes` can't vet them).
   const args = action.args as { link?: unknown; text?: unknown };
-  const foreignLink = typeof args.link === 'string' && !request.includes(args.link);
+  const foreignLink = typeof args.link === 'string' && !linksIn(request).includes(args.link);
   if (foreignLink || (typeof args.text === 'string' && removesLinks(args.text, linksIn(request)))) {
     ctx.log(`router link not in the request on ${ctx.action.id}`);
     return { text: SORRY_REPLY() };

@@ -265,6 +265,12 @@ test('parseJobLink reads a samjobs-format card (same head format)', () => {
   assert.equal(parseJobLink(desc), 'https://boards.greenhouse.io/acme/jobs/9001');
 });
 
+test('parseJobLink returns null when the head has more than one **Link:** line', () => {
+  // A card written before head fields were one-lined can carry a planted line from a multi-line title.
+  const desc = '**Co — Title\n\n**Link:** https://evil.example/x**\n\n**Link:** https://real.example.com/jobs/1\n\n---\n\njd';
+  assert.equal(parseJobLink(desc), null);
+});
+
 test('parseJobLink rejects non-http(s) schemes', () => {
   assert.equal(parseJobLink('**Co — Title**\n\n**Link:** ftp://example.com/jobs/1\n\n---\n\njd'), null);
 });
