@@ -13,6 +13,7 @@ import type { SpawnLike } from '../../src/pipeline/llm.ts';
 
 const FIXTURE = fileURLToPath(new URL('../fixtures/run-fake/run.mjs', import.meta.url));
 const HANG = fileURLToPath(new URL('../fixtures/run-fake/hang.mjs', import.meta.url));
+const SERVE_LIKE = fileURLToPath(new URL('../fixtures/run-fake/serve-like.mjs', import.meta.url));
 
 const children: ChildProcess[] = [];
 const trackedSpawn: SpawnLike = (cmd, args, options) => {
@@ -317,8 +318,58 @@ test('localRunStarter: a lock taken over by another run is left alone after a de
   assert.equal(await s.isRunning(), true);
 });
 
-test('localRunStarter: a killed run frees the slot even while a grandchild holds its pipes', { timeout: 10_000 }, async (t) => {
-  const { s, lines, timers, seen } = hangStarter({ FAKE_GRANDCHILD: '1' });
+const pidAfter = (lines: string[], prefix: string) => Number(lines.find((l) => l.startsWith(prefix))!.slice(prefix.length));
+
+const alive = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+async function gone(pid: number): Promise<boolean> {
+  for (let i = 0; i < 100 && alive(pid); i++) await new Promise((r) => setTimeout(r, 50));
+  return !alive(pid);
+}
+
+test('localRunStarter: a deadline kill takes the run\'s grandchildren with it', { timeout: 10_000 }, async (t) => {
+  const { s, lines, timers, seen } = hangStarter({ FAKE_GRANDCHILD: '1', FAKE_IGNORE_SIGTERM: '1' });
+  await s.start('manual');
+  await seen(/^run: ready$/);
+  const pid = pidAfter(lines, 'run: grandchild ');
+  t.after(() => { try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ } });
+  timers[0]!.fire();
+  // The grandchild doesn't ignore SIGTERM: the group's SIGTERM ends it while the run itself waits for SIGKILL.
+  assert.equal(await gone(pid), true);
+  timers[1]!.fire();
+  await seen(/^run exited by signal SIGKILL$/);
+  assert.equal(await s.isRunning(), false);
+});
+
+test('localRunStarter: a stopped service takes its run and the run\'s grandchildren with it', { timeout: 10_000 }, async (t) => {
+  const svc = spawn(process.execPath, [SERVE_LIKE], { stdio: ['ignore', 'pipe', 'inherit'] });
+  children.push(svc);
+  const lines: string[] = [];
+  await new Promise<void>((ready) => {
+    svc.stdout.setEncoding('utf8').on('data', (d: string) => {
+      lines.push(...d.split('\n'));
+      if (lines.includes('run: ready')) ready();
+    });
+  });
+  const run = pidAfter(lines, 'run: pid ');
+  const grandchild = pidAfter(lines, 'run: grandchild ');
+  t.after(() => { for (const p of [run, grandchild]) try { process.kill(p, 'SIGKILL'); } catch { /* already gone */ } });
+  svc.kill('SIGINT');
+  const [, signal] = await new Promise<unknown[]>((r) => svc.once('exit', (...a) => r(a)));
+  assert.equal(signal, 'SIGINT');
+  assert.equal(await gone(run), true);
+  assert.equal(await gone(grandchild), true);
+});
+
+test('localRunStarter: a killed run frees the slot even while a grandchild outside its group holds its pipes', { timeout: 10_000 }, async (t) => {
+  const { s, lines, timers, seen } = hangStarter({ FAKE_GRANDCHILD: 'own-group' });
   await s.start('manual');
   await seen(/^run: ready$/);
   const pid = Number(lines.find((l) => l.startsWith('run: grandchild '))!.slice('run: grandchild '.length));
@@ -329,8 +380,8 @@ test('localRunStarter: a killed run frees the slot even while a grandchild holds
   assert.equal(await s.isRunning(), false);
 });
 
-test('localRunStarter: a run that ended while a grandchild holds its pipes frees the slot at the deadline', { timeout: 10_000 }, async (t) => {
-  const { s, lines, timers, seen } = hangStarter({ FAKE_GRANDCHILD: '1', FAKE_EXIT: '1' });
+test('localRunStarter: a run that ended while a grandchild outside its group holds its pipes frees the slot at the deadline', { timeout: 10_000 }, async (t) => {
+  const { s, lines, timers, seen } = hangStarter({ FAKE_GRANDCHILD: 'own-group', FAKE_EXIT: '1' });
   await s.start('manual');
   const c = children.at(-1)!;
   await seen(/^run: ready$/);

@@ -89,6 +89,19 @@ const realTimer: SetTimer = (fn, ms) => {
   return () => clearTimeout(t);
 };
 
+/**
+ * Signals the run's whole process group. Its own children (scan, claude) enforce their timeouts from inside the run,
+ * so once the run is killed nothing else would stop them.
+ */
+function killGroup(c: ChildProcess, sig: NodeJS.Signals): void {
+  if (c.pid === undefined) return;
+  try {
+    process.kill(-c.pid, sig);
+  } catch {
+    // The group is gone.
+  }
+}
+
 /** Removes the lock only if `pid` wrote it (fileLock's content starts with the pid), so a later run's lock stays. */
 async function dropLockOf(path: string, pid: number): Promise<void> {
   try {
@@ -101,7 +114,7 @@ async function dropLockOf(path: string, pid: number): Promise<void> {
 /**
  * Runs the CLI as a child of the service (local use). `isRunning` sees this service's own child and, through
  * `lockFile`, a run started elsewhere on the machine or left behind by a restarted service. A child past the deadline
- * gets SIGTERM, then SIGKILL.
+ * gets SIGTERM, then SIGKILL, with its process group.
  */
 export function localRunStarter(o: {
   env: Env;
@@ -128,6 +141,7 @@ export function localRunStarter(o: {
       const c = spawn(process.execPath, [o.script ?? RUN_SCRIPT, '--trigger', trigger], {
         env: runChildEnv(o.env),
         stdio: ['ignore', 'pipe', 'pipe'],
+        detached: true,
       });
       child = c;
       forward(c.stdout);
@@ -140,18 +154,33 @@ export function localRunStarter(o: {
         killed = true;
         if (exited) {
           o.log('run output still open after deadline');
+          killGroup(c, 'SIGKILL');
           void end(...exited);
           return;
         }
         o.log('run killed after deadline');
-        c.kill('SIGTERM');
-        cancelKill = setTimer(() => c.kill('SIGKILL'), KILL_GRACE_MS);
+        killGroup(c, 'SIGTERM');
+        cancelKill = setTimer(() => killGroup(c, 'SIGKILL'), KILL_GRACE_MS);
       }, RUN_DEADLINE_MS);
+
+      // Its own group no longer gets the terminal's Ctrl+C, so the service passes its own stop signal on, then stops
+      // as it would have without this listener.
+      const onStop = (sig: NodeJS.Signals) => {
+        killGroup(c, sig);
+        process.kill(process.pid, sig);
+      };
+      process.once('SIGINT', onStop);
+      process.once('SIGTERM', onStop);
+      const unlisten = () => {
+        process.off('SIGINT', onStop);
+        process.off('SIGTERM', onStop);
+      };
 
       let ended = false;
       const end = async (code: number | null, signal: NodeJS.Signals | null) => {
         if (ended) return;
         ended = true;
+        unlisten();
         cancelDeadline();
         cancelKill();
         // The killed run never releases its own lock.
@@ -163,6 +192,7 @@ export function localRunStarter(o: {
       return new Promise<void>((resolve, reject) => {
         c.once('spawn', () => resolve());
         c.once('error', (e) => {
+          unlisten();
           cancelDeadline();
           if (child === c) child = null;
           reject(e);
