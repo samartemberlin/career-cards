@@ -4,12 +4,13 @@ import { startRun } from '../serve/runs.ts';
 import type { RunStarter } from '../serve/runs.ts';
 import { findRunsList, parseStatusCard } from '../run/status.ts';
 import type { ProcessDeps } from '../run/process.ts';
-import type { BotApi, TMember } from '../trello/api.ts';
+import type { BotApi, TComment, TMember } from '../trello/api.ts';
 import type { UserBoards } from '../trello/scoped.ts';
 import type { Settings, UserConfig } from '../config/schema.ts';
 import { explainFilter } from './why.ts';
 import { handleOpen } from './open.ts';
 import type { UrlGuard } from '../net/safe-fetch.ts';
+import type { CallOpts, Env } from '../pipeline/llm.ts';
 
 export type OpenResult = { verdict: 'open' | 'closed' | 'unknown'; reason: string };
 export type NetDeps = {
@@ -20,6 +21,7 @@ export type NetDeps = {
 };
 
 export type CommandCtx = {
+  /** Its writes throw once `signal` is aborted. */
   api: BotApi;
   boards: UserBoards;
   me: TMember;
@@ -31,9 +33,17 @@ export type CommandCtx = {
   starter: RunStarter;
   net: NetDeps;
   log: (s: string) => void;
+  env: Env;
+  /** Tests only: the model transports. */
+  call?: CallOpts;
+  /** Aborted when the comment times out: pass it to every model call. */
+  signal: AbortSignal;
+  /** The card's newest 50 comments, as the gate read them. */
+  comments: TComment[];
 };
 
-export type HandlerResult = { text: string; links?: string[] };
+/** `uncounted`: no model call was made, so the reply does not count against a cap. */
+export type HandlerResult = { text: string; links?: string[]; uncounted?: true };
 export type Handler = (ctx: CommandCtx, args: unknown) => Promise<HandlerResult>;
 
 async function showLastRun(ctx: CommandCtx): Promise<HandlerResult> {

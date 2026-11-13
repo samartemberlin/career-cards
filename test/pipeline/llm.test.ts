@@ -326,6 +326,10 @@ test('an already-aborted signal makes no call', async () => {
   assert.equal(calls, 0);
 });
 
+test('an aborted signal wins over every other outcome, even with no provider to try', async () => {
+  await assert.rejects(callLLM({ ...alphaBeta(), providers: [] }, userMsg, { signal: AbortSignal.abort() }), { name: 'AbortError' });
+});
+
 test('an abort during claude does not cool the provider down', async () => {
   const cfg = () => llmConfig({ CLAUDE_CODE_OAUTH_TOKEN: 't', GEMINI_API_KEY: 'g', CLAUDE_RPM: '0', LLM_RPM: '0' }, { providers: ['claude', 'gemini'] });
   const ac = new AbortController();
@@ -345,12 +349,16 @@ test('an abort during claude does not cool the provider down', async () => {
   assert.equal(ran, 1);
 });
 
-/** A child that never exits on its own and records kill(). */
-function stuckChild(kills: (string | number | undefined)[]): SpawnLike {
+/** A child that never exits on its own, records kill(), and exits on any signal unless `ignoresTerm`. */
+function stuckChild(kills: (string | number | undefined)[], o: { ignoresTerm?: boolean } = {}): SpawnLike {
   return () => {
     const child = Object.assign(new EventEmitter(), {
       stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough(),
-      kill(sig?: NodeJS.Signals | number) { kills.push(sig); setImmediate(() => child.emit('close', null, 'SIGTERM')); return true; },
+      kill(sig?: NodeJS.Signals | number) {
+        kills.push(sig);
+        if (!o.ignoresTerm || sig === 'SIGKILL') setImmediate(() => child.emit('close', null, sig ?? 'SIGTERM'));
+        return true;
+      },
     });
     return child as unknown as ChildProcess;
   };
@@ -362,7 +370,20 @@ test('an abort kills the claude child', async () => {
   const p = runModelProcess([], 'in', { env: {}, cwd: '/', tools: 'none', spawnImpl: stuckChild(kills), signal: ac.signal });
   ac.abort();
   await assert.rejects(p, { name: 'AbortError' });
-  assert.equal(kills.length, 1);
+  await new Promise((r) => setTimeout(r, 30));
+  assert.deepEqual(kills, [undefined], 'no SIGKILL for a child that exited on SIGTERM');
+});
+
+test('an abort SIGKILLs a claude child that ignores SIGTERM', async () => {
+  const kills: (string | number | undefined)[] = [];
+  const ac = new AbortController();
+  const spawnImpl = stuckChild(kills, { ignoresTerm: true });
+  const p = runModelProcess([], 'in', { env: {}, cwd: '/', tools: 'none', spawnImpl, signal: ac.signal, killAfterMs: 10 });
+  ac.abort();
+  await assert.rejects(p, { name: 'AbortError' });
+  assert.deepEqual(kills, [undefined]);
+  await new Promise((r) => setTimeout(r, 40));
+  assert.deepEqual(kills, [undefined, 'SIGKILL']);
 });
 
 test('runModelProcess with an already-aborted signal spawns nothing', async () => {
