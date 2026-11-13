@@ -19,7 +19,9 @@ import { checkBoardsPrivate } from '../trello/private.ts';
 import { createRunLog, secretsFromEnv } from '../run/log.ts';
 import type { CallOpts, Env } from '../pipeline/llm.ts';
 import type { UserConfig } from '../config/schema.ts';
-import type { BotApi } from '../trello/api.ts';
+import type { BotApi, TCard } from '../trello/api.ts';
+import type { UserBoards } from '../trello/scoped.ts';
+import { parseJobKey, parseJobLink } from '../trello/cards.ts';
 import { TIMEOUT_REPLY } from './stages/call.ts';
 
 export type DispatchDeps = GateDeps & {
@@ -40,6 +42,13 @@ const IDENTITY: Masker = { mask: (t) => t, hasDetail: () => false };
 const firstLine = (e: unknown) => (e instanceof Error ? `${e.name}: ${e.message}` : String(e)).split('\n')[0];
 
 const unavailable = (spec: ActionSpec) => `\`${spec.verbs[0]}\` isn't available yet.`;
+
+// A job card's text is the posting's, so a link planted in it would come back listed as if the bot vouched for it:
+// only the card's own posting link counts there.
+function cardLinks(c: TCard, boards: UserBoards): string[] {
+  if (c.idBoard === boards.jobs && parseJobKey(c.desc)) return linksIn(parseJobLink(c.desc) ?? '');
+  return [...linksIn(c.name), ...linksIn(c.desc)];
+}
 
 type Reply = HandlerResult & { cls: ReplyClass; resolves?: string; proposal?: Proposal };
 
@@ -126,7 +135,7 @@ async function respond(d: DispatchDeps, a: CommentAction, signal: AbortSignal): 
   const config = () => (cfg ??= readUserConfig(d.api, d.boards));
 
   let allowed: Promise<string[]> | undefined;
-  const allowedLinks = () => (allowed ??= d.api.card(a.cardId).then((c) => [...linksIn(c.name), ...linksIn(c.desc), ...linksIn(a.text)]));
+  const allowedLinks = () => (allowed ??= d.api.card(a.cardId).then((c) => [...cardLinks(c, d.boards), ...linksIn(a.text)]));
 
   const post = async (masker: Masker, r: Reply): Promise<void> => {
     const marker = { actionId: a.id, cls: r.cls, ...(r.resolves ? { resolves: r.resolves } : {}) };
