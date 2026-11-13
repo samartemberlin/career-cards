@@ -13,8 +13,8 @@ DeploymentService (`serve`) in your project.
 | `NORTHFLANK_JOB_ID` (injected via `${refs.job.id}`) | | ✓ |
 | `TRELLO_KEY`, `TRELLO_TOKEN` (secret group `<worker>`) | ✓ | ✓ |
 | `TRELLO_APP_SECRET`, `TRIGGER_SECRET`, `NORTHFLANK_API_TOKEN` (secret group `<worker>-service`, restricted to `serve`) | | ✓ |
-| LLM keys: `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `GROQ_API_KEY`, … (secret group `<worker>`, restricted to `run`) | ✓ | |
-| `CLAUDE_CODE_OAUTH_TOKEN` (the owner's own Claude subscription; secret group `<worker>`, restricted to `run`) | ✓ | |
+| LLM keys: `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `GROQ_API_KEY`, … (secret group `<worker>-llm`, restricted to `run`) | ✓ | |
+| `CLAUDE_CODE_OAUTH_TOKEN` (the owner's own Claude subscription; secret group `<worker>-llm`, restricted to `run`) | ✓ | |
 
 ## Steps
 
@@ -31,7 +31,7 @@ DeploymentService (`serve`) in your project.
      that created them, so a mismatch causes every webhook to answer 401.
    - The tool prints the three board IDs; it stores them in `tools/.onboard.json`.
 4. Run the template (Templates → Import JSON). Fill all no-default arguments; leave `PUBLIC_URL` empty for
-   now. `serve` will fail its health check until step 5 adds secrets — that is expected.
+   now. `serve` will fail its health check until steps 5–6 add secrets and `PUBLIC_URL` — that is expected.
 5. Create secret group `<worker>` (`TRELLO_KEY`, `TRELLO_TOKEN`; assign to both resources), secret group
    `<worker>-llm` (LLM keys including `CLAUDE_CODE_OAUTH_TOKEN`; restricted to `run` — the service never
    receives these), and secret group `<worker>-service` (`TRELLO_APP_SECRET`, `TRIGGER_SECRET`,
@@ -39,7 +39,8 @@ DeploymentService (`serve`) in your project.
    - Generate `TRIGGER_SECRET`: `openssl rand -hex 32` (must be ≥ 32 characters).
    - `TRELLO_APP_SECRET` comes from the Trello app settings for your `TRELLO_KEY`.
    - Restart `serve` after creating the groups.
-6. Copy the `serve` URL into `PUBLIC_URL` and restart `serve` again.
+6. Copy the `serve` URL and re-run the template with `PUBLIC_URL` set to that URL. (Setting it directly on
+   the service would be overwritten by the next template run.)
 7. Run `tools/onboard.ts --url <service url>` to register webhooks (same flags as step 3).
 8. Create the Trello automation rule by hand (Automation → Rules; Trello has no API for it). The tool prints
    the rule with the placeholder `<TRIGGER_SECRET>`; replace it before saving.
