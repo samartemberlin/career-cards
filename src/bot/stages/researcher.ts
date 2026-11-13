@@ -50,7 +50,7 @@ export const RESEARCH_UNAVAILABLE =
 const REFUSED_REPLY: Record<ResearchRefused['reason'], string> = {
   no_sources: "Couldn't research this: no web page could be read.",
   internal_address: "Couldn't research this: a page pointed to an internal address, so the result was discarded.",
-  unverified_address: "Couldn't research this: a page it opened couldn't be verified, so the result was discarded.",
+  unverified_address: "Couldn't research this: a page it tried to open couldn't be verified, so the result was discarded.",
   tool_set: "Couldn't research this: web research is misconfigured. The service log has details.",
 };
 

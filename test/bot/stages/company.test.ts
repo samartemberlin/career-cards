@@ -162,6 +162,16 @@ test('company openings falls back to the researcher when discovery resolves noth
   } finally { s.cleanup(); }
 });
 
+test('without ctx.net.openings, company openings goes straight to the researcher', async () => {
+  const s = await setup({ openings: false });
+  try {
+    const posted = await say(s, '@samplebot company openings');
+    assert.deepEqual(s.m.calls.map((c) => c.stage), ['researcher/openings']);
+    assert.ok(body(posted[0]!).includes('from the web, unverified, sources:'));
+    assert.equal(s.record(), null);
+  } finally { s.cleanup(); }
+});
+
 test('discover-ats failing falls back to the researcher', async () => {
   const s = await setup({ company: 'Broken Board' });
   try {

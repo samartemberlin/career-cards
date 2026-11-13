@@ -168,7 +168,7 @@ test('a fetched host that does not resolve also discards the result (fails close
   const e = await p.catch((x: unknown) => x);
   assert.ok(e instanceof ResearchRefused && e.reason === 'unverified_address');
   // Nothing showed the page was internal: the reply must not say so.
-  assert.equal(researchErrorReply(e, () => {}), "Couldn't research this: a page it opened couldn't be verified, so the result was discarded.");
+  assert.equal(researchErrorReply(e, () => {}), "Couldn't research this: a page it tried to open couldn't be verified, so the result was discarded.");
   assert.ok(logs.some((l) => l.includes('dead.example') && l.includes('lookup failed')));
 });
 
