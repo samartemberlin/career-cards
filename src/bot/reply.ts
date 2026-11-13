@@ -157,6 +157,19 @@ function plainText(r: { text: string; masker: Masker; allowedLinks: Iterable<str
   return { text: plain, links: taken.links };
 }
 
+/**
+ * Whether a reply of `text` would drop anything: a link form other than the allowed http(s) links, or a marker line.
+ * True as well when it can't tell (a literal `[link removed]`, or links that don't settle).
+ */
+export function removesLinks(text: string, allowedLinks: Iterable<string>): boolean {
+  if (text.includes(REMOVED) || /career-cards-reply/i.test(text)) return true;
+  try {
+    return plainText({ text, masker: { mask: (t) => t, hasDetail: () => false }, allowedLinks }).text.includes(REMOVED);
+  } catch {
+    return true;
+  }
+}
+
 /** Where to cut an escaped line to at most `max` characters: at the last space in the second half, else after the
  * last whole character, never between a backslash and what it escapes, nor inside a surrogate pair. */
 function cut(s: string, max: number): [string, string] {

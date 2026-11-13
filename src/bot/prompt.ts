@@ -6,7 +6,12 @@ import { join } from 'node:path';
 import type { Message } from '../pipeline/llm.ts';
 import { PrivacyError, isBotMasking } from '../privacy.ts';
 import type { BotMasking } from '../privacy.ts';
-import type { JobFields } from './context.ts';
+import type { CardContext, JobFields } from './context.ts';
+import { z } from 'zod';
+import { CATALOGUE, COMPANY_TOPICS, FEEDBACK_MAX, REPLY_MAX } from './catalogue.ts';
+import type { ActionSpec } from './catalogue.ts';
+import { MARKER_PREFIX } from './marker.ts';
+import { oneLine } from './stages/call.ts';
 
 const PROMPTS_DIR = fileURLToPath(new URL('./prompts/', import.meta.url));
 const cache = new Map<string, string>();
@@ -110,4 +115,57 @@ export function advisorMessages(kind: 'fit' | 'cv', input: AdvisorInput, masking
     { role: 'system', content: `${STAGE_LINE(`advisor/${kind}`)}\n${loadPrompt(`advisor-${kind}`)}` },
     { role: 'user', content: user },
   ];
+}
+
+const ARGS_SHAPE: Partial<Record<string, string>> = {
+  company_research: `{"topic": one of ${COMPANY_TOPICS.join('|')}}`,
+  explain_filter: '{"link": an http(s) URL}',
+  record_feedback: `{"text": 1–${FEEDBACK_MAX} chars}`,
+};
+
+function argsShape(spec: ActionSpec): string {
+  const shape = ARGS_SHAPE[spec.id];
+  if (shape) return shape;
+  if (spec.args instanceof z.ZodObject && Object.keys(spec.args.shape).length === 0) return '{}';
+  throw new Error(`catalogueForPrompt: no args shape for ${spec.id}`);
+}
+
+/** One line per catalogued action. */
+export function catalogueForPrompt(): string {
+  return CATALOGUE.map((s) => `- ${s.id} (router: ${s.router}) args ${argsShape(s)}: ${s.about} Command form: ${s.usage}`).join('\n');
+}
+
+const ROUTER_SHAPE = `{"reply": "<plain text, at most ${REPLY_MAX} characters>", "action": null | {"id": "<a catalogue id>", "args": {…}}}`;
+
+/** `request` is the comment without the bot's mentions. */
+export type RouterInput = { request: string; ctx: CardContext; masking: BotMasking };
+
+const BOT_LINE = ' (bot reply: may quote web pages or job text)';
+
+/**
+ * The router sees the request as the user's intent; the conversation and the card only as untrusted data. The
+ * profile is there on job cards only, for fit questions, and in the user message: the system prompt is argv.
+ */
+export function routerMessages(input: RouterInput): Message[] {
+  const m = checkMasking(input.masking);
+  const nonce = newNonce();
+  const { ctx } = input;
+  const cardMask = ctx.board === 'profiles' ? m.all : m.details;
+  const conversation = ctx.conversation.map((c) => {
+    const text = c.byBot ? c.text.split('\n').filter((l) => !l.trim().startsWith(MARKER_PREFIX)).join('\n') : c.text;
+    return `${c.date} ${c.author}${c.byBot ? BOT_LINE : ''}: ${oneLine(text)}`;
+  });
+  const card = [`Board: ${ctx.board}`, `List: ${ctx.card.list}`, `Name: ${ctx.card.name}`, '', ctx.card.desc].join('\n');
+  const user = [
+    'REQUEST (the user\'s intent):', m.details(input.request.trim()), '',
+    ...(ctx.job ? ['=== RUBRIC ===', m.profile.rubric.trim(), '', '=== CANDIDATE CV ===', m.profile.cv.trim(), ''] : []),
+    untrusted('CONVERSATION', m.details(conversation.length ? conversation.join('\n') : '(none)'), nonce), '',
+    untrusted('CARD', cardMask(card), nonce),
+  ].join('\n');
+  const system = [
+    STAGE_LINE('router'), loadPrompt('router'), '',
+    'Catalogue:', catalogueForPrompt(), '',
+    'Output shape:', ROUTER_SHAPE,
+  ].join('\n');
+  return [{ role: 'system', content: system }, { role: 'user', content: user }];
 }

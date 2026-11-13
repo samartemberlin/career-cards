@@ -6,8 +6,9 @@ import type { RunStarter } from '../serve/runs.ts';
 import { matchStatic } from './catalogue.ts';
 import type { ActionSpec } from './catalogue.ts';
 import { capClassOf, loadUsage, overCap } from './caps.ts';
-import { findPending } from './confirm.ts';
-import type { CapClass, ReplyClass } from './marker.ts';
+import { findPending, finishProposal } from './confirm.ts';
+import type { CapClass, Proposal, ReplyClass } from './marker.ts';
+import { handleFreeText } from './router.ts';
 import { finishReply, linksIn } from './reply.ts';
 import { HANDLERS, helpText } from './handlers.ts';
 import type { CommandCtx, HandlerResult, NetDeps } from './handlers.ts';
@@ -40,7 +41,7 @@ const firstLine = (e: unknown) => (e instanceof Error ? `${e.name}: ${e.message}
 
 const unavailable = (spec: ActionSpec) => `\`${spec.verbs[0]}\` isn't available yet.`;
 
-type Reply = HandlerResult & { cls: ReplyClass; resolves?: string };
+type Reply = HandlerResult & { cls: ReplyClass; resolves?: string; proposal?: Proposal };
 
 /** `api` whose writes throw once `signal` is aborted; reads pass through. */
 export function guardWrites(api: BotApi, signal: AbortSignal): BotApi {
@@ -132,14 +133,16 @@ async function respond(d: DispatchDeps, a: CommentAction, signal: AbortSignal): 
     const links = [...(await allowedLinks()), ...(r.links ?? [])];
     let parts: string[];
     try {
-      parts = finishReply({ text: r.text, author: a.author, marker, masker, allowedLinks: links });
+      parts = r.proposal
+        ? finishProposal({ text: r.text, botName, author: a.author, marker: { ...marker, proposal: r.proposal }, masker, allowedLinks: links })
+        : finishReply({ text: r.text, author: a.author, marker, masker, allowedLinks: links });
     } catch (e) {
       if (!(e instanceof PrivacyError)) throw e;
       d.log(`reply ${a.id} failed masking: ${e.message}`);
       parts = finishReply({ text: MASKING_FAILED, author: a.author, marker, masker: IDENTITY, allowedLinks: [] });
     }
     for (const part of parts) await d.api.comment(a.cardId, part);
-    d.log(`reply ${a.id} on ${a.cardId}: ${r.cls}${r.resolves ? ` resolves ${r.resolves}` : ''}`);
+    d.log(`reply ${a.id} on ${a.cardId}: ${r.cls}${r.resolves ? ` resolves ${r.resolves}` : ''}${r.proposal ? ` proposes ${r.proposal.action.id}` : ''}`);
   };
 
   const problems = await checkBoardsPrivate(d.api, [d.boards.jobs, d.boards.profiles, d.boards.system], {
@@ -175,7 +178,19 @@ async function respond(d: DispatchDeps, a: CommentAction, signal: AbortSignal): 
   if (m.kind === 'bad_args') {
     reply = async () => ({ text: m.message, cls });
   } else if (m.kind === 'none') {
-    reply = async () => ({ text: `I only know these commands for now:\n${helpText(botName)}`, cls });
+    // The one model cap covers the router call and whatever action it picks.
+    cls = 'model';
+    reply = async () => {
+      if (signal.aborted) return { text: TIMEOUT_REPLY, cls: 'refusal' };
+      try {
+        const r = await handleFreeText(ctx, botName);
+        return { ...r, cls: r.uncounted ? 'refusal' : 'model' };
+      } catch (e) {
+        if (signal.aborted) return { text: TIMEOUT_REPLY, cls: 'refusal' };
+        d.log(`router failed on ${a.id}: ${firstLine(e)}`);
+        return { text: 'Sorry, something went wrong. The service log has details.', cls: 'refusal' };
+      }
+    };
   } else if (m.kind === 'builtin' && m.name === 'help') {
     reply = async () => ({ text: helpText(botName), cls });
   } else if (m.kind === 'builtin') {
