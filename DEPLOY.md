@@ -55,6 +55,19 @@ DeploymentService (`serve`) in your project.
 - **Incidents:** check [status.northflank.com](https://status.northflank.com) if something looks wrong;
   rotate `NORTHFLANK_API_TOKEN` and all Trello credentials if an advisory recommends it.
 
+## Without an API token
+
+Use [`template-local.json`](deploy/northflank/template-local.json) instead of `template.json`. It creates
+only the `serve` DeploymentService; without any `NORTHFLANK_*` variables, `serve` runs the scan as a child
+process (the local starter). One secret group holds all keys: Trello credentials (`TRELLO_KEY`,
+`TRELLO_TOKEN`), `TRELLO_APP_SECRET`, `TRIGGER_SECRET`, and all LLM keys — the service runs the scan
+directly, so it needs the LLM keys too. The child process never receives `SERVICE_ONLY_ENV` variables
+(`TRELLO_APP_SECRET`, `TRIGGER_SECRET`, `PUBLIC_URL`, `PORT`; `NORTHFLANK_API_TOKEN` is not set).
+
+The service plus the scan child (and any `claude` subprocess) share the plan's RAM. Use at least 1 GB
+(`SERVICE_PLAN` defaults to `nf-compute-50`); if the Sandbox restricts this to `nf-compute-20` (512 MB),
+the run may fail.
+
 ## Adding a platform
 
 - Add a folder `deploy/<name>/` with the platform's template or manifest.

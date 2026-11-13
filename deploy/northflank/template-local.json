@@ -1,0 +1,70 @@
+{
+  "apiVersion": "v1.2",
+  "name": "career-cards-local",
+  "description": "One job-search worker without an API token: a DeploymentService (serve) that runs the scan as a child process.",
+  "arguments": {
+    "PROJECT_ID": "",
+    "IMAGE": "ghcr.io/samartemberlin/career-cards:main",
+    "JOBS_BOARD_ID": "",
+    "PROFILES_BOARD_ID": "",
+    "SYSTEM_BOARD_ID": "",
+    "PUBLIC_URL": "",
+    "SERVICE_PLAN": "nf-compute-50"
+  },
+  "spec": {
+    "kind": "Workflow",
+    "spec": {
+      "type": "sequential",
+      "context": {
+        "projectId": "${args.PROJECT_ID}"
+      },
+      "steps": [
+        {
+          "kind": "DeploymentService",
+          "ref": "serve",
+          "spec": {
+            "name": "serve",
+            "billing": {
+              "deploymentPlan": "${args.SERVICE_PLAN}"
+            },
+            "deployment": {
+              "instances": 1,
+              "docker": {
+                "configType": "default"
+              },
+              "external": {
+                "imagePath": "${args.IMAGE}"
+              }
+            },
+            "ports": [
+              {
+                "name": "http",
+                "internalPort": 8080,
+                "public": true,
+                "protocol": "HTTP"
+              }
+            ],
+            "healthChecks": [
+              {
+                "type": "livenessProbe",
+                "protocol": "HTTP",
+                "path": "/healthz",
+                "port": 8080,
+                "initialDelaySeconds": 10,
+                "periodSeconds": 10,
+                "timeoutSeconds": 5,
+                "failureThreshold": 3
+              }
+            ],
+            "runtimeEnvironment": {
+              "JOBS_BOARD_ID": "${args.JOBS_BOARD_ID}",
+              "PROFILES_BOARD_ID": "${args.PROFILES_BOARD_ID}",
+              "SYSTEM_BOARD_ID": "${args.SYSTEM_BOARD_ID}",
+              "PUBLIC_URL": "${args.PUBLIC_URL}"
+            }
+          }
+        }
+      ]
+    }
+  }
+}
