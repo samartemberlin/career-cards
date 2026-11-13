@@ -146,11 +146,11 @@ test('@samplebot run while a run is in progress → busy, no start', async () =>
   assert.equal(body(posted[0]!), '@usera A run is already in progress. Its status card will appear when it ends.');
 });
 
-test('@samplebot fit → `fit` isn\'t available yet.', async () => {
+test('@samplebot deep → `deep` isn\'t available yet.', async () => {
   const s = await ready(setup());
-  const { posted } = await say(s, '@samplebot fit');
-  assert.equal(body(posted[0]!), "@usera `fit` isn't available yet.");
-  assert.equal(markerOf(posted[0]!).cls, 'model');
+  const { posted } = await say(s, '@samplebot deep');
+  assert.equal(body(posted[0]!), "@usera `deep` isn't available yet.");
+  assert.equal(markerOf(posted[0]!).cls, 'research');
 });
 
 test('@samplebot what about this? → the help pointer, no handler called', async () => {
@@ -574,6 +574,20 @@ test('@samplebot legit on a job card posts one model-class reply', async () => {
   assert.equal(lines[0], '@usera Mixed signals: proceed with caution');
   assert.equal(lines[1], '- ✅ Freshness: Posted ten days ago.');
   assert.equal(lines.at(-1), 'A common role.');
+  assert.deepEqual(markerOf(posted[0]!), { actionId: a.id, cls: 'model' });
+  assert.equal((await loadUsage(s.api, BOARDS, { botId: s.deps.me.id, now: NOW })).model, 1);
+});
+
+test('@samplebot fit on a job card posts one model-class reply with the card score', async () => {
+  const s = await ready(setup());
+  const m = fakeModel(() => JSON.stringify({ summary: 'A close match.', strengths: ['Editing.'], gaps: [], dealbreakers: [] }));
+  s.deps.env = { ...s.deps.env, PATH: '/usr/bin', HOME: '/home/app', CLAUDE_CODE_OAUTH_TOKEN: 'tok-claude-0000', LLM_RPM: '0' };
+  s.deps.call = m.call;
+  const { a, posted } = await say(s, '@samplebot fit');
+  assert.equal(m.calls.length, 1);
+  assert.equal(m.calls[0]!.stage, 'advisor/fit');
+  assert.equal(posted.length, 1);
+  assert.deepEqual(body(posted[0]!).split('\n').slice(0, 4), ['@usera Scored 9/10. A close match.', '', 'Strong points:', '- Editing.']);
   assert.deepEqual(markerOf(posted[0]!), { actionId: a.id, cls: 'model' });
   assert.equal((await loadUsage(s.api, BOARDS, { botId: s.deps.me.id, now: NOW })).model, 1);
 });
