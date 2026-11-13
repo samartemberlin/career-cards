@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildMasker, buildScoreContext, maskText, classifyDetail, PrivacyError } from '../src/privacy.ts';
+import { buildBotMasking, buildMasker, buildScoreContext, isBotMasking, maskText, classifyDetail, PrivacyError } from '../src/privacy.ts';
 import type { LlmConfig } from '../src/pipeline/llm.ts';
 
 describe('privacy masking', () => {
@@ -134,5 +134,50 @@ describe('buildScoreContext', () => {
 
   it('fails closed without personal details', () => {
     assert.throws(() => buildScoreContext({ user: { ...user, personalDetails: [] }, profile: { rubric: 'R' }, llm, translateTitle: false }), PrivacyError);
+  });
+});
+
+describe('masking for the bot', () => {
+  // The brief's `roe.example/cv` is not caught: `.example` is not in the bare-domain TLD list, so the link has a `www.`.
+  const cv = 'Jane Roe · jane@roe.example · +49 30 1234567 · www.roe.example/cv';
+  const originals = ['Jane Roe', 'jane@roe.example', '+49 30 1234567', 'www.roe.example/cv'];
+  const user = { sharedCv: cv, personalDetails: ['Jane Roe'] };
+
+  it('details-only masking keeps a posting\'s email and link', () => {
+    const m = buildMasker(['Jane Roe'], { patterns: false });
+    assert.equal(
+      m.mask('Mail jobs@acme.example, see https://acme.example/apply, ask Jane Roe'),
+      'Mail jobs@acme.example, see https://acme.example/apply, ask [USER]',
+    );
+  });
+
+  it('details-only masking still fails closed', () => {
+    assert.throws(() => buildMasker(['[USER]'], { patterns: false }).mask('[US\u200BER]'), PrivacyError);
+  });
+
+  it('buildBotMasking masks the profile with patterns', () => {
+    const m = buildBotMasking({ user, profile: { rubric: 'Score Jane Roe' } });
+    for (const p of ['[USER]', '[EMAIL]', '[PHONE]', '[LINK]']) assert.ok(m.profile.cv.includes(p), p);
+    for (const o of originals) assert.ok(!m.profile.cv.includes(o), o);
+    assert.equal(m.profile.rubric, 'Score [USER]');
+    assert.equal(buildBotMasking({ user, profile: { rubric: 'R', cv: 'Jane Roe, editor' } }).profile.cv, '[USER], editor');
+  });
+
+  it('BotMasking.details masks listed strings only; .all masks patterns too', () => {
+    const m = buildBotMasking({ user, profile: { rubric: 'R' } });
+    assert.equal(m.details(cv), '[USER] · jane@roe.example · +49 30 1234567 · www.roe.example/cv');
+    assert.equal(m.all(cv), m.profile.cv);
+  });
+
+  it('isBotMasking is false for a copy and true for the built object', () => {
+    const m = buildBotMasking({ user, profile: { rubric: 'R' } });
+    assert.equal(isBotMasking(m), true);
+    assert.equal(isBotMasking({ ...m }), false);
+    assert.equal(isBotMasking(null), false);
+    assert.ok(Object.isFrozen(m) && Object.isFrozen(m.profile));
+  });
+
+  it('buildBotMasking with no personal details throws PrivacyError', () => {
+    assert.throws(() => buildBotMasking({ user: { ...user, personalDetails: [] }, profile: { rubric: 'R' } }), PrivacyError);
   });
 });

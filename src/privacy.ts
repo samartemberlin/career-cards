@@ -103,7 +103,7 @@ function compileDetail(raw: string, originalIndex: number): CompiledDetail {
   };
 }
 
-function applyMask(text: string, compiled: readonly CompiledDetail[]): string {
+function applyMask(text: string, compiled: readonly CompiledDetail[], patterns: boolean): string {
   let out = normalize(text);
 
   for (const { replaceRe, placeholder } of compiled) {
@@ -113,10 +113,12 @@ function applyMask(text: string, compiled: readonly CompiledDetail[]): string {
   // Pattern-based passes run after detail substitution so a listed email/phone/link
   // is already replaced and these passes only catch unlisted occurrences. Links go before phones,
   // so digits in a link do not become [PHONE] inside it.
-  out = out.replace(EMAIL, '[EMAIL]');
-  out = out.replace(URL_RE, '[LINK]');
-  out = out.replace(BARE_DOMAIN, '[LINK]');
-  out = out.replace(PHONE, (m) => (isPhone(m) ? '[PHONE]' : m));
+  if (patterns) {
+    out = out.replace(EMAIL, '[EMAIL]');
+    out = out.replace(URL_RE, '[LINK]');
+    out = out.replace(BARE_DOMAIN, '[LINK]');
+    out = out.replace(PHONE, (m) => (isPhone(m) ? '[PHONE]' : m));
+  }
 
   // Fail closed: every detail must be absent from the output.
   // Error names the index only — never the value — so it cannot leak personal data.
@@ -129,7 +131,9 @@ function applyMask(text: string, compiled: readonly CompiledDetail[]): string {
   return out;
 }
 
-export function buildMasker(details: string[]): Masker {
+/** `patterns: false` replaces the listed details only, so a job posting keeps its contact email and apply link. */
+export function buildMasker(details: string[], o: { patterns?: boolean } = {}): Masker {
+  const patterns = o.patterns ?? true;
   if (!details.length) throw new PrivacyError('no personal details');
 
   const compiled = details
@@ -137,7 +141,7 @@ export function buildMasker(details: string[]): Masker {
     .sort((a, b) => b.strippedLen - a.strippedLen);
 
   return {
-    mask: (text: string) => applyMask(text, compiled),
+    mask: (text: string) => applyMask(text, compiled, patterns),
     hasDetail: (text: string) => {
       const out = normalize(text);
       return compiled.some(({ checkRe }) => checkRe.test(out));
@@ -179,4 +183,40 @@ export function buildScoreContext(input: {
 
 export function isMaskedContext(ctx: unknown): ctx is MaskedContext {
   return typeof ctx === 'object' && ctx !== null && built.has(ctx);
+}
+
+declare const BOT_MASKED: unique symbol;
+
+/** Every piece of person text in a bot prompt comes from here. Only buildBotMasking makes one, checked the same
+ * way as MaskedContext. */
+export type BotMasking = Readonly<{
+  profile: Readonly<{ rubric: string; cv: string }>;
+  /** For job text, the request and the conversation: keeps a posting's contact email and links. */
+  details(text: string): string;
+  /** For the CV, the rubric and Profiles-board cards. */
+  all(text: string): string;
+}> & { readonly [BOT_MASKED]: true };
+
+const botBuilt = new WeakSet<object>();
+
+export function buildBotMasking(input: {
+  user: Pick<UserConfig, 'sharedCv' | 'personalDetails'>;
+  profile: { rubric: string; cv?: string };
+}): BotMasking {
+  const all = buildMasker(input.user.personalDetails);
+  const details = buildMasker(input.user.personalDetails, { patterns: false });
+  const m = Object.freeze({
+    profile: Object.freeze({
+      rubric: all.mask(input.profile.rubric),
+      cv: all.mask(input.profile.cv ?? input.user.sharedCv),
+    }),
+    details: (text: string) => details.mask(text),
+    all: (text: string) => all.mask(text),
+  }) as BotMasking;
+  botBuilt.add(m);
+  return m;
+}
+
+export function isBotMasking(x: unknown): x is BotMasking {
+  return typeof x === 'object' && x !== null && botBuilt.has(x);
 }
