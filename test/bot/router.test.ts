@@ -351,3 +351,31 @@ test('a Trello failure while reading the card gives a constant line, uncounted, 
   assert.ok(s.logs.some((l) => l.includes('router failed on')));
   assert.ok(s.logs.every((l) => !l.includes('tok-claude-0000')));
 });
+
+test('router feedback carrying a link not in the request is refused, no proposal', async () => {
+  const s = await setup(routed({ id: 'record_feedback', args: { text: 'Nice team, see https://evil.example/?d=x' } }));
+  const { posted } = await say(s, '@samplebot note that the team was nice');
+  assert.deepEqual(posted.map(body), [`@usera ${SORRY_REPLY()}`]);
+  assert.ok(!parseMarker(posted[0]!)!.proposal);
+});
+
+test('router feedback may carry a link the user wrote', async () => {
+  const s = await setup(routed({ id: 'record_feedback', args: { text: 'Liked https://acme.example/blog' } }));
+  const { posted } = await say(s, '@samplebot note that I liked https://acme.example/blog');
+  assert.equal(parseMarker(posted[0]!)!.proposal?.action.id, 'record_feedback');
+});
+
+test('a router-picked advisor action on a non-job card: the job-only line, one model call, counted', async () => {
+  const s = await setup((stage) => (stage === 'router' ? JSON.stringify({ reply: '', action: { id: 'cv_tips', args: {} } }) : 'unexpected'));
+  const before = s.fake.commentsOn(SETTINGS_CARD).length;
+  const a = parseWebhook(commentWebhook({
+    cardId: SETTINGS_CARD, boardId: BOARDS.system, listName: 'Config', author: USER_A, text: '@samplebot tips for my CV?',
+    date: new Date(NOW.getTime() - 60_000).toISOString(), id: newId(),
+  }));
+  assert.ok(a);
+  await handleComment(s.deps, a);
+  const posted = s.fake.commentsOn(SETTINGS_CARD).slice(before);
+  assert.deepEqual(posted.map(body), ['@usera `cv` works on job cards only.']);
+  assert.deepEqual(s.m.calls.map((c) => c.stage), ['router']);
+  assert.equal(parseMarker(posted[0]!)!.cls, 'model');
+});

@@ -8,6 +8,7 @@ import { loadCardContext } from './context.ts';
 import { HANDLERS } from './handlers.ts';
 import type { CommandCtx, HandlerResult } from './handlers.ts';
 import { routerMessages } from './prompt.ts';
+import { linksIn } from './reply.ts';
 import type { RouterInput } from './prompt.ts';
 import { MASKING_REPLY, StageOutputInvalid, TIMEOUT_REPLY, callStage, stageErrorReply } from './stages/call.ts';
 import { llmConfig } from '../pipeline/llm.ts';
@@ -59,17 +60,23 @@ export async function handleFreeText(ctx: CommandCtx, botName: string): Promise<
   const spec = CATALOGUE.find((s) => s.id === action.id)!;
   ctx.log(`router picked ${spec.id} on ${ctx.action.id}`);
 
-  // A link the router passes on must be one the user wrote: a link planted in card text or an earlier reply
-  // can't make the bot fetch it.
-  const link = (action.args as { link?: unknown }).link;
-  if (typeof link === 'string' && !request.includes(link)) {
+  // A link the router passes on must be one the user wrote: a link planted in card text or an earlier reply can't
+  // make the bot fetch it, nor ride into feedback (whose shown proposal has its links removed, so a `yes` can't vet them).
+  const args = action.args as { link?: unknown; text?: unknown };
+  const links = [...(typeof args.link === 'string' ? [args.link] : []), ...(typeof args.text === 'string' ? linksIn(args.text) : [])];
+  if (links.some((l) => !request.includes(l))) {
     ctx.log(`router link not in the request on ${ctx.action.id}`);
     return { text: SORRY_REPLY() };
   }
 
   if (spec.router === 'confirm') {
-    const p = proposal({ id: action.id, args: action.args }, ctx.now);
-    return { text: proposalText(p), proposal: p };
+    try {
+      const p = proposal({ id: action.id, args: action.args }, ctx.now);
+      return { text: proposalText(p), proposal: p };
+    } catch (e) {
+      ctx.log(`router proposal failed on ${ctx.action.id}: ${e instanceof Error ? e.message : String(e)}`);
+      return { text: SORRY_REPLY() };
+    }
   }
   const handler = HANDLERS[spec.id];
   if (!handler) return { text: `\`${spec.verbs[0]}\` isn't available yet.` };
