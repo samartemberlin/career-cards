@@ -163,8 +163,9 @@ export function localRunStarter(o: {
         cancelKill = setTimer(() => killGroup(c, 'SIGKILL'), KILL_GRACE_MS);
       }, RUN_DEADLINE_MS);
 
-      // Its own group no longer gets the terminal's Ctrl+C, so the service passes its own stop signal on, then stops
-      // as it would have without this listener.
+      // Its own group no longer gets the terminal's Ctrl+C, so the service passes its own stop signal on, then re-raises
+      // it to stop as it would have without this listener. As PID 1 (the container) the re-raise is dropped, as SIGTERM
+      // was before; the platform's SIGKILL ends the container.
       const onStop = (sig: NodeJS.Signals) => {
         killGroup(c, sig);
         process.kill(process.pid, sig);
@@ -184,6 +185,8 @@ export function localRunStarter(o: {
         cancelDeadline();
         cancelKill();
         // The killed run never releases its own lock.
+        // A grandchild that ignored SIGTERM outlives a run that didn't, and nothing else would time it out.
+        if (killed) killGroup(c, 'SIGKILL');
         if (killed && o.lockFile && c.pid !== undefined) await dropLockOf(o.lockFile, c.pid);
         if (child === c) child = null;
         o.log(signal ? `run exited by signal ${signal}` : `run exited with code ${code}`);

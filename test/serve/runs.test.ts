@@ -348,6 +348,17 @@ test('localRunStarter: a deadline kill takes the run\'s grandchildren with it', 
   assert.equal(await s.isRunning(), false);
 });
 
+test('localRunStarter: a grandchild that ignores SIGTERM gets SIGKILL once the run has stopped', { timeout: 10_000 }, async (t) => {
+  const { s, lines, timers, seen } = hangStarter({ FAKE_GRANDCHILD: 'stubborn' });
+  await s.start('manual');
+  await seen(/^run: grandchild ready$/);
+  const pid = pidAfter(lines, 'run: grandchild ');
+  t.after(() => { try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ } });
+  timers[0]!.fire();
+  await seen(/^run exited by signal SIGTERM$/);
+  assert.equal(await gone(pid), true);
+});
+
 test('localRunStarter: a stopped service takes its run and the run\'s grandchildren with it', { timeout: 10_000 }, async (t) => {
   const svc = spawn(process.execPath, [SERVE_LIKE], { stdio: ['ignore', 'pipe', 'inherit'] });
   children.push(svc);
@@ -372,7 +383,7 @@ test('localRunStarter: a killed run frees the slot even while a grandchild outsi
   const { s, lines, timers, seen } = hangStarter({ FAKE_GRANDCHILD: 'own-group' });
   await s.start('manual');
   await seen(/^run: ready$/);
-  const pid = Number(lines.find((l) => l.startsWith('run: grandchild '))!.slice('run: grandchild '.length));
+  const pid = pidAfter(lines, 'run: grandchild ');
   // Also on a timeout: a live grandchild holds this test process's pipes and would keep the suite from ending.
   t.after(() => { try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ } });
   timers[0]!.fire();
@@ -385,7 +396,7 @@ test('localRunStarter: a run that ended while a grandchild outside its group hol
   await s.start('manual');
   const c = children.at(-1)!;
   await seen(/^run: ready$/);
-  const pid = Number(lines.find((l) => l.startsWith('run: grandchild '))!.slice('run: grandchild '.length));
+  const pid = pidAfter(lines, 'run: grandchild ');
   t.after(() => { try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ } });
   if (c.exitCode === null) await new Promise((r) => c.once('exit', r));
   assert.equal(await s.isRunning(), true);

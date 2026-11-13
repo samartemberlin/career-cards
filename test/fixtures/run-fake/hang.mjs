@@ -6,8 +6,8 @@ if (process.env.FAKE_LOCK_FILE) writeFileSync(process.env.FAKE_LOCK_FILE, `${pro
 if (process.env.FAKE_IGNORE_SIGTERM) process.on('SIGTERM', () => {});
 if (process.env.FAKE_GRANDCHILD) {
   // Like scan.ts, whose child inherits stderr: it keeps the run's pipes open after the run itself dies. `own-group`
-  // stands in for one that left the run's process group, which a group kill misses.
-  const g = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
+  // stands in for one that left the run's process group, which a group kill misses; `stubborn` ignores SIGTERM.
+  const g = spawn(process.execPath, ['-e', `${process.env.FAKE_GRANDCHILD === 'stubborn' ? "process.on('SIGTERM', () => {}); console.log('grandchild ready');" : ''} setInterval(() => {}, 1000)`], {
     stdio: ['ignore', 'inherit', 'inherit'],
     detached: process.env.FAKE_GRANDCHILD === 'own-group',
   });
