@@ -22,14 +22,14 @@ run:  lock → config cards → job keys → scan → dedup → filter → JD �
 | Trello: private-board check | boards must be private, open and have no unexpected members — [private.ts](../src/trello/private.ts) |
 | Trello: card writer | job cards in score order, label resolver, JD attachment, archiving — [writer.ts](../src/trello/writer.ts) |
 | Config schema, config cards reader | [schema.ts](../src/config/schema.ts), [trello/config.ts](../src/trello/config.ts) |
-| Bot: router and stages | [catalogue.ts](../src/bot/catalogue.ts), [router.ts](../src/bot/router.ts), [prompt.ts](../src/bot/prompt.ts), [stages/](../src/bot/stages/); research planned (PR 8) |
+| Bot: router and stages | [catalogue.ts](../src/bot/catalogue.ts), [router.ts](../src/bot/router.ts), [prompt.ts](../src/bot/prompt.ts), [stages/](../src/bot/stages/) |
 | Masking | [privacy.ts](../src/privacy.ts) |
 | Model child process | `runModelProcess` in [llm.ts](../src/pipeline/llm.ts) |
 | career-ops (scan, liveness, providers) | [career-ops/](../career-ops/) |
 
 ## Stage and security model
 
-No stage gets untrusted content, private data and a way out at once. Stage runners: [router.ts](../src/bot/router.ts), [reader.ts](../src/bot/stages/reader.ts), [advisor.ts](../src/bot/stages/advisor.ts); researcher planned (PR 8).
+No stage gets untrusted content, private data and a way out at once. Stage runners: [router.ts](../src/bot/router.ts), [reader.ts](../src/bot/stages/reader.ts), [advisor.ts](../src/bot/stages/advisor.ts), [researcher.ts](../src/bot/stages/researcher.ts) (used by [company.ts](../src/bot/stages/company.ts) and [deep.ts](../src/bot/stages/deep.ts)).
 
 | Stage | Inputs | Tools | Private data | Network |
 |---|---|---|---|---|

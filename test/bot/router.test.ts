@@ -342,8 +342,7 @@ test('@samplebot deep runs researcher then advisor, counted once as research, fo
   assert.deepEqual([after.model - before.model, after.research - before.research], [0, 1]);
 });
 
-// Needs Task 3's router-path research cap (C3); drop the todo once it is on main.
-test('a router-picked deep counts once as research', { todo: 'C3 (Task 3) not merged yet' }, async () => {
+test('a router-picked deep counts once as research', async () => {
   const s = await setup((stage) => stage === 'router'
     ? JSON.stringify({ reply: 'x', action: { id: 'job_deep_dive', args: {} } })
     : JSON.stringify({ fit: 'F', angle: 'A', risks: [], questions: [] }));
