@@ -126,7 +126,7 @@ const MARKS = /[*_~`]/g;
 // Every ASCII punctuation character CommonMark, GFM or HTML give a meaning to. Left out: , ; ? " ' % / which mean
 // something only inside a link, a tag or an entity, and each of those needs an escaped character to start.
 const ACTIVE = /[!#$&()*+\-.:<=>@[\\\]^_`{|}~]/g;
-const escapeText = (line: string): string => line.replace(ACTIVE, '\\$&');
+export const escapeText = (line: string): string => line.replace(ACTIVE, '\\$&');
 
 /** The plain text of the reply: links taken out, details masked, one space between words, no marker line. */
 // Never more than fits the parts, and it bounds the time the patterns below take; again after normalising, because

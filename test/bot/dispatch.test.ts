@@ -33,6 +33,7 @@ const SETTINGS_CARD = 'fa4e00000000000000000476';
 const PERSONAL_DETAILS_CARD = 'fa4e00000000000000000444';
 const PERSONAL_DETAILS_CHECKLIST = 'fa4e00000000000000000445';
 const RUNS_LIST = 'fa4e0000000000000000047f';
+const FEEDBACK_CARD = 'fa4e00000000000000000461';
 const USER_A: TMember = { id: 'fa4e0000000000000000a001', username: 'usera' };
 const NOW = new Date('2026-11-12T12:00:00.000Z');
 const SECRET = 'tok-sample-secret-0123456789';
@@ -231,6 +232,31 @@ test('yes with a pending start_run proposal starts one run and marks it resolved
   assert.equal(body(posted[0]!), '@usera Confirmed: run.');
   assert.deepEqual(markerOf(posted[1]!), { actionId: a.id, cls: 'refusal' });
   assert.equal(body(posted[1]!), '@usera Run started. Its status card will appear on top of System › Runs.');
+});
+
+test('feedback static verb: direct @samplebot feedback posts at once with class static', async () => {
+  const s = await ready(setup());
+  const { a, posted } = await say(s, '@samplebot feedback great team');
+  assert.equal(posted.length, 1);
+  assert.equal(markerOf(posted[0]!).cls, 'static');
+  assert.match(body(posted[0]!), /Recorded on/);
+  assert.equal(s.fake.commentsOn(FEEDBACK_CARD).length, 1);
+});
+
+test('yes on a record_feedback proposal posts it once', async () => {
+  const s = await ready(setup());
+  const ask = newId();
+  const feedbackText = 'great culture, fast replies';
+  const p = proposal({ id: 'record_feedback', args: { text: feedbackText } }, new Date(NOW.getTime() - 10 * 60_000));
+  s.fake.addComment(JOB_CARD, s.deps.me, `Leave feedback?\n\n${formatMarker({ actionId: ask, cls: 'static', proposal: p })}`,
+    new Date(NOW.getTime() - 10 * 60_000));
+  const { a, posted } = await say(s, '@samplebot yes');
+  assert.equal(posted.length, 2);
+  assert.deepEqual(markerOf(posted[0]!), { actionId: a.id, cls: 'static', resolves: ask });
+  assert.equal(body(posted[0]!), '@usera Confirmed: feedback.');
+  assert.deepEqual(markerOf(posted[1]!), { actionId: a.id, cls: 'refusal' });
+  assert.match(body(posted[1]!), /Recorded on/);
+  assert.equal(s.fake.commentsOn(FEEDBACK_CARD).length, 1);
 });
 
 test('two yes comments queued back to back start one run', async () => {
