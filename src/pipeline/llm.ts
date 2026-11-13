@@ -70,7 +70,7 @@ const HOUR = 3600 * 1000;
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /** `p`, or a rejection with the abort reason as soon as `signal` fires. */
-function orAbort<T>(p: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+export function orAbort<T>(p: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
   if (!signal) return p;
   if (signal.aborted) return Promise.reject(signal.reason);
   return new Promise<T>((resolve, reject) => {

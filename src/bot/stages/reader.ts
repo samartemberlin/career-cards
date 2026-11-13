@@ -1,17 +1,14 @@
 // The reader stage: answers from the job card's own text, with no profile, no tools and no network.
 import { z } from 'zod';
-import { llmConfig } from '../../pipeline/llm.ts';
-import { PrivacyError, buildBotMasking } from '../../privacy.ts';
-import type { BotMasking } from '../../privacy.ts';
-import { scoringProfile } from '../../run/profiles.ts';
 import { isoDateIn } from '../../run/process.ts';
 import type { TCard } from '../../trello/api.ts';
-import { loadCardContext, parseJobCard } from '../context.ts';
+import { parseJobCard } from '../context.ts';
 import type { JobFields } from '../context.ts';
 import type { CommandCtx, Handler, HandlerResult } from '../handlers.ts';
 import { readerMessages } from '../prompt.ts';
 import type { EarlierPosting, ReaderInput } from '../prompt.ts';
-import { JOB_ONLY_REPLY, MASKING_REPLY, callStage, oneLine as line, stageErrorReply } from './call.ts';
+import { callStage, oneLine as line, stageErrorReply } from './call.ts';
+import { isReply, loadJob, stageOpts, withMasking } from './handler.ts';
 
 export const LEGIT_SIGNALS = ['freshness', 'description_quality', 'reposting', 'role_market_context',
   'employment_classification', 'benefits_country_mismatch', 'buzzword_mismatch', 'scam_markers'] as const;
@@ -118,23 +115,15 @@ export function renderNeeds(v: Needs, cardDeadline = ''): string {
 }
 
 async function readerStage(ctx: CommandCtx, kind: 'legit' | 'needs'): Promise<HandlerResult> {
-  const cc = await loadCardContext(ctx.api, ctx.boards, ctx.action, ctx.me.id, ctx.comments);
-  if (!cc.job) return { text: JOB_ONLY_REPLY(kind), uncounted: true };
-  const job = cc.job;
+  const loaded = await loadJob(ctx, kind);
+  if (isReply(loaded)) return loaded;
+  const { cc, job } = loaded;
   const earlier = kind === 'legit' ? earlierPostings(await ctx.api.allCards(ctx.boards.jobs), job, cc.card.id) : [];
   const input: ReaderInput = { job, earlier, today: isoDateIn(ctx.now, ctx.settings.timezone) };
+  const messages = await withMasking(ctx, (m) => readerMessages(kind, input, m));
+  if (isReply(messages)) return messages;
 
-  let messages;
-  try {
-    const cfg = await ctx.config();
-    const masking: BotMasking = buildBotMasking({ user: cfg, profile: scoringProfile(cfg) });
-    messages = readerMessages(kind, input, masking);
-  } catch (e) {
-    if (e instanceof PrivacyError) return { text: MASKING_REPLY(e.message), uncounted: true };
-    throw e;
-  }
-
-  const o = { llm: llmConfig(ctx.env, ctx.settings), signal: ctx.signal, log: ctx.log, ...(ctx.call ? { call: ctx.call } : {}) };
+  const o = stageOpts(ctx);
   try {
     if (kind === 'legit') return { text: renderLegit((await callStage(messages, LegitSchema, o)).value, earlier) };
     return { text: renderNeeds((await callStage(messages, NeedsSchema, o)).value, job.deadline) };

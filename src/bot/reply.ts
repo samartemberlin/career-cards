@@ -57,8 +57,8 @@ const dropMarkerLines = (text: string): string =>
 
 // A listed link is emitted as a CommonMark autolink, which allows no space, `<` or `>` inside; RFC 3986 characters
 // only, so nothing in it can end the autolink or be read as anything else.
-const SAFE_LINK = /^https?:\/\/[A-Za-z0-9\-._~:/?#@!$&'()*+,;=%]+$/;
-const LINK_MAX = 1000;
+export const SAFE_LINK = /^https?:\/\/[A-Za-z0-9\-._~:/?#@!$&'()*+,;=%]+$/;
+export const LINK_MAX = 1000;
 const LINKS_MAX = 10;
 
 function isSafeLink(link: string, masker: Masker): boolean {

@@ -12,6 +12,8 @@ import { CATALOGUE, COMPANY_TOPICS, FEEDBACK_MAX, REPLY_MAX } from './catalogue.
 import type { ActionSpec } from './catalogue.ts';
 import { MARKER_PREFIX } from './marker.ts';
 import { oneLine } from './stages/call.ts';
+import { RESEARCH_TOPICS, isResearchInput } from './stages/research-input.ts';
+import type { ResearchInput, ResearchTopic } from './stages/research-input.ts';
 
 const PROMPTS_DIR = fileURLToPath(new URL('./prompts/', import.meta.url));
 const cache = new Map<string, string>();
@@ -168,4 +170,28 @@ export function routerMessages(input: RouterInput): Message[] {
     'Output shape:', ROUTER_SHAPE,
   ].join('\n');
   return [{ role: 'system', content: system }, { role: 'user', content: user }];
+}
+
+const AXES_HEADING = '\n## Axes: ';
+
+/** researcher.md's rules, and the axes of one topic from its `## Axes: <topic>` sections. */
+function researcherPrompt(topic: ResearchTopic): string {
+  const [rules, ...sections] = loadPrompt('researcher').split(AXES_HEADING);
+  const axes = new Map(sections.map((s) => [s.slice(0, s.indexOf('\n')).trim(), s.slice(s.indexOf('\n') + 1).trim()]));
+  for (const t of RESEARCH_TOPICS) if (!axes.get(t)) throw new Error(`researcher.md: no axes for ${t}`);
+  return `${rules!.trim()}\n\nTopic: ${topic}. Cover these axes:\n${axes.get(topic)}`;
+}
+
+/**
+ * The researcher has web tools, so it gets the four public fields of `ResearchInput` and nothing else: no profile,
+ * no comments, no job description. A spread copy could carry more, so only an input from researchInputFromJob passes.
+ */
+export function researcherMessages(input: ResearchInput): Message[] {
+  if (!isResearchInput(input)) throw new PrivacyError('research input not from researchInputFromJob');
+  const nonce = newNonce();
+  const subject = `company: ${input.company}\ntitle: ${input.title}\nposting: ${input.postingUrl}`;
+  return [
+    { role: 'system', content: `${STAGE_LINE(`researcher/${input.topic}`)}\n${researcherPrompt(input.topic)}` },
+    { role: 'user', content: `${untrusted('SUBJECT', subject, nonce)}\n\nResearch topic: ${input.topic}. Reply with JSON only.` },
+  ];
 }

@@ -1,12 +1,9 @@
 // The advisor stage: the job card against the masked rubric and CV, with no tools and no network.
 import { z } from 'zod';
-import { llmConfig } from '../../pipeline/llm.ts';
-import { PrivacyError, buildBotMasking } from '../../privacy.ts';
-import { scoringProfile } from '../../run/profiles.ts';
-import { loadCardContext } from '../context.ts';
 import type { CommandCtx, Handler, HandlerResult } from '../handlers.ts';
 import { advisorMessages } from '../prompt.ts';
-import { JOB_ONLY_REPLY, MASKING_REPLY, callStage, oneLine, stageErrorReply } from './call.ts';
+import { callStage, oneLine, stageErrorReply } from './call.ts';
+import { isReply, loadJob, stageOpts, withMasking } from './handler.ts';
 
 const items = (n: number, chars: number) => z.array(z.string().max(chars)).max(n);
 
@@ -52,20 +49,13 @@ export function renderCv(v: Cv): string {
 }
 
 async function advisorStage(ctx: CommandCtx, kind: 'fit' | 'cv'): Promise<HandlerResult> {
-  const cc = await loadCardContext(ctx.api, ctx.boards, ctx.action, ctx.me.id, ctx.comments);
-  if (!cc.job) return { text: JOB_ONLY_REPLY(kind), uncounted: true };
-  const job = cc.job;
+  const loaded = await loadJob(ctx, kind);
+  if (isReply(loaded)) return loaded;
+  const { job } = loaded;
+  const messages = await withMasking(ctx, (m) => advisorMessages(kind, { job }, m));
+  if (isReply(messages)) return messages;
 
-  let messages;
-  try {
-    const cfg = await ctx.config();
-    messages = advisorMessages(kind, { job }, buildBotMasking({ user: cfg, profile: scoringProfile(cfg) }));
-  } catch (e) {
-    if (e instanceof PrivacyError) return { text: MASKING_REPLY(e.message), uncounted: true };
-    throw e;
-  }
-
-  const o = { llm: llmConfig(ctx.env, ctx.settings), signal: ctx.signal, log: ctx.log, ...(ctx.call ? { call: ctx.call } : {}) };
+  const o = stageOpts(ctx);
   try {
     if (kind === 'fit') return { text: renderFit((await callStage(messages, FitSchema, o)).value, job.score) };
     return { text: renderCv((await callStage(messages, CvSchema, o)).value) };
