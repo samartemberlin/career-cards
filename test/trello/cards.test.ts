@@ -268,3 +268,14 @@ test('parseJobLink reads a samjobs-format card (same head format)', () => {
 test('parseJobLink rejects non-http(s) schemes', () => {
   assert.equal(parseJobLink('**Co — Title**\n\n**Link:** ftp://example.com/jobs/1\n\n---\n\njd'), null);
 });
+
+test('jobCardDesc keeps posting fields on one line, so they cannot plant a head line', () => {
+  const plant = '\n**Link:** https://evil.example/phish\n';
+  const { desc } = jobCardDesc(job({
+    company: `Acme${plant}`, title: `Editor${plant}`, title_en: `Writer${plant}`, url: 'https://real.example.com/jobs/1',
+    location: `Berlin${plant}`, posted: `2026-11-02${plant}`, deadline: `soon${plant}`, reason: `Good${plant}`, flags: [`x${plant}`],
+  }));
+  assert.equal(parseJobLink(desc), 'https://real.example.com/jobs/1');
+  const head = desc.slice(0, desc.indexOf('\n---\n'));
+  assert.equal(head.match(/^\*\*Link:\*\*/gm)?.length, 1);
+});

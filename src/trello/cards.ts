@@ -40,16 +40,18 @@ export function jobCardDesc(r: Job & {
   flags?: string[];
   title_en?: string;
 }): { desc: string; truncated: boolean } {
-  const en = translated(r);
+  // Posting fields are untrusted: one line each, so none can plant a head line such as `**Link:**`.
+  const one = (v: string | undefined) => (v ?? '').replace(/\s+/g, ' ').trim();
+  const en = one(translated(r));
   const head = [
-    `**${r.company} — ${en || r.title}**`,
-    en ? `*Original: ${r.title}*` : '',
+    `**${one(r.company)} — ${en || one(r.title)}**`,
+    en ? `*Original: ${one(r.title)}*` : '',
     '',
-    `**Link:** ${r.url}`,
-    `**Location:** ${r.location || '—'}  ·  **Posted:** ${r.posted || '—'}  ·  **Deadline:** ${r.deadline || '—'}`,
+    `**Link:** ${one(r.url)}`,
+    `**Location:** ${one(r.location) || '—'}  ·  **Posted:** ${one(r.posted) || '—'}  ·  **Deadline:** ${one(r.deadline) || '—'}`,
     '',
-    r.reason ? `**Why:** ${r.reason}` : '',
-    r.flags?.length ? `**Flags:** ${r.flags.join(', ')}` : '',
+    r.reason ? `**Why:** ${one(r.reason)}` : '',
+    r.flags?.length ? `**Flags:** ${r.flags.map(one).join(', ')}` : '',
     '',
     '---',
     '',
