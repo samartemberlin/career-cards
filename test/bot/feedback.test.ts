@@ -117,6 +117,17 @@ test('feedbackComment: no-URL job prints –', () => {
   assert.match(result, /Posting: –/);
 });
 
+test('feedbackComment: URL with Markdown-active chars prints –', () => {
+  const job: JobFields = {
+    key: 'k', company: 'Co', title: 'Role',
+    url: 'https://a.example/[x](https://evil.example)',
+    location: '', posted: '', deadline: '', why: '', jd: '', score: null,
+  };
+  const result = feedbackComment(job, 'https://trello.com/c/x', 'text');
+  assert.match(result, /Posting: –/);
+  assert.ok(!result.includes('evil.example'), `planted URL should not appear: ${result}`);
+});
+
 test('feedbackComment: score null prints –', () => {
   const job: JobFields = {
     key: 'k', company: 'Co', title: 'Role', url: '', location: '',
