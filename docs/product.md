@@ -35,7 +35,7 @@ Each user runs their own copy of this bot. Status: built = on `main` with tests;
 | Config cards validated (Settings, profiles, filters, caps) | [schema.ts](../src/config/schema.ts), read from Trello by [config.ts](../src/trello/config.ts); every problem reported at once with a link to its card |
 | Trello client (paced, with backoff and allCards paging) | [api.ts](../src/trello/api.ts), [client.ts](../src/trello/client.ts); [key loading](../src/trello/job-index.ts) built; scope guard built; private-board check built ([private.ts](../src/trello/private.ts)) |
 | Nightly run: run column, status card, `--dry-run` | [run-once.ts](../src/run/run-once.ts), CLI [run.ts](../src/run.ts) |
-| `@bot` catalogue and static commands | [catalogue.ts](../src/bot/catalogue.ts) |
+| `/bot` catalogue and static commands | [catalogue.ts](../src/bot/catalogue.ts) |
 | Webhook service, gate, caps, `yes`/`no`, `open`/`why`/`last`/`run`, reply checks | [serve.ts](../src/serve.ts), [app.ts](../src/serve/app.ts), [gate.ts](../src/serve/gate.ts), [caps.ts](../src/bot/caps.ts), [confirm.ts](../src/bot/confirm.ts), [dispatch.ts](../src/bot/dispatch.ts), [handlers.ts](../src/bot/handlers.ts), [reply.ts](../src/bot/reply.ts), [safe-fetch.ts](../src/net/safe-fetch.ts) |
 | Deploy template, onboarding tool | [deploy/northflank/template.json](../deploy/northflank/template.json), [onboard.ts](../tools/onboard.ts) ([plan](../tools/onboard/plan.ts), [apply](../tools/onboard/apply.ts)) |
 | Migration from samjobs | planned (PR 6) |
@@ -67,5 +67,5 @@ Each user runs their own copy of this bot. Status: built = on `main` with tests;
 **Migration from samjobs** (per user, samjobs keeps running until cutover)
 1. Test user with made-up profile on test boards: three clean nightly runs.
 2. Shadow boards for user A, small cap, beside samjobs for 2–3 nights; compare kept jobs and scores.
-3. Cutover: stop samjobs for user A, re-run the idempotent migration, raise cap, share boards, `@bot run`.
+3. Cutover: stop samjobs for user A, re-run the idempotent migration, raise cap, share boards, `/bot run`.
 4. Repeat for user B.
