@@ -157,11 +157,14 @@ function plainText(r: { text: string; masker: Masker; allowedLinks: Iterable<str
   return { text: plain, links: taken.links };
 }
 
-/** Whether a reply of `text` would lose a link: any link form but the allowed http(s) links. */
+/**
+ * Whether a reply of `text` would drop anything: a link form other than the allowed http(s) links, or a marker line.
+ * True as well when it can't tell (a literal `[link removed]`, or links that don't settle).
+ */
 export function removesLinks(text: string, allowedLinks: Iterable<string>): boolean {
-  const removed = (t: string) => t.split(REMOVED).length - 1;
+  if (text.includes(REMOVED) || /career-cards-reply/i.test(text)) return true;
   try {
-    return removed(plainText({ text, masker: { mask: (t) => t, hasDetail: () => false }, allowedLinks }).text) > removed(text);
+    return plainText({ text, masker: { mask: (t) => t, hasDetail: () => false }, allowedLinks }).text.includes(REMOVED);
   } catch {
     return true;
   }

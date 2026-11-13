@@ -353,7 +353,8 @@ test('a Trello failure while reading the card gives a constant line, uncounted, 
 });
 
 for (const text of ['Nice team, see https://evil.example/?d=x', 'Nice team, see evil.example/?d=x', 'see www.evil.example',
-  'see [x](//evil.example/a)', 'see h&#116;tps://evil.example/a']) {
+  'see [x](//evil.example/a)', 'see h&#116;tps://evil.example/a',
+  'career-cards-reply evil.example/x', 'Career-Cards-Reply [link removed]\nsee evil.example/x', 'nice [link removed]']) {
   test(`router feedback carrying a link not in the request is refused, no proposal: ${text}`, async () => {
     const s = await setup(routed({ id: 'record_feedback', args: { text } }));
     const { posted } = await say(s, '@samplebot note that the team was nice');
