@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { z } from 'zod';
 import { BlockedUrlError, assertPublicUrl } from '../../net/safe-fetch.ts';
 import type { UrlGuard } from '../../net/safe-fetch.ts';
-import { QuotaExhausted, classifyClaudeFailure, coolDown, isCooling, runModelProcess } from '../../pipeline/llm.ts';
+import { QuotaExhausted, classifyClaudeFailure, coolDown, isCooling, orAbort, runModelProcess } from '../../pipeline/llm.ts';
 import type { LlmConfig, ModelProcessError, Provider } from '../../pipeline/llm.ts';
 import { researcherMessages } from '../prompt.ts';
 import { LINK_MAX, SAFE_LINK, linksIn } from '../reply.ts';
@@ -93,8 +93,7 @@ export async function runResearch(input: ResearchInput, o: {
   const [system, user] = researcherMessages(input).map((m) => m.content);
   const args = ['-p', '--output-format', 'stream-json', '--verbose', '--system-prompt', system!, '--no-session-persistence',
     '--setting-sources', '', '--disable-slash-commands', '--model', p.model, '--max-turns', MAX_TURNS];
-  signal.throwIfAborted();
-  await p.wait?.();
+  await orAbort(p.wait?.() ?? Promise.resolve(), signal);
   signal.throwIfAborted();
 
   let stdout: string, stderr = '', code: number | null = 0;

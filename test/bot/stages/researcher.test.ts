@@ -162,6 +162,24 @@ test('a failed fetch to an internal address still discards the result', async ()
   await assert.rejects(p, (e: unknown) => e instanceof ResearchRefused && e.reason === 'internal_address');
 });
 
+test('a fetched host that does not resolve also discards the result (fails closed)', async () => {
+  const lookup: LookupAll = async (host) => { if (host === 'dead.example') throw Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' }); return [{ address: '203.0.113.7', family: 4 }]; };
+  const { p, logs } = run({ fetches: [{ url: ABOUT, ok: true }, { url: 'https://dead.example/', ok: false }], answer: ANSWER }, { lookup });
+  await assert.rejects(p, (e: unknown) => e instanceof ResearchRefused && e.reason === 'internal_address');
+  assert.ok(logs.some((l) => l.includes('dead.example') && l.includes('lookup failed')));
+});
+
+test('an abort during the provider pacing wait rejects at once and spawns nothing', async () => {
+  const ac = new AbortController();
+  let spawned = false;
+  const exec: typeof runModelProcess = async () => { spawned = true; return ''; };
+  const slow: Provider = { ...provider(), wait: () => new Promise<void>(() => {}) };
+  const p = runResearch(input(), { provider: slow, signal: ac.signal, exec, log: () => {} });
+  setTimeout(() => ac.abort(new Error('comment timed out')), 5);
+  await assert.rejects(p, /comment timed out/);
+  assert.equal(spawned, false);
+});
+
 test('a guard with a loosened allow still refuses 127.0.0.1', async () => {
   const { p } = run({ fetches: [{ url: 'http://127.0.0.1:8080/', ok: true }], answer: ANSWER }, { allow: () => true });
   await assert.rejects(p, (e: unknown) => e instanceof ResearchRefused && e.reason === 'internal_address');
