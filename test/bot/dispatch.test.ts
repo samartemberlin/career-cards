@@ -216,6 +216,20 @@ test('101st static command in 24 h → cap refusal; the refusal does not count',
   assert.equal((await loadUsage(s.api, BOARDS, { botId: s.deps.me.id, now: NOW })).static, 100);
 });
 
+test('a yes over the cap says the proposal is closed and runs nothing', async () => {
+  const s = await ready(setup());
+  for (let i = 0; i < 100; i++) {
+    s.fake.addComment(JOB_CARD, s.deps.me, `ok\n\n${formatMarker({ actionId: newId(), cls: 'static' })}`, new Date(NOW.getTime() - 3_600_000));
+  }
+  propose(s, newId());
+  const { posted } = await say(s, '@samplebot yes');
+  assert.deepEqual(s.starts, []);
+  assert.deepEqual(posted.map(body), [
+    '@usera Daily limit reached: 100 commands a day (Settings › [link removed]). That proposal is closed now; ask for it again tomorrow.',
+  ]);
+  assert.equal(markerOf(posted[0]!).cls, 'refusal');
+});
+
 test('a Personal details card missing → the constant config reply, nothing else', async () => {
   const s = await ready(setup());
   await s.raw.setCardClosed(PERSONAL_DETAILS_CARD, true);

@@ -56,7 +56,7 @@ Each user runs their own copy of this bot. Status: built = on `main` with tests;
 1. The user comments `@bot <verb> [args]` or a question on any of their three boards.
 2. The gate drops unsigned, foreign, repeated or non-member comments silently; over-cap ones get a one-line refusal.
 3. A known verb runs its action; anything else goes to the router, which answers, asks, or picks one action.
-4. Actions marked `confirm` wait 24 h for `@bot yes`. The reply is posted as a comment.
+4. Actions marked `confirm` wait for `@bot yes`: 24 h at most, and any later bot reply on the card closes the proposal. The reply is posted as a comment.
 
 **Onboarding**
 1. Run the [onboarding tool](../tools/onboard.ts) (`--dry-run` first): three private boards (Jobs, Profiles, System), bot added; it prints the three board IDs.

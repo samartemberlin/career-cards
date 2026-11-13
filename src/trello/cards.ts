@@ -83,14 +83,16 @@ export function parseJobKey(desc: string): string | null {
 const LINK_RE = /^\*\*Link:\*\* (\S+)/gm;
 
 /**
- * The one `**Link:** <url>` line in the head (before the first `---` separator); null if there are several, since
- * cards written before head fields were one-lined can carry a planted line from a multi-line title.
+ * The head's `**Link:** <url>` line (before the first `---` separator), or null if the whole description has more than
+ * one: cards written before head fields were one-lined can carry a planted line, even a planted `---`, from a
+ * multi-line title. Fails closed; a posting that happens to hold such a line only costs the link.
  */
 export function parseJobLink(desc: string): string | null {
+  if ([...desc.matchAll(LINK_RE)].length !== 1) return null;
   const sepIdx = desc.search(/\n---(?:\n|$)/);
   const head = sepIdx >= 0 ? desc.slice(0, sepIdx) : desc;
-  const all = [...head.matchAll(LINK_RE)];
-  return all.length === 1 && /^https?:\/\//.test(all[0]![1]!) ? all[0]![1]! : null;
+  const url = [...head.matchAll(LINK_RE)][0]?.[1];
+  return url && /^https?:\/\//.test(url) ? url : null;
 }
 
 // --- score parsing -------------------------------------------------------

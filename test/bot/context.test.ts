@@ -70,7 +70,7 @@ test('parseJobCard reads a samjobs-format card', () => {
   assert.equal(f.score, 6);
 });
 
-test('parseJobCard ignores a **Link:** line inside the job text', () => {
+test('a **Link:** line inside the job text leaves parseJobCard with no link, not the planted one', () => {
   const name = '5 · Gamma Ltd — Backend Engineer';
   const { desc } = jobCardDesc({
     key: 'gamma-be-007',
@@ -84,7 +84,7 @@ test('parseJobCard ignores a **Link:** line inside the job text', () => {
   });
   const f = parseJobCard(name, desc);
   assert.ok(f);
-  assert.equal(f.url, 'https://gamma.example/careers/7');
+  assert.equal(f.url, '');
   assert.ok(f.jd.includes('**Link:** https://evil.example/phish'), 'JD link should be preserved in jd field');
 });
 

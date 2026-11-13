@@ -41,6 +41,9 @@ const IDENTITY: Masker = { mask: (t) => t, hasDetail: () => false };
 
 const firstLine = (e: unknown) => (e instanceof Error ? `${e.name}: ${e.message}` : String(e)).split('\n')[0];
 
+const overClosing = (over: string) =>
+  `${over.replace(/ Try again tomorrow\.$/, '')} That proposal is closed now; ask for it again tomorrow.`;
+
 const unavailable = (spec: ActionSpec) => `\`${spec.verbs[0]}\` isn't available yet.`;
 
 // A job card's text is the posting's, so a link planted in it would come back listed as if the bot vouched for it:
@@ -220,11 +223,12 @@ async function respond(d: DispatchDeps, a: CommentAction, signal: AbortSignal): 
   }
 
   const over = overCap(cls, a.cardId, await loadUsage(d.api, d.boards, { botId: d.me.id, now }), settings.caps);
-  if (over) return post(masker, { text: over, cls: 'refusal' });
+  // Any later bot reply closes a proposal (confirm.ts), this refusal too.
+  if (over) return post(masker, { text: confirms ? overClosing(over) : over, cls: 'refusal' });
 
   if (confirms) {
     await allowedLinks();
-    // Too late to run it: the proposal stays open for another `yes`.
+    // Too late to run it, and this reply closes the proposal: the user asks again.
     if (signal.aborted) return post(masker, { text: TIMEOUT_REPLY, cls: 'refusal' });
     // The resolution is on the card before the action runs: if posting it fails, nothing runs, and a later `yes`
     // finds the proposal resolved even when the action's own reply never got posted. It carries the cap class, so
