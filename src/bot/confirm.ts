@@ -1,5 +1,6 @@
 // Side-effect actions run only after `@bot yes`, and what `yes` runs is read back from the bot's own marker lines, so
-// a proposal counts only if the bot wrote it, it is the newest one, it still parses as a confirm action, and it is fresh.
+// a proposal counts only if the bot wrote it, it is the bot's newest reply, it still parses as a confirm action, and it
+// is fresh.
 import { CATALOGUE, RouterOutputSchema } from './catalogue.ts';
 import type { ActionSpec } from './catalogue.ts';
 import { botMarkers } from './marker.ts';
@@ -95,7 +96,8 @@ export function findPending(
   o: { botId: string; now: Date },
 ): { kind: 'pending'; pending: Pending } | { kind: 'expired' } | { kind: 'none' } {
   const markers = botMarkers(comments, o.botId).sort((a, b) => newestFirst(a.comment, b.comment));
-  const newest = markers.find((m) => m.proposal);
+  // Only while it is the bot's latest word: a later reply can be model text that asks for `yes` about something else.
+  const newest = markers[0];
   if (!newest?.proposal) return { kind: 'none' };
   // Any bot marker naming it closes it, not just later ones: a stray earlier resolve can only take a confirmation away.
   if (markers.some((m) => m.resolves === newest.actionId)) return { kind: 'none' };

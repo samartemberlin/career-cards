@@ -249,9 +249,9 @@ test('parseJobLink reads the head URL', () => {
   assert.equal(parseJobLink(HEAD_DESC('https://example.com/jobs/1')), 'https://example.com/jobs/1');
 });
 
-test('parseJobLink ignores a **Link:** line inside the job text (after ---)', () => {
+test('parseJobLink returns null when the job text (after ---) has a **Link:** line too', () => {
   const desc = '**Co — Title**\n\n**Link:** https://real.example.com/jobs/1\n\n---\n\n**Link:** https://fake.example.com/inside-jd';
-  assert.equal(parseJobLink(desc), 'https://real.example.com/jobs/1');
+  assert.equal(parseJobLink(desc), null);
 });
 
 test('parseJobLink returns null when there is no link (status card)', () => {
@@ -263,6 +263,17 @@ test('parseJobLink reads a samjobs-format card (same head format)', () => {
   // samjobs cards use the same head format: **Link:** before ---
   const desc = '**Acme — SWE**\n\n**Link:** https://boards.greenhouse.io/acme/jobs/9001\n**Location:** Berlin\n\n---\n\njd text\n\n---\nsamjobs-key: greenhouse:acme:9001';
   assert.equal(parseJobLink(desc), 'https://boards.greenhouse.io/acme/jobs/9001');
+});
+
+test('parseJobLink returns null when the head has more than one **Link:** line', () => {
+  // A card written before head fields were one-lined can carry a planted line from a multi-line title.
+  const desc = '**Co — Title\n\n**Link:** https://evil.example/x**\n\n**Link:** https://real.example.com/jobs/1\n\n---\n\njd';
+  assert.equal(parseJobLink(desc), null);
+});
+
+test('parseJobLink returns null when a planted **Link:** line and --- cut the head short', () => {
+  const desc = '**Co — Title\n\n**Link:** https://evil.example/x\n---\n**\n\n**Link:** https://real.example.com/jobs/1\n\n---\n\njd';
+  assert.equal(parseJobLink(desc), null);
 });
 
 test('parseJobLink rejects non-http(s) schemes', () => {

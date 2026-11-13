@@ -21,7 +21,7 @@ import type { CallOpts, Env } from '../pipeline/llm.ts';
 import type { UserConfig } from '../config/schema.ts';
 import type { BotApi, TCard } from '../trello/api.ts';
 import type { UserBoards } from '../trello/scoped.ts';
-import { parseJobKey, parseJobLink } from '../trello/cards.ts';
+import { parseJobLink } from '../trello/cards.ts';
 import { TIMEOUT_REPLY } from './stages/call.ts';
 
 export type DispatchDeps = GateDeps & {
@@ -41,12 +41,15 @@ const IDENTITY: Masker = { mask: (t) => t, hasDetail: () => false };
 
 const firstLine = (e: unknown) => (e instanceof Error ? `${e.name}: ${e.message}` : String(e)).split('\n')[0];
 
+const overClosing = (over: string) =>
+  `${over.replace(/ Try again tomorrow\.$/, '')} That proposal is closed now; ask for it again tomorrow.`;
+
 const unavailable = (spec: ActionSpec) => `\`${spec.verbs[0]}\` isn't available yet.`;
 
 // A job card's text is the posting's, so a link planted in it would come back listed as if the bot vouched for it:
-// only the card's own posting link counts there.
+// only the card's own posting link counts there. Key or not: the run's only key-less card there (summary) has no links.
 function cardLinks(c: TCard, boards: UserBoards): string[] {
-  if (c.idBoard === boards.jobs && parseJobKey(c.desc)) return linksIn(parseJobLink(c.desc) ?? '');
+  if (c.idBoard === boards.jobs) return linksIn(parseJobLink(c.desc) ?? '');
   return [...linksIn(c.name), ...linksIn(c.desc)];
 }
 
@@ -220,11 +223,12 @@ async function respond(d: DispatchDeps, a: CommentAction, signal: AbortSignal): 
   }
 
   const over = overCap(cls, a.cardId, await loadUsage(d.api, d.boards, { botId: d.me.id, now }), settings.caps);
-  if (over) return post(masker, { text: over, cls: 'refusal' });
+  // Any later bot reply closes a proposal (confirm.ts), this refusal too.
+  if (over) return post(masker, { text: confirms ? overClosing(over) : over, cls: 'refusal' });
 
   if (confirms) {
     await allowedLinks();
-    // Too late to run it: the proposal stays open for another `yes`.
+    // Too late to run it, and this reply closes the proposal: the user asks again.
     if (signal.aborted) return post(masker, { text: TIMEOUT_REPLY, cls: 'refusal' });
     // The resolution is on the card before the action runs: if posting it fails, nothing runs, and a later `yes`
     // finds the proposal resolved even when the action's own reply never got posted. It carries the cap class, so

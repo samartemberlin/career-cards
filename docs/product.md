@@ -39,7 +39,7 @@ Each user runs their own copy of this bot. Status: built = on `main` with tests;
 | Webhook service, gate, caps, `yes`/`no`, `open`/`why`/`last`/`run`, reply checks | [serve.ts](../src/serve.ts), [app.ts](../src/serve/app.ts), [gate.ts](../src/serve/gate.ts), [caps.ts](../src/bot/caps.ts), [confirm.ts](../src/bot/confirm.ts), [dispatch.ts](../src/bot/dispatch.ts), [handlers.ts](../src/bot/handlers.ts), [reply.ts](../src/bot/reply.ts), [safe-fetch.ts](../src/net/safe-fetch.ts) |
 | Deploy template, onboarding tool | [deploy/northflank/template.json](../deploy/northflank/template.json), [onboard.ts](../tools/onboard.ts) ([plan](../tools/onboard/plan.ts), [apply](../tools/onboard/apply.ts)) |
 | Migration from samjobs | planned (PR 6) |
-| Router, `needs`, `legit`, `fit`, `cv`, `feedback`, reply checks | [router.ts](../src/bot/router.ts), [stages/](../src/bot/stages/), [feedback.ts](../src/bot/feedback.ts), [reply.ts](../src/bot/reply.ts) |
+| Router, `needs`, `legit`, `fit`, `cv`, `feedback` | [router.ts](../src/bot/router.ts), [stages/](../src/bot/stages/), [feedback.ts](../src/bot/feedback.ts) |
 | Research: `company`, `deep` | planned (PR 8) |
 
 ## Key scenarios
@@ -56,7 +56,7 @@ Each user runs their own copy of this bot. Status: built = on `main` with tests;
 1. The user comments `@bot <verb> [args]` or a question on any of their three boards.
 2. The gate drops unsigned, foreign, repeated or non-member comments silently; over-cap ones get a one-line refusal.
 3. A known verb runs its action; anything else goes to the router, which answers, asks, or picks one action.
-4. Actions marked `confirm` wait 24 h for `@bot yes`. The reply is posted as a comment.
+4. Actions marked `confirm` wait for `@bot yes`: 24 h at most, and any later bot reply on the card closes the proposal. The reply is posted as a comment.
 
 **Onboarding**
 1. Run the [onboarding tool](../tools/onboard.ts) (`--dry-run` first): three private boards (Jobs, Profiles, System), bot added; it prints the three board IDs.
