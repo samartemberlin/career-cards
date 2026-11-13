@@ -92,8 +92,8 @@ export const HANDLERS: Partial<Record<string, Handler>> = {
   record_feedback: recordFeedback,
 };
 
-export function helpText(botName: string): string {
-  const lines = CATALOGUE.filter((s) => HANDLERS[s.id]).map((s) => `@${botName} ${s.usage} — ${s.about}`);
-  lines.push(`@${botName} yes / @${botName} no — confirm or cancel what I proposed on this card.`);
+export function helpText(keyword: string): string {
+  const lines = CATALOGUE.filter((s) => HANDLERS[s.id]).map((s) => `${keyword} ${s.usage} — ${s.about}`);
+  lines.push(`${keyword} yes / ${keyword} no — confirm or cancel what I proposed on this card.`);
   return lines.join('\n');
 }

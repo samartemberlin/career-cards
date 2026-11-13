@@ -98,15 +98,15 @@ function withHandler(id: string, h: Handler) {
   return () => { HANDLERS[id] = old; };
 }
 
-test('@samplebot help → one comment mentioning @usera, listing last and run, marker class static', async () => {
+test('@samplebot help → one comment mentioning @usera, listing last and run with the keyword, marker class static', async () => {
   const s = await ready(setup());
   const { a, posted } = await say(s, '@samplebot help');
   assert.equal(posted.length, 1);
   const text = body(posted[0]!);
   assert.match(text, /^@usera /);
-  assert.match(text, /@samplebot last — /);
-  assert.match(text, /@samplebot run — /);
-  assert.match(text, /@samplebot yes \/ @samplebot no — /);
+  assert.match(text, /\/bot last — /);
+  assert.match(text, /\/bot run — /);
+  assert.match(text, /\/bot yes \/ \/bot no — /);
   assert.deepEqual(markerOf(posted[0]!), { actionId: a.id, cls: 'static' });
 });
 
@@ -231,7 +231,7 @@ test('a yes over the cap says the proposal is closed and runs nothing', async ()
   const { posted } = await say(s, '@samplebot yes');
   assert.deepEqual(s.starts, []);
   assert.deepEqual(posted.map(body), [
-    '@usera Daily limit reached: 100 commands a day (Settings › [link removed]). That proposal is closed now; ask for it again tomorrow.',
+    '@usera Daily limit reached: 100 commands a day (raise `static_per_day` under caps on the Settings card). That proposal is closed now; ask for it again tomorrow.',
   ]);
   assert.equal(markerOf(posted[0]!).cls, 'refusal');
 });
@@ -257,6 +257,25 @@ test('yes with a pending start_run proposal starts one run and marks it resolved
   assert.equal(body(posted[0]!), '@usera Confirmed: run.');
   assert.deepEqual(markerOf(posted[1]!), { actionId: a.id, cls: 'refusal' });
   assert.equal(body(posted[1]!), '@usera Run started. Its status card will appear on top of System › Runs.');
+});
+
+test('/bot yes confirms like @samplebot yes; a custom keyword from Settings replaces /bot', async () => {
+  const s = await ready(setup());
+  const ask = newId();
+  propose(s, ask);
+  const { posted } = await say(s, '/bot yes');
+  assert.deepEqual(s.starts, ['manual']);
+  assert.equal(body(posted[0]!), '@usera Confirmed: run.');
+
+  const c = await ready(setup());
+  c.fake.setCardDesc(SETTINGS_CARD, '```yaml\nproviders: [claude]\nlocations: [berlin]\nallowed_members: [usera]\nbot_keyword: /jobs\n```');
+  propose(c, newId());
+  assert.deepEqual((await say(c, '/bot no')).posted, [], '/bot is not the keyword any more');
+  assert.equal(c.logs.filter((l) => l.endsWith(': no mention')).length, 1);
+  await say(c, '/JOBS yes');
+  assert.deepEqual(c.starts, ['manual']);
+  const help = await say(c, '/jobs help');
+  assert.match(body(help.posted[0]!), /\/jobs yes \/ \/jobs no — /);
 });
 
 test('feedback static verb: direct @samplebot feedback posts at once with class static', async () => {

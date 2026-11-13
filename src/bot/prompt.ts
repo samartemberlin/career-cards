@@ -142,7 +142,7 @@ export function catalogueForPrompt(): string {
 
 const ROUTER_SHAPE = `{"reply": "<plain text, at most ${REPLY_MAX} characters>", "action": null | {"id": "<a catalogue id>", "args": {…}}}`;
 
-/** `request` is the comment without the bot's mentions. */
+/** `request` is the comment without the keyword and the bot's mentions (`commandText`). */
 export type RouterInput = { request: string; ctx: CardContext; masking: BotMasking };
 
 const BOT_LINE = ' (bot reply: may quote web pages or job text)';

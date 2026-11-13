@@ -6,6 +6,7 @@ import type { UserBoards } from '../trello/scoped.ts';
 import { ConfigInvalid, readSettings } from '../trello/config.ts';
 import type { Settings } from '../config/schema.ts';
 import { botMarkers } from '../bot/marker.ts';
+import { afterTrigger, mayStartWithKeyword } from '../bot/command.ts';
 
 export type CommentAction = {
   id: string;
@@ -100,7 +101,8 @@ export async function gate(d: GateDeps, a: CommentAction): Promise<GateResult> {
   };
   const lower = (s: string) => s.toLowerCase();
 
-  if (!mentions(a.text, d.me.username)) return drop('no mention');
+  const mentioned = mentions(a.text, d.me.username);
+  if (!mentioned && !mayStartWithKeyword(a.text)) return drop('no mention');
   if (![d.boards.jobs, d.boards.profiles, d.boards.system].includes(a.boardId)) return drop('foreign board');
   if (a.authorId === d.me.id || lower(a.author) === lower(d.me.username)) return drop('own comment');
   if (a.boardId === d.boards.profiles && isOriginalsName(a.listName ?? '')) return drop('originals');
@@ -116,6 +118,8 @@ export async function gate(d: GateDeps, a: CommentAction): Promise<GateResult> {
     if (e instanceof ConfigInvalid) return drop('settings unreadable');
     throw e;
   }
+  // The keyword lives in Settings, so a comment that may start with one is only sorted out here.
+  if (!mentioned && afterTrigger(a.text, { botUsername: d.me.username, keyword: settings.bot_keyword }) === null) return drop('no mention');
   if (!settings.allowed_members.some((m) => lower(m) === lower(a.author))) return drop('not allowed');
 
   const comments = await d.api.cardComments(a.cardId, { limit: 50 });

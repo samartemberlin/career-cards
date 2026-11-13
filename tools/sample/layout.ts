@@ -172,7 +172,7 @@ export const LAYOUT: Record<SampleBoard, BoardLayout> = {
           {
             name: 'Settings',
             desc: yaml(
-              'timezone: Europe/Berlin\nproviders: [claude, gemini]\nlocations: [berlin, remote-de]\nallowed_members: [samplebot]\n',
+              'timezone: Europe/Berlin\nproviders: [claude, gemini]\nlocations: [berlin, remote-de]\nallowed_members: [samplebot]\nbot_keyword: /bot\n',
               'Settings for the sample user. Only the YAML block is read.',
             ) + '\n\nNotes: providers are tried in order.',
           },

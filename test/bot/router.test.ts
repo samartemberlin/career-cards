@@ -16,7 +16,7 @@ import { formatMarker, parseMarker } from '../../src/bot/marker.ts';
 import { loadUsage } from '../../src/bot/caps.ts';
 import type { CardContext } from '../../src/bot/context.ts';
 import { catalogueForPrompt, routerMessages } from '../../src/bot/prompt.ts';
-import { SORRY_REPLY, requestOf } from '../../src/bot/router.ts';
+import { SORRY_REPLY } from '../../src/bot/router.ts';
 import { QUOTA_REPLY } from '../../src/bot/stages/call.ts';
 import { buildBotMasking } from '../../src/privacy.ts';
 import type { RunTrigger } from '../../src/run/stats.ts';
@@ -104,10 +104,6 @@ test('routerMessages refuses a masking not made by buildBotMasking', () => {
   assert.throws(() => routerMessages({ request: 'hi', ctx: cardCtx(), masking: { ...masking() } }), { name: 'PrivacyError' });
 });
 
-test('requestOf removes every mention of the bot, and only the bot', () => {
-  assert.equal(requestOf('@samplebot am I a fit? cc @SampleBot and @samplebot_2', 'samplebot'), 'am I a fit? cc and @samplebot_2');
-});
-
 // --- through handleComment ---
 
 const DIR = join(import.meta.dirname, '..', 'fixtures', 'trello');
@@ -191,6 +187,15 @@ test('free text goes to the router: no action, the reply is posted through finis
   assert.deepEqual(parseMarker(posted[0]!), { actionId: a.id, cls: 'model' });
 });
 
+test('a /bot request reaches the router as the same request as an @mention', async () => {
+  for (const text of ['/bot is this a good fit for me?', '@samplebot is this a good fit for me?']) {
+    const s = await setup(routed(null, 'ok'));
+    await say(s, text);
+    assert.equal(s.m.calls.length, 1, text);
+    assert.match(s.m.calls[0]!.user, /REQUEST \(the user's intent\):\nis this a good fit for me\?\n/, text);
+  }
+});
+
 test('auto action: the handler runs once and the router\'s reply is not posted; one model cap', async () => {
   const s = await setup(routed({ id: 'explain_fit', args: {} }));
   const spy = spyAll();
@@ -225,7 +230,7 @@ test('confirm action: one proposal comment, nothing runs; @samplebot yes then ru
   const { a, posted } = await say(s, '@samplebot could you look for new jobs now?');
   assert.deepEqual(s.starts, []);
   assert.equal(posted.length, 1);
-  assert.equal(body(posted[0]!), '@usera Start a manual run now?\n\nReply `@samplebot yes` within 24 h to run it, or `@samplebot no`.');
+  assert.equal(body(posted[0]!), '@usera Start a manual run now?\n\nReply `/bot yes` within 24 h to run it, or `/bot no`.');
   const marker = parseMarker(posted[0]!)!;
   assert.equal(marker.actionId, a.id);
   assert.equal(marker.cls, 'model');
@@ -233,7 +238,7 @@ test('confirm action: one proposal comment, nothing runs; @samplebot yes then ru
   assert.ok(!posted[0]!.includes('ROUTER-REPLY-SENTINEL'));
   assert.equal(s.m.calls.length, 1);
 
-  const yes = await say(s, '@samplebot yes');
+  const yes = await say(s, '/bot yes');
   assert.deepEqual(s.starts, ['manual']);
   assert.equal(body(yes.posted[0]!), '@usera Confirmed: run.');
   assert.equal(s.m.calls.length, 1);

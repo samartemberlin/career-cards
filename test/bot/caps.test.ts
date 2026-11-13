@@ -9,6 +9,7 @@ import { FakeTrello } from '../support/fake-trello.ts';
 import { loadUsage, capClassOf, overCap } from '../../src/bot/caps.ts';
 import type { Usage } from '../../src/bot/caps.ts';
 import type { Settings } from '../../src/config/schema.ts';
+import { finishReply } from '../../src/bot/reply.ts';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -187,4 +188,21 @@ test('caps 0 refuses everything of that class', () => {
   assert.ok(overCap('static',   'c1', usage(), capsZeroStatic)   !== null, 'static=0 refuses with 0 usage');
   assert.ok(overCap('model',    'c1', usage(), capsZeroModel)    !== null, 'model=0 refuses with 0 usage');
   assert.ok(overCap('research', 'c1', usage(), capsZeroResearch) !== null, 'research=0 refuses with 0 usage');
+});
+
+test('every cap refusal survives finishReply whole: it names its setting without a dotted name', () => {
+  const identity = { mask: (t: string) => t, hasDetail: () => false };
+  const refusals: [string, string][] = [
+    [overCap('static', 'c1', usage({ static: 100 }), DEFAULT_CAPS)!, 'static_per_day'],
+    [overCap('model', 'c1', usage({ model: 30 }), DEFAULT_CAPS)!, 'model_per_day'],
+    [overCap('model', 'c1', usage({ model: 8, modelByCard: [['c1', 8]] }), DEFAULT_CAPS)!, 'model_per_card_per_day'],
+    [overCap('research', 'c1', usage({ research: 10 }), DEFAULT_CAPS)!, 'research_per_day'],
+  ];
+  for (const [text, key] of refusals) {
+    const [part, ...rest] = finishReply({ text, author: 'usera', marker: { actionId: 'a'.repeat(24), cls: 'refusal' }, masker: identity, allowedLinks: [] });
+    assert.equal(rest.length, 0);
+    assert.doesNotMatch(part!, /link removed/, text);
+    const shown = part!.split('\n')[0]!.replace(/\\(.)/g, '$1');
+    assert.ok(shown.includes(`raise \`${key}\` under caps on the Settings card`), shown);
+  }
 });

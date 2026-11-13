@@ -133,6 +133,7 @@ async function respond(d: DispatchDeps, a: CommentAction, signal: AbortSignal): 
   const { settings } = g;
   const now = d.now();
   const botName = d.me.username;
+  const trigger = { botUsername: botName, keyword: settings.bot_keyword };
 
   let cfg: Promise<UserConfig> | undefined;
   const config = () => (cfg ??= readUserConfig(d.api, d.boards));
@@ -146,7 +147,7 @@ async function respond(d: DispatchDeps, a: CommentAction, signal: AbortSignal): 
     let parts: string[];
     try {
       parts = r.proposal
-        ? finishProposal({ text: r.text, botName, author: a.author, marker: { ...marker, proposal: r.proposal }, masker, allowedLinks: links })
+        ? finishProposal({ text: r.text, keyword: trigger.keyword, author: a.author, marker: { ...marker, proposal: r.proposal }, masker, allowedLinks: links })
         : finishReply({ text: r.text, author: a.author, marker, masker, allowedLinks: links });
     } catch (e) {
       if (!(e instanceof PrivacyError)) throw e;
@@ -187,7 +188,7 @@ async function respond(d: DispatchDeps, a: CommentAction, signal: AbortSignal): 
   let reply: () => Promise<Reply>;
   let confirms: { actionId: string; spec: ActionSpec; args: unknown } | null = null;
 
-  const m = matchStatic(a.text, botName);
+  const m = matchStatic(a.text, trigger);
   if (m.kind === 'bad_args') {
     reply = async () => ({ text: m.message, cls });
   } else if (m.kind === 'none') {
@@ -196,7 +197,7 @@ async function respond(d: DispatchDeps, a: CommentAction, signal: AbortSignal): 
     reply = async () => {
       if (signal.aborted) return { text: TIMEOUT_REPLY, cls: 'refusal' };
       try {
-        const r = await handleFreeText(ctx, botName);
+        const r = await handleFreeText(ctx, trigger);
         return { ...r, cls: r.uncounted ? 'refusal' : r.cls ?? 'model' };
       } catch (e) {
         if (signal.aborted) return { text: TIMEOUT_REPLY, cls: 'refusal' };
@@ -205,7 +206,7 @@ async function respond(d: DispatchDeps, a: CommentAction, signal: AbortSignal): 
       }
     };
   } else if (m.kind === 'builtin' && m.name === 'help') {
-    reply = async () => ({ text: helpText(botName), cls });
+    reply = async () => ({ text: helpText(trigger.keyword), cls });
   } else if (m.kind === 'builtin') {
     const p = findPending(g.comments, { botId: d.me.id, now });
     if (p.kind === 'none') reply = async () => ({ text: 'Nothing to confirm on this card.', cls });

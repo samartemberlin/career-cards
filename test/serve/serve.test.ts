@@ -115,7 +115,7 @@ test('end to end: a signed @samplebot help → one bot comment with the help tex
   const id = await say('@samplebot help');
   const posted = s.fake.commentsOn(JOB_CARD);
   assert.equal(posted.length, 1);
-  assert.match(posted[0]!, /@samplebot last/);
+  assert.match(posted[0]!, /\/bot last/);
   assert.deepEqual(parseMarker(posted[0]!), { actionId: id, cls: 'static' });
 
   await say('@samplebot help', id);

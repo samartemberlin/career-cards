@@ -68,8 +68,8 @@ test('start_run: the copy for each start result', async () => {
 
 test('helpText: one line per registered action in catalogue order, then yes/no', () => {
   const registered = CATALOGUE.filter((c) => HANDLERS[c.id]);
-  const lines = helpText('samplebot').split('\n');
+  const lines = helpText('/jobs').split('\n');
   assert.equal(lines.length, registered.length + 1);
-  registered.forEach((c, i) => assert.equal(lines[i], `@samplebot ${c.usage} — ${c.about}`));
-  assert.match(lines.at(-1)!, /^@samplebot yes \/ @samplebot no — /);
+  registered.forEach((c, i) => assert.equal(lines[i], `/jobs ${c.usage} — ${c.about}`));
+  assert.match(lines.at(-1)!, /^\/jobs yes \/ \/jobs no — /);
 });

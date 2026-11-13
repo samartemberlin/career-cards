@@ -14,7 +14,7 @@ Each user runs their own copy of this bot. Status: built = on `main` with tests;
 
 - As a user I see each night's new jobs as one Trello column, best first.
 - As a user I change search terms, filters, rubric or providers by editing a card; the next run uses them.
-- As a user I ask `@bot` about a job card and get the answer as a comment.
+- As a user I ask `/bot` about a job card and get the answer as a comment.
 - As a user I can tell why a job never got a card ([why.ts](../src/bot/why.ts)).
 - As a user I see on one board whether each run worked.
 - As the owner I help a friend set up their own worker without holding their data or tokens.
@@ -52,17 +52,17 @@ Each user runs their own copy of this bot. Status: built = on `main` with tests;
 5. Archive the cards of run columns the user archived. Write one status card, `✅` or `❌`, on top of System › Runs.
 6. Jobs not scored (quota, cap) get no card and are picked up next run.
 
-**`@bot` command**
-1. The user comments `@bot <verb> [args]` or a question on any of their three boards.
+**`/bot` command**
+1. The user comments `/bot <verb> [args]` or a question on any of their three boards. The keyword is `bot_keyword` in Settings; `@<bot username>` also works.
 2. The gate drops unsigned, foreign, repeated or non-member comments silently; over-cap ones get a one-line refusal.
 3. A known verb runs its action; anything else goes to the router, which answers, asks, or picks one action.
-4. Actions marked `confirm` wait for `@bot yes`: 24 h at most, and any later bot reply on the card closes the proposal. The reply is posted as a comment.
+4. Actions marked `confirm` wait for `/bot yes`: 24 h at most, and any later bot reply on the card closes the proposal. The reply is posted as a comment.
 
 **Onboarding**
 1. Run the [onboarding tool](../tools/onboard.ts) (`--dry-run` first): three private boards (Jobs, Profiles, System), bot added; it prints the three board IDs.
 2. Fork, deploy to Northflank from the template using those board IDs, add secret groups.
 3. Run the tool again with `--url <service url>` to register webhooks; create the one Trello automation rule by hand, as the tool prints it (Trello has no API for it).
-4. Fill `Settings`, `Personal details`, `CV` and one profile column; comment `@bot run` on the System board.
+4. Fill `Settings`, `Personal details`, `CV` and one profile column; comment `/bot run` on the System board.
 
 **Migration from samjobs** (per user, samjobs keeps running until cutover)
 1. Test user with made-up profile on test boards: three clean nightly runs.
