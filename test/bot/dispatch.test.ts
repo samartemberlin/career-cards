@@ -154,13 +154,18 @@ test('@samplebot deep → `deep` isn\'t available yet.', async () => {
   assert.equal(markerOf(posted[0]!).cls, 'research');
 });
 
-test('@samplebot what about this? → the help pointer, no handler called', async () => {
+test('free text goes to the router: one model call, its reply posted with class model', async () => {
   const s = await ready(setup());
+  const m = fakeModel(() => JSON.stringify({ reply: 'It looks like a good match.', action: null }));
+  s.deps.env = { ...s.deps.env, PATH: '/usr/bin', HOME: '/home/app', CLAUDE_CODE_OAUTH_TOKEN: 'tok-claude-0000', LLM_RPM: '0' };
+  s.deps.call = m.call;
   let called = 0;
   const restore = withHandler('show_last_run', async () => { called++; return { text: 'x' }; });
   try {
-    const { posted } = await say(s, '@samplebot what about this?');
-    assert.match(body(posted[0]!), /^@usera I only know these commands for now:\n@samplebot open /);
+    const { a, posted } = await say(s, '@samplebot what about this?');
+    assert.deepEqual(m.calls.map((c) => c.stage), ['router']);
+    assert.equal(body(posted[0]!), '@usera It looks like a good match.');
+    assert.deepEqual(markerOf(posted[0]!), { actionId: a.id, cls: 'model' });
   } finally {
     restore();
   }

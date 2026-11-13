@@ -39,7 +39,7 @@ Each user runs their own copy of this bot. Status: built = on `main` with tests;
 | Webhook service, gate, caps, `yes`/`no`, `open`/`why`/`last`/`run`, reply checks | [serve.ts](../src/serve.ts), [app.ts](../src/serve/app.ts), [gate.ts](../src/serve/gate.ts), [caps.ts](../src/bot/caps.ts), [confirm.ts](../src/bot/confirm.ts), [dispatch.ts](../src/bot/dispatch.ts), [handlers.ts](../src/bot/handlers.ts), [reply.ts](../src/bot/reply.ts), [safe-fetch.ts](../src/net/safe-fetch.ts) |
 | Deploy template, onboarding tool | [deploy/northflank/template.json](../deploy/northflank/template.json), [onboard.ts](../tools/onboard.ts) ([plan](../tools/onboard/plan.ts), [apply](../tools/onboard/apply.ts)) |
 | Migration from samjobs | planned (PR 6) |
-| Router, `needs`, `legit`, `fit`, `cv`, `feedback` | planned (PR 7) |
+| Router, `needs`, `legit`, `fit`, `cv`, `feedback`, reply checks | [router.ts](../src/bot/router.ts), [stages/](../src/bot/stages/), [feedback.ts](../src/bot/feedback.ts), [reply.ts](../src/bot/reply.ts) |
 | Research: `company`, `deep` | planned (PR 8) |
 
 ## Key scenarios
