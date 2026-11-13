@@ -15,7 +15,7 @@ import type { ScanRow, SourceError, SourceResult } from '../pipeline/sources/typ
 import type { ScanPlan } from './sources-plan.ts';
 
 const ROOT = join(fileURLToPath(import.meta.url), '../../..');
-const CAREER_OPS_DIR = join(ROOT, 'career-ops');
+export const CAREER_OPS_DIR = join(ROOT, 'career-ops');
 const SCAN_PROFILE = join(ROOT, 'config', 'defaults', 'scan-profile.yml');
 const DEFAULT_TIMEOUT_MS = 20 * 60_000;
 const STDOUT_TAIL = 2_000;

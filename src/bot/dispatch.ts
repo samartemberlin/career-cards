@@ -178,6 +178,7 @@ async function respond(d: DispatchDeps, a: CommentAction, signal: AbortSignal): 
   const ctx: CommandCtx = {
     api: guardWrites(d.api, signal), boards: d.boards, me: d.me, settings, action: a, now, config,
     starter: guardStarter(d.starter, signal), net: d.net, log: d.log, env: d.env, signal, comments: g.comments,
+    researchCap: async () => overCap('research', a.cardId, await loadUsage(d.api, d.boards, { botId: d.me.id, now }), settings.caps),
     ...(d.call ? { call: d.call } : {}),
   };
 
@@ -196,7 +197,7 @@ async function respond(d: DispatchDeps, a: CommentAction, signal: AbortSignal): 
       if (signal.aborted) return { text: TIMEOUT_REPLY, cls: 'refusal' };
       try {
         const r = await handleFreeText(ctx, botName);
-        return { ...r, cls: r.uncounted ? 'refusal' : 'model' };
+        return { ...r, cls: r.uncounted ? 'refusal' : r.cls ?? 'model' };
       } catch (e) {
         if (signal.aborted) return { text: TIMEOUT_REPLY, cls: 'refusal' };
         d.log(`router failed on ${a.id}: ${firstLine(e)}`);
