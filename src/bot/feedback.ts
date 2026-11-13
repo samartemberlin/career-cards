@@ -28,13 +28,13 @@ export async function findFeedbackCards(
   });
 }
 
-/** Builds the comment posted on the Feedback card. The user's text is quoted verbatim; `@` signs are stripped. */
+/** Builds the comment posted on the Feedback card. The user's text is quoted verbatim; `@` before word characters (Trello mentions) is stripped; email-style `@` is kept intact. */
 export function feedbackComment(job: JobFields, cardUrl: string, text: string): string {
   const company = escapeText(job.company);
   const title = escapeText(job.title);
   const score = job.score !== null ? String(job.score) : '–';
-  const url = /^https?:\/\/[^\s<>()[\]{}`*_\\|]+$/i.test(job.url) ? job.url : '–';
-  const quoted = text.replace(/@(?=[A-Za-z0-9_])/g, '').split('\n').map((l) => `> ${l}`).join('\n');
+  const url = /^https?:\/\/[^\s<>()[\]{}`\\|]+$/i.test(job.url) ? job.url : '–';
+  const quoted = text.replace(/(^|[^A-Za-z0-9._%+-])@+(?=[A-Za-z0-9_])/g, '$1').split('\n').map((l) => `> ${l}`).join('\n');
   return `Feedback on [${company} — ${title}](${cardUrl}) · score ${score}\nPosting: ${url}\n\n${quoted}`;
 }
 

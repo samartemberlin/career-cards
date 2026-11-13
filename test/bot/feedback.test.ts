@@ -128,6 +128,29 @@ test('feedbackComment: URL with Markdown-active chars prints –', () => {
   assert.ok(!result.includes('evil.example'), `planted URL should not appear: ${result}`);
 });
 
+test('feedbackComment: URL with underscores and query params passes through', () => {
+  const job: JobFields = {
+    key: 'k', company: 'Co', title: 'Role',
+    url: 'https://jobs.example.com/External_Careers/?job_id=123&src=board',
+    location: '', posted: '', deadline: '', why: '', jd: '', score: null,
+  };
+  const result = feedbackComment(job, 'https://trello.com/c/x', 'text');
+  assert.match(result, /Posting: https:\/\/jobs\.example\.com\/External_Careers\/\?job_id=123/);
+});
+
+test('feedbackComment: @@bob produces no mention; email @ is kept', () => {
+  const job: JobFields = {
+    key: 'k', company: 'Co', title: 'Role', url: '', location: '',
+    posted: '', deadline: '', why: '', jd: '', score: null,
+  };
+  // @@bob at start: both @ signs removed → no @bob mention
+  const r1 = feedbackComment(job, 'https://trello.com/c/x', '@@bob great!');
+  assert.ok(!r1.includes('@bob'), `@@bob must not leave a mention: ${r1}`);
+  // email-style @: kept intact
+  const r2 = feedbackComment(job, 'https://trello.com/c/x', 'jane@x.example');
+  assert.match(r2, /jane@x\.example/);
+});
+
 test('feedbackComment: score null prints –', () => {
   const job: JobFields = {
     key: 'k', company: 'Co', title: 'Role', url: '', location: '',
