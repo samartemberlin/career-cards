@@ -258,6 +258,8 @@ export type ModelProcessOpts = {
   spawnImpl?: SpawnLike;
   /** Kills the child; the promise rejects with the abort reason. */
   signal?: AbortSignal;
+  /** After an abort, SIGKILL a child still alive this long after SIGTERM. */
+  killAfterMs?: number;
 };
 
 /** A non-zero exit: what the process printed, for the caller to classify. */
@@ -268,15 +270,21 @@ export type ModelProcessError = Error & { code: number | null; stdout: string; s
  * A non-zero exit rejects with a ModelProcessError; a kill (timeout) or spawn failure rejects with a plain Error.
  */
 export function runModelProcess(args: string[], input: string, opts: ModelProcessOpts): Promise<string> {
-  const { timeoutMs = 240000, env, cwd, tools, spawnImpl = spawn, signal } = opts;
+  const { timeoutMs = 240000, env, cwd, tools, spawnImpl = spawn, signal, killAfterMs = 5000 } = opts;
   const toolFlags = MODEL_TOOL_FLAGS[tools];
   if (!toolFlags) return Promise.reject(new Error(`unknown tools mode: ${String(tools)}`));
   if (signal?.aborted) return Promise.reject(signal.reason);
   return new Promise((resolve, reject) => {
     const child = spawnImpl('claude', [...args, ...toolFlags], { cwd, env, stdio: ['pipe', 'pipe', 'pipe'], timeout: timeoutMs });
-    const onAbort = () => { child.kill(); reject(signal!.reason); };
+    let killer: ReturnType<typeof setTimeout> | undefined;
+    const onAbort = () => {
+      child.kill();
+      killer = setTimeout(() => child.kill('SIGKILL'), killAfterMs);
+      killer.unref();
+      reject(signal!.reason);
+    };
     signal?.addEventListener('abort', onAbort, { once: true });
-    child.on('close', () => signal?.removeEventListener('abort', onAbort));
+    child.on('close', () => { signal?.removeEventListener('abort', onAbort); clearTimeout(killer); });
     let stdout = '', stderr = '';
     child.stdout?.on('data', (d) => { stdout += d; });
     child.stderr?.on('data', (d) => { stderr += d; });
@@ -401,6 +409,7 @@ type CallError = Error & { coolMs?: number; modelGone?: boolean };
 /** Try each provider in order. One that exhausts its retries cools down (2 min, or hours for a daily quota). */
 export async function callLLM(cfg: LlmConfig, messages: Message[], opts: CallOpts = {}): Promise<LlmReply> {
   const { fetchImpl = fetch as unknown as FetchJson, retries, execImpl = runModelProcess, log = console.log, signal } = opts;
+  signal?.throwIfAborted();
   const providers = cfg.providers ?? [cfg];
   const multi = providers.length > 1;
   // With a fallback available, fail over after one retry instead of sleeping through a quota window.

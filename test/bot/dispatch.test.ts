@@ -11,7 +11,7 @@ import type { CommentAction } from '../../src/serve/gate.ts';
 import { handleComment } from '../../src/bot/dispatch.ts';
 import type { DispatchDeps } from '../../src/bot/dispatch.ts';
 import { HANDLERS } from '../../src/bot/handlers.ts';
-import type { Handler } from '../../src/bot/handlers.ts';
+import type { CommandCtx, Handler } from '../../src/bot/handlers.ts';
 import { formatMarker, parseMarker } from '../../src/bot/marker.ts';
 import type { ReplyMarker } from '../../src/bot/marker.ts';
 import { proposal } from '../../src/bot/confirm.ts';
@@ -29,6 +29,7 @@ const BOARDS: UserBoards = { jobs: 'fa4e00000000000000000005', profiles: 'fa4e00
 const JOB_CARD = 'fa4e00000000000000000012';
 const SETTINGS_CARD = 'fa4e00000000000000000476';
 const PERSONAL_DETAILS_CARD = 'fa4e00000000000000000444';
+const PERSONAL_DETAILS_CHECKLIST = 'fa4e00000000000000000445';
 const RUNS_LIST = 'fa4e0000000000000000047f';
 const USER_A: TMember = { id: 'fa4e0000000000000000a001', username: 'usera' };
 const NOW = new Date('2026-11-12T12:00:00.000Z');
@@ -319,21 +320,213 @@ test('the gate drops silently: a comment without a mention gets no reply', async
   assert.deepEqual(posted, []);
 });
 
-test('a hung handler times out, is logged, and the next comment on the card runs', async () => {
+const FAST = { commentTimeoutMs: 50, commentGraceMs: 50 };
+const TOO_LONG = '@usera Sorry, that took too long.';
+const aborted = (signal: AbortSignal) => new Promise<void>((r) => signal.addEventListener('abort', () => r(), { once: true }));
+
+function gate<T = void>() {
+  let open!: (v: T) => void;
+  const p = new Promise<T>((r) => { open = r; });
+  return { p, open };
+}
+
+async function until(cond: () => boolean, what: string) {
+  for (let i = 0; i < 200 && !cond(); i++) await new Promise((r) => setTimeout(r, 5));
+  assert.ok(cond(), what);
+}
+
+test('a hung handler times out, is logged, and the next comment on the card runs after timeout + grace', async () => {
   const s = await ready(setup());
-  s.deps.commentTimeoutMs = 50;
+  Object.assign(s.deps, FAST);
   const restore = withHandler('show_last_run', () => new Promise(() => {}));
   try {
     const hung = action('@samplebot last');
     const next = action('@samplebot help');
+    const t0 = Date.now();
     const first = handleComment(s.deps, hung);
     await handleComment(s.deps, next);
+    assert.ok(Date.now() - t0 >= 95, 'the next comment waited for the grace');
     await first;
     assert.ok(s.logs.includes(`comment ${hung.id} timed out`));
+    assert.ok(s.logs.includes(`comment ${hung.id} still running after the grace; its writes are refused`));
     const posted = s.fake.commentsOn(JOB_CARD);
     assert.equal(posted.length, 1);
     assert.equal(markerOf(posted[0]!).actionId, next.id);
   } finally {
     restore();
   }
+});
+
+test('ctx.signal is aborted at the timeout, with the plain AbortError reason', async () => {
+  const s = await ready(setup());
+  Object.assign(s.deps, FAST);
+  let reason: unknown;
+  const restore = withHandler('show_last_run', async (ctx) => {
+    assert.equal(ctx.signal.aborted, false);
+    await aborted(ctx.signal);
+    reason = ctx.signal.reason;
+    throw reason;
+  });
+  try {
+    const { posted } = await say(s, '@samplebot last');
+    assert.equal((reason as Error).name, 'AbortError');
+    assert.deepEqual(posted.map(body), [TOO_LONG]);
+  } finally {
+    restore();
+  }
+});
+
+test('a handler gets env, call and the gate\'s comments unchanged', async () => {
+  const s = await ready(setup());
+  const call = { retries: 0 };
+  s.deps.call = call;
+  s.fake.addComment(JOB_CARD, USER_A, 'older', new Date(NOW.getTime() - 180_000));
+  s.fake.addComment(JOB_CARD, USER_A, 'newer', new Date(NOW.getTime() - 120_000));
+  let seen: Pick<CommandCtx, 'env' | 'call' | 'comments'> | undefined;
+  const restore = withHandler('show_last_run', async (ctx) => { seen = ctx; return { text: 'ok' }; });
+  try {
+    await say(s, '@samplebot last');
+  } finally {
+    restore();
+  }
+  assert.equal(seen!.env, s.deps.env);
+  assert.equal(seen!.call, call);
+  assert.deepEqual(seen!.comments.map((c) => c.text), ['newer', 'older']);
+});
+
+test('a timed-out handler cannot write after the timeout; only the timeout reply is posted', async () => {
+  const s = await ready(setup());
+  Object.assign(s.deps, FAST);
+  const refused: string[] = [];
+  const restore = withHandler('show_last_run', async (ctx) => {
+    await aborted(ctx.signal);
+    const tries: [string, () => Promise<unknown>][] = [
+      ['comment', () => ctx.api.comment(JOB_CARD, 'late')],
+      ['createList', () => ctx.api.createList(BOARDS.system, 'late', 'bottom')],
+      ['start', () => ctx.starter.start('manual')],
+    ];
+    for (const [name, f] of tries) await f().catch((e: Error) => { if (e.name === 'AbortError') refused.push(name); });
+    return { text: 'late answer' };
+  });
+  try {
+    const { posted } = await say(s, '@samplebot last');
+    assert.deepEqual(refused, ['comment', 'createList', 'start']);
+    assert.deepEqual(s.starts, []);
+    assert.deepEqual(posted.map(body), ['@usera late answer']);
+  } finally {
+    restore();
+  }
+});
+
+test('a stale handler that overruns the grace cannot post, nor write', async () => {
+  const s = await ready(setup());
+  Object.assign(s.deps, FAST);
+  const hold = gate();
+  let late: string | undefined;
+  const restore = withHandler('show_last_run', async (ctx) => {
+    await hold.p;
+    late = await ctx.api.comment(JOB_CARD, 'late').then(() => 'posted', (e: Error) => e.name);
+    return { text: 'late answer' };
+  });
+  try {
+    const a = action('@samplebot last');
+    await handleComment(s.deps, a);
+    hold.open();
+    await until(() => s.logs.some((l) => l.startsWith(`comment ${a.id} failed: AbortError`)), 'the late reply was refused');
+    assert.equal(late, 'AbortError');
+    assert.deepEqual(s.fake.commentsOn(JOB_CARD), []);
+  } finally {
+    restore();
+  }
+});
+
+test('the next comment on the card waits for the timed-out one until the grace ends', async () => {
+  const s = await ready(setup());
+  Object.assign(s.deps, { commentTimeoutMs: 50, commentGraceMs: 5_000 });
+  const events: string[] = [];
+  const r1 = withHandler('show_last_run', async (ctx) => {
+    await aborted(ctx.signal);
+    await new Promise((r) => setTimeout(r, 30));
+    events.push('first settled');
+    return { text: 'first' };
+  });
+  const r2 = withHandler('start_run', async () => { events.push('second started'); return { text: 'second' }; });
+  try {
+    const t0 = Date.now();
+    const first = handleComment(s.deps, action('@samplebot last'));
+    await handleComment(s.deps, action('@samplebot run'));
+    await first;
+    assert.deepEqual(events, ['first settled', 'second started']);
+    assert.ok(Date.now() - t0 < 2_000, 'the chain moved on when the work settled, not at the end of the grace');
+    assert.deepEqual(s.fake.commentsOn(JOB_CARD).map(body), ['@usera first', '@usera second']);
+  } finally {
+    r2();
+    r1();
+  }
+});
+
+test('two queued yes comments around a timeout run the action once: hung in the action', async () => {
+  const s = await ready(setup());
+  Object.assign(s.deps, FAST);
+  propose(s, newId());
+  const hold = gate();
+  s.starter.start = async (t) => { s.starts.push(t); await hold.p; };
+  const first = action('@samplebot yes');
+  const p1 = handleComment(s.deps, first);
+  await handleComment(s.deps, action('@samplebot yes'));
+  await p1;
+  hold.open();
+  await until(() => s.logs.some((l) => l.startsWith(`comment ${first.id} failed: AbortError`)), 'the late reply was refused');
+  assert.deepEqual(s.starts, ['manual']);
+  assert.deepEqual(s.fake.commentsOn(JOB_CARD).slice(1).map(body), ['@usera Confirmed: run.', '@usera Nothing to confirm on this card.']);
+});
+
+test('two queued yes comments around a timeout run the action once: hung before the confirmation', async () => {
+  const s = await ready(setup());
+  Object.assign(s.deps, FAST);
+  propose(s, newId());
+  const hold = gate();
+  let held = false;
+  s.deps.api = {
+    ...s.api,
+    boardComments: async (...x) => {
+      if (!held) { held = true; await hold.p; }
+      return s.api.boardComments(...x);
+    },
+  };
+  const first = action('@samplebot yes');
+  const p1 = handleComment(s.deps, first);
+  await handleComment(s.deps, action('@samplebot yes'));
+  await p1;
+  hold.open();
+  await until(() => s.logs.some((l) => l.startsWith(`comment ${first.id} failed: AbortError`)), 'the stale yes was refused');
+  assert.deepEqual(s.starts, ['manual']);
+  assert.deepEqual(s.fake.commentsOn(JOB_CARD).slice(1).map(body),
+    ['@usera Confirmed: run.', '@usera Run started. Its status card will appear on top of System › Runs.']);
+});
+
+test('an uncounted result is posted as refusal and does not count', async () => {
+  const s = await ready(setup());
+  const restore = withHandler('explain_fit', async () => ({ text: '`fit` works on job cards only.', uncounted: true }));
+  try {
+    const { posted } = await say(s, '@samplebot fit');
+    assert.equal(markerOf(posted[0]!).cls, 'refusal');
+  } finally {
+    restore();
+  }
+  assert.equal((await loadUsage(s.api, BOARDS, { botId: s.deps.me.id, now: NOW })).model, 0);
+});
+
+test('a reply that fails masking posts the constant line, counted', async () => {
+  const s = await ready(setup());
+  await s.raw.addCheckItem(PERSONAL_DETAILS_CHECKLIST, '[USER]', false);
+  const restore = withHandler('explain_fit', async () => ({ text: 'about [US\u200BER]' }));
+  try {
+    const { posted } = await say(s, '@samplebot fit');
+    assert.deepEqual(posted.map(body), ["@usera I couldn't post my answer: masking failed on it. Check the Personal details card."]);
+    assert.equal(markerOf(posted[0]!).cls, 'model');
+  } finally {
+    restore();
+  }
+  assert.equal((await loadUsage(s.api, BOARDS, { botId: s.deps.me.id, now: NOW })).model, 1);
 });
