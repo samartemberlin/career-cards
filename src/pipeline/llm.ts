@@ -58,12 +58,27 @@ export type LlmConfig = Provider & { providers?: Provider[] };
 export type FetchJson = (url: string, init?: RequestInit) => Promise<{
   ok: boolean; status: number; text: () => Promise<string>; json: () => Promise<any>; headers?: { get(name: string): string | null };
 }>;
-export type CallOpts = { fetchImpl?: FetchJson; retries?: number; execImpl?: typeof runModelProcess; log?: (msg: string) => void };
+export type CallOpts = {
+  fetchImpl?: FetchJson; retries?: number; execImpl?: typeof runModelProcess; log?: (msg: string) => void;
+  /** The caller gave up: the call rejects with its reason, tries no other provider and cools none down. */
+  signal?: AbortSignal;
+};
 export type LlmReply = { text: string; usage: Usage; provider: string; model: string };
 
 const DEFAULT_BASE = 'https://generativelanguage.googleapis.com/v1beta/openai';
 const HOUR = 3600 * 1000;
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** `p`, or a rejection with the abort reason as soon as `signal` fires. */
+function orAbort<T>(p: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (!signal) return p;
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener('abort', onAbort, { once: true });
+    p.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
+  });
+}
 
 /** Spaces request starts at least 60/rpm seconds apart, across concurrent callers. */
 export function createLimiter(rpm: number | undefined): () => Promise<void> {
@@ -145,9 +160,9 @@ export function rankModels(name: string | undefined, models: ListedModel[]): str
 }
 
 /** Ask the provider which models it has now, ranked; empty when it cannot say. */
-async function discoverModels(p: Provider, fetchImpl: FetchJson): Promise<string[]> {
+async function discoverModels(p: Provider, fetchImpl: FetchJson, signal?: AbortSignal): Promise<string[]> {
   try {
-    const res = await fetchImpl(`${p.baseUrl}/models`, { headers: { authorization: `Bearer ${p.apiKey}` }, signal: AbortSignal.timeout(20000) });
+    const res = await fetchImpl(`${p.baseUrl}/models`, { headers: { authorization: `Bearer ${p.apiKey}` }, signal: signal ? AbortSignal.any([AbortSignal.timeout(20000), signal]) : AbortSignal.timeout(20000) });
     if (!res.ok) return [];
     const body = await res.json();
     return rankModels(p.name, body.data ?? body.models ?? []);
@@ -227,6 +242,8 @@ export type SpawnLike = (cmd: string, args: string[], options: SpawnOptions) => 
 //   --allowedTools <tools...>   tools allowed without a permission prompt (none can be answered in -p mode)
 //   --strict-mcp-config         "Only use MCP servers from --mcp-config": we pass none, so no MCP servers at all
 // Re-check these when the CLI is upgraded: a renamed flag must not silently re-enable tools.
+// `--restricted` (in the help of 2.1.323) is left out until a test shows the pinned CLI accepts it: an unknown flag
+// would make every claude call fail.
 export const MODEL_TOOL_FLAGS = {
   none: ['--tools', '', '--strict-mcp-config'],
   web: ['--tools', 'WebSearch,WebFetch', '--allowedTools', 'WebSearch,WebFetch', '--strict-mcp-config'],
@@ -239,6 +256,8 @@ export type ModelProcessOpts = {
   cwd: string;
   tools: 'none' | 'web';
   spawnImpl?: SpawnLike;
+  /** Kills the child; the promise rejects with the abort reason. */
+  signal?: AbortSignal;
 };
 
 /** A non-zero exit: what the process printed, for the caller to classify. */
@@ -249,11 +268,15 @@ export type ModelProcessError = Error & { code: number | null; stdout: string; s
  * A non-zero exit rejects with a ModelProcessError; a kill (timeout) or spawn failure rejects with a plain Error.
  */
 export function runModelProcess(args: string[], input: string, opts: ModelProcessOpts): Promise<string> {
-  const { timeoutMs = 240000, env, cwd, tools, spawnImpl = spawn } = opts;
+  const { timeoutMs = 240000, env, cwd, tools, spawnImpl = spawn, signal } = opts;
   const toolFlags = MODEL_TOOL_FLAGS[tools];
   if (!toolFlags) return Promise.reject(new Error(`unknown tools mode: ${String(tools)}`));
+  if (signal?.aborted) return Promise.reject(signal.reason);
   return new Promise((resolve, reject) => {
     const child = spawnImpl('claude', [...args, ...toolFlags], { cwd, env, stdio: ['pipe', 'pipe', 'pipe'], timeout: timeoutMs });
+    const onAbort = () => { child.kill(); reject(signal!.reason); };
+    signal?.addEventListener('abort', onAbort, { once: true });
+    child.on('close', () => signal?.removeEventListener('abort', onAbort));
     let stdout = '', stderr = '';
     child.stdout?.on('data', (d) => { stdout += d; });
     child.stderr?.on('data', (d) => { stderr += d; });
@@ -275,16 +298,17 @@ const modelCwd = () => (emptyDir ??= mkdtempSync(join(tmpdir(), 'career-cards-mo
 const withCool = (message: string, coolMs: number) => Object.assign(new Error(message), { coolMs });
 
 /** One call through the Claude Code CLI. Returns the same shape as an HTTP provider call. */
-async function callClaudeCli(p: Provider, messages: Message[], execImpl: typeof runModelProcess): Promise<LlmReply> {
+async function callClaudeCli(p: Provider, messages: Message[], execImpl: typeof runModelProcess, signal?: AbortSignal): Promise<LlmReply> {
   const system = messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n\n');
   const user = messages.filter((m) => m.role !== 'system').map((m) => m.content).join('\n\n');
   const args = ['-p', '--output-format', 'json', '--system-prompt', system, '--no-session-persistence',
     '--setting-sources', '', '--disable-slash-commands', '--model', p.model, ...(p.effort ? ['--effort', p.effort] : [])];
-  await p.wait?.();
+  await orAbort(p.wait?.() ?? Promise.resolve(), signal);
   let code: number | null = 0, stdout: string, stderr = '';
   try {
-    stdout = await execImpl(args, user, { timeoutMs: p.timeoutMs ?? 240000, env: p.procEnv ?? {}, cwd: modelCwd(), tools: 'none' });
+    stdout = await execImpl(args, user, { timeoutMs: p.timeoutMs ?? 240000, env: p.procEnv ?? {}, cwd: modelCwd(), tools: 'none', signal });
   } catch (e) {
+    if (signal?.aborted) throw signal.reason;
     const pe = e as Partial<ModelProcessError>;
     if (typeof pe.stdout !== 'string') throw withCool(`claude CLI failed: ${(e as Error).message}`, 120000);
     ({ stdout } = pe as ModelProcessError); code = pe.code ?? null; stderr = pe.stderr ?? '';
@@ -308,13 +332,14 @@ async function callClaudeCli(p: Provider, messages: Message[], execImpl: typeof 
   return { text: out.result, usage: { prompt_tokens: prompt, completion_tokens: u.output_tokens ?? 0, total_tokens: prompt + (u.output_tokens ?? 0) }, provider: p.name ?? 'claude', model: p.model };
 }
 
-type ProviderCallOpts = { fetchImpl: FetchJson; retries: number; execImpl: typeof runModelProcess };
+type ProviderCallOpts = { fetchImpl: FetchJson; retries: number; execImpl: typeof runModelProcess; signal?: AbortSignal };
 
-async function callProvider(p: Provider, messages: Message[], { fetchImpl, retries, execImpl }: ProviderCallOpts): Promise<LlmReply> {
+async function callProvider(p: Provider, messages: Message[], { fetchImpl, retries, execImpl, signal }: ProviderCallOpts): Promise<LlmReply> {
   if (!p.apiKey) throw new Error('no API key');
-  if (p.kind === 'claude-cli') return callClaudeCli(p, messages, execImpl);
+  if (p.kind === 'claude-cli') return callClaudeCli(p, messages, execImpl, signal);
+  const pause = (ms: number) => orAbort(sleep(ms), signal);
   for (let attempt = 0; ; attempt++) {
-    await p.wait?.();
+    await orAbort(p.wait?.() ?? Promise.resolve(), signal);
     let res: Awaited<ReturnType<FetchJson>>;
     try {
       res = await fetchImpl(`${p.baseUrl}/chat/completions`, {
@@ -324,11 +349,14 @@ async function callProvider(p: Provider, messages: Message[], { fetchImpl, retri
           model: p.model, messages, temperature: 0, response_format: { type: 'json_object' },
           ...(p.reasoningEffort ? { reasoning_effort: p.reasoningEffort } : {}),
         }),
-        signal: AbortSignal.timeout(p.timeoutMs ?? 240000),
+        signal: signal
+          ? AbortSignal.any([AbortSignal.timeout(p.timeoutMs ?? 240000), signal])
+          : AbortSignal.timeout(p.timeoutMs ?? 240000),
       });
     } catch (e) { // timeout / network: retry like a 5xx
+      if (signal?.aborted) throw signal.reason;
       if (attempt >= retries) throw new Error(`request failed after ${retries} retries: ${(e as Error).message}`);
-      await sleep(2000 * 2 ** attempt);
+      await pause(2000 * 2 ** attempt);
       continue;
     }
     if (res.status === 429 || res.status >= 500) {
@@ -338,7 +366,7 @@ async function callProvider(p: Provider, messages: Message[], { fetchImpl, retri
         throw withCool(`HTTP 429 daily quota exhausted: ${body.replace(/\s+/g, ' ').slice(0, 120)}`, 6 * HOUR);
       }
       if (attempt >= retries) throw withCool(`HTTP ${res.status} after ${retries} retries`, Math.max(120000, (hint ?? 0) * 1000));
-      await sleep(Math.max(2000 * 2 ** attempt, hint ? (hint + 1) * 1000 : 0));
+      await pause(Math.max(2000 * 2 ** attempt, hint ? (hint + 1) * 1000 : 0));
       continue;
     }
     if (!res.ok) {
@@ -372,7 +400,7 @@ type CallError = Error & { coolMs?: number; modelGone?: boolean };
 
 /** Try each provider in order. One that exhausts its retries cools down (2 min, or hours for a daily quota). */
 export async function callLLM(cfg: LlmConfig, messages: Message[], opts: CallOpts = {}): Promise<LlmReply> {
-  const { fetchImpl = fetch as unknown as FetchJson, retries, execImpl = runModelProcess, log = console.log } = opts;
+  const { fetchImpl = fetch as unknown as FetchJson, retries, execImpl = runModelProcess, log = console.log, signal } = opts;
   const providers = cfg.providers ?? [cfg];
   const multi = providers.length > 1;
   // With a fallback available, fail over after one retry instead of sleeping through a quota window.
@@ -383,21 +411,27 @@ export async function callLLM(cfg: LlmConfig, messages: Message[], opts: CallOpt
   for (let round = 0; round < 2; round++) {
     for (const p of providers) {
       if ((coolUntil.get(p.name) ?? 0) > Date.now() && multi) continue;
+      signal?.throwIfAborted();
       try {
-        return await callProvider(p, messages, { fetchImpl, execImpl, retries: tries });
+        return await callProvider(p, messages, { fetchImpl, execImpl, retries: tries, signal });
       } catch (err) {
+        if (signal?.aborted) throw signal.reason;
         const e = err as CallError;
         if (e.modelGone && p.auto) { // the default model was withdrawn: try the provider's current ones, best first
           p.triedModels ??= new Set([p.model]);
-          const next = (await discoverModels(p, fetchImpl)).filter((m) => !p.triedModels!.has(m)).slice(0, 3);
+          const next = (await discoverModels(p, fetchImpl, signal)).filter((m) => !p.triedModels!.has(m)).slice(0, 3);
+          signal?.throwIfAborted(); // discoverModels swallows the abort as "no models"
           for (const m of next) {
             p.triedModels.add(m);
             try {
-              const r = await callProvider({ ...p, model: m }, messages, { fetchImpl, execImpl, retries: tries });
+              const r = await callProvider({ ...p, model: m }, messages, { fetchImpl, execImpl, retries: tries, signal });
               log(`${p.name}: model ${p.model} is gone, now using ${m}`);
               p.model = m;
               return r;
-            } catch (e2) { errors.push(`${p.name}/${m}: ${(e2 as Error).message}`); }
+            } catch (e2) {
+              if (signal?.aborted) throw signal.reason;
+              errors.push(`${p.name}/${m}: ${(e2 as Error).message}`);
+            }
           }
         }
         errors.push(`${p.name ?? 'llm'}: ${e.message}`);
@@ -409,7 +443,7 @@ export async function callLLM(cfg: LlmConfig, messages: Message[], opts: CallOpt
     // Every provider was already cooling. Wait only if one is about to come back.
     const soonest = soonestCool();
     if (soonest > MAX_WAIT_MS) break;
-    await sleep(Math.max(0, soonest));
+    await orAbort(sleep(Math.max(0, soonest)), signal);
   }
   const cooling = multi && !errors.length ? 'all providers cooling down after earlier quota errors' : errors.join(' | ');
   throw new QuotaExhausted(`all providers failed: ${cooling}`, { transient: !daily && (errors.length > 0 || soonestCool() <= 10 * 60000) });

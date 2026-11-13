@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
+import { EventEmitter } from 'node:events';
+import { PassThrough } from 'node:stream';
 import {
   MODEL_TOOL_FLAGS, QuotaExhausted, callLLM, createLimiter, isDailyQuota, llmConfig, providerProblems, rankModels, retryHint,
   runModelProcess,
@@ -278,4 +281,93 @@ test('runModelProcess: a non-zero exit rejects with code, stdout and stderr', as
       spawnImpl: nodeInstead('process.stdout.write("{}"); process.stderr.write("bad"); process.exit(3)') }),
     (e: Error & { code?: number; stdout?: string; stderr?: string }) => e.code === 3 && e.stdout === '{}' && e.stderr === 'bad',
   );
+});
+
+test('MODEL_TOOL_FLAGS.none disables all tools and MCP servers', () => {
+  assert.deepEqual([...MODEL_TOOL_FLAGS.none], ['--tools', '', '--strict-mcp-config']);
+});
+
+test('MODEL_TOOL_FLAGS.web names exactly WebSearch,WebFetch', () => {
+  assert.deepEqual([...MODEL_TOOL_FLAGS.web],
+    ['--tools', 'WebSearch,WebFetch', '--allowedTools', 'WebSearch,WebFetch', '--strict-mcp-config']);
+});
+
+// --- aborts: the caller gave up, so it is not a provider failure ---
+const alphaBeta = () => llmConfig({
+  ALPHA_API_KEY: 'a', ALPHA_MODEL: 'm', ALPHA_BASE_URL: 'http://alpha.example/v1',
+  BETA_API_KEY: 'b', BETA_MODEL: 'm', BETA_BASE_URL: 'http://beta.example/v1', LLM_RPM: '0',
+}, { providers: ['alpha', 'beta'] });
+
+test('an aborted stage call stops the HTTP request and does not fail over', async () => {
+  const urls: string[] = [];
+  const signals: AbortSignal[] = [];
+  const ac = new AbortController();
+  const hanging: FetchJson = (url, init) => {
+    urls.push(url);
+    const s = init?.signal as AbortSignal;
+    signals.push(s);
+    if (urls.length === 1) queueMicrotask(() => ac.abort());
+    return new Promise((_res, rej) => s.addEventListener('abort', () => rej(s.reason), { once: true }));
+  };
+  await assert.rejects(callLLM(alphaBeta(), userMsg, { fetchImpl: hanging, signal: ac.signal }), { name: 'AbortError' });
+  assert.deepEqual(urls, ['http://alpha.example/v1/chat/completions']);
+  assert.equal(signals[0]?.aborted, true);
+
+  const after: string[] = [];
+  const ok: FetchJson = async (url) => { after.push(url); return okJson('{"x":1}'); };
+  await callLLM(alphaBeta(), userMsg, { fetchImpl: ok });
+  assert.deepEqual(after, ['http://alpha.example/v1/chat/completions'], 'alpha was not cooled down');
+});
+
+test('an already-aborted signal makes no call', async () => {
+  let calls = 0;
+  const f: FetchJson = async () => { calls++; return okJson('{}'); };
+  await assert.rejects(callLLM(alphaBeta(), userMsg, { fetchImpl: f, signal: AbortSignal.abort() }), { name: 'AbortError' });
+  assert.equal(calls, 0);
+});
+
+test('an abort during claude does not cool the provider down', async () => {
+  const cfg = () => llmConfig({ CLAUDE_CODE_OAUTH_TOKEN: 't', GEMINI_API_KEY: 'g', CLAUDE_RPM: '0', LLM_RPM: '0' }, { providers: ['claude', 'gemini'] });
+  const ac = new AbortController();
+  let gotSignal: AbortSignal | undefined;
+  const execImpl: typeof runModelProcess = (_a, _i, o) => {
+    gotSignal = o.signal;
+    queueMicrotask(() => ac.abort());
+    return new Promise((_res, rej) => o.signal?.addEventListener('abort', () => rej(o.signal?.reason), { once: true }));
+  };
+  let fetched = 0;
+  const fetchImpl: FetchJson = async () => { fetched++; return okJson('{}'); };
+  await assert.rejects(callLLM(cfg(), userMsg, { execImpl, fetchImpl, signal: ac.signal }), { name: 'AbortError' });
+  assert.equal(gotSignal?.aborted, true);
+  assert.equal(fetched, 0);
+  let ran = 0;
+  await callLLM(cfg(), userMsg, { execImpl: async () => { ran++; return cliOut({ result: 'ok' }); }, fetchImpl });
+  assert.equal(ran, 1);
+});
+
+/** A child that never exits on its own and records kill(). */
+function stuckChild(kills: (string | number | undefined)[]): SpawnLike {
+  return () => {
+    const child = Object.assign(new EventEmitter(), {
+      stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough(),
+      kill(sig?: NodeJS.Signals | number) { kills.push(sig); setImmediate(() => child.emit('close', null, 'SIGTERM')); return true; },
+    });
+    return child as unknown as ChildProcess;
+  };
+}
+
+test('an abort kills the claude child', async () => {
+  const kills: (string | number | undefined)[] = [];
+  const ac = new AbortController();
+  const p = runModelProcess([], 'in', { env: {}, cwd: '/', tools: 'none', spawnImpl: stuckChild(kills), signal: ac.signal });
+  ac.abort();
+  await assert.rejects(p, { name: 'AbortError' });
+  assert.equal(kills.length, 1);
+});
+
+test('runModelProcess with an already-aborted signal spawns nothing', async () => {
+  let spawned = 0;
+  const spawnImpl: SpawnLike = (...a) => { spawned++; return stuckChild([])(...a); };
+  await assert.rejects(runModelProcess([], '', { env: {}, cwd: '/', tools: 'none', spawnImpl, signal: AbortSignal.abort() }), { name: 'AbortError' });
+  assert.equal(spawned, 0);
 });
