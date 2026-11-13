@@ -457,6 +457,12 @@ describe('tools/onboard.ts', () => {
     assert.match(out, /https/);
   });
 
+  it('--url must have no path', async () => {
+    const { code, out } = await runCli(['--dry-run', '--owner-user', 'usera', '--url', 'https://x.code.run/api'], new FakeTrello());
+    assert.equal(code, 2);
+    assert.match(out, /path/);
+  });
+
   it('a state file with a malformed id is refused before any request', async () => {
     const fake = new FakeTrello();
     const lines: string[] = [];

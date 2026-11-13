@@ -46,7 +46,7 @@ function parseArgs(argv: string[]): Args {
     } catch {
       throw new UsageError('--url must be a URL');
     }
-    if (u.protocol !== 'https:' || u.search || u.hash || u.username || u.password) throw new UsageError('--url must be a plain https URL');
+    if (u.protocol !== 'https:' || u.search || u.hash || u.username || u.password || u.pathname !== '/') throw new UsageError('--url must be a plain https URL with no path');
   }
   return a;
 }
@@ -154,7 +154,7 @@ export async function main(
       return 1;
     }
     const all: BoardIds = { jobs: saved.jobs, profiles: saved.profiles, system: saved.system };
-    if (args.url !== undefined) {
+    if (args.url !== undefined && after.refuse.length === 0) {
       for (const w of await ensureWebhooks(botRaw, all, args.url)) {
         out(`${TITLE[w.board as Role]}: webhook ${w.result}`);
         ok &&= w.result === 'created' || w.result === 'exists';

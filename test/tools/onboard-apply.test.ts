@@ -210,6 +210,41 @@ describe('applyPlan through the CLI', () => {
     assert.match(out, /Jobs: not private \(org\)/);
     assert.deepEqual(writes(fake), []);
   });
+
+  it('skip webhooks when the after-apply check refuses', async () => {
+    // Create all boards on a first run.
+    const fake = new FakeTrello();
+    const state: { ids: Partial<BoardIds> } = { ids: {} };
+    const { code: c1 } = await cli(fake, state)(['--workspace', WS]);
+    assert.equal(c1, 0);
+
+    // On the second run, inject a stranger into the after-apply re-read (member reads 4–6 out of 6).
+    let memberFetches = 0;
+    const stranger = { id: 'f'.repeat(24), username: 'stranger' };
+    const base = twoMembers(fake);
+    const withStranger: typeof fetch = async (url, init) => {
+      const path = new URL(url instanceof Request ? url.url : String(url)).pathname.replace(/^\/1(?=\/)/, '');
+      if ((init?.method ?? 'GET').toUpperCase() === 'GET' && /^\/boards\/[^/]+\/members$/.test(path)) {
+        memberFetches++;
+        if (memberFetches > 3) {
+          const r = await base(url, init);
+          const existing = await r.json() as unknown[];
+          return new Response(JSON.stringify([...existing, stranger]), {
+            status: 200, headers: { 'content-type': 'application/json' },
+          });
+        }
+      }
+      return base(url, init);
+    };
+
+    const { code, out } = await cli(fake, state, withStranger)(['--workspace', WS, '--url', 'https://worker.example.com']);
+    // After-apply plan found the stranger — refusal present, webhooks must be skipped.
+    assert.match(out, /After apply:/);
+    assert.match(out, /stranger/);
+    // ensureWebhooks prints "Board: webhook created|exists"; neither should appear.
+    assert.ok(!/: webhook (created|exists)/.test(out), `expected no webhook result:\n${out}`);
+    assert.equal(code, 1, out);
+  });
 });
 
 describe('applyPlan', () => {
