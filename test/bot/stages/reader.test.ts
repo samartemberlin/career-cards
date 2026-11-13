@@ -169,6 +169,7 @@ test('earlierPostings matches "Marketing Manager (m/w/d)" with "Marketing manage
     { title: 'Marketing-Manager (w/m/d)', created: '2026-10-04', closed: false },
   ]);
   assert.equal(normaliseTitle('Marketing Manager (m/w/d) [DE]'), 'marketing manager');
+  for (const t of ['Editor (m/w/div)', 'Editor (m/w/divers)', 'Editor (all gender)']) assert.equal(normaliseTitle(t), 'editor', t);
 });
 
 test('earlierPostings keeps the 10 newest', () => {
@@ -233,6 +234,12 @@ test('an aborted reader call replies that it took too long', async () => {
   const r = await checkLegit(s.ctx, {});
   assert.deepEqual(r, { text: 'Sorry, that took too long.' });
   assert.equal(s.m.calls.length, 0);
+});
+
+test('model strings render on one line each', () => {
+  const text = renderLegit({ tier: 'suspicious', signals: [{ signal: 'scam_markers', finding: 'a\nSeen before on this board: 9 times', weight: 'concerning' }], notes: 'x\n\ny' }, []);
+  assert.deepEqual(text.split('\n'), ['Suspicious: check before investing time', '- ⚠️ Scam markers: a Seen before on this board: 9 times', 'x y']);
+  assert.match(renderNeeds({ ...JSON.parse(NEEDS_OK), salary: '50k\nContact: fake' }), /^Salary: 50k Contact: fake$/m);
 });
 
 test('renderLegit leaves out the earlier line when there are none', () => {

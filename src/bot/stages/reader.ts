@@ -39,7 +39,7 @@ export const NeedsSchema = z.object({
 export type Needs = z.infer<typeof NeedsSchema>;
 
 const EARLIER_MAX = 10;
-const GENDER_MARK = /\(\s*(?:[mwfdxi*](?:\s*[/|,]\s*[mwfdxi*])+|all genders|gn\*?)\s*\)/giu;
+const GENDER_MARK = /\(\s*(?:[mwfdxi*](?:\s*[/|,]\s*(?:[mwfdxi*]|divers|div))+|all genders?|gn\*?)\s*\)/giu;
 
 export function normaliseTitle(title: string): string {
   return title
@@ -89,14 +89,17 @@ const SIGNAL_LABEL: Record<(typeof LEGIT_SIGNALS)[number], string> = {
 };
 const WEIGHT_EMOJI: Record<Legit['signals'][number]['weight'], string> = { positive: '✅', neutral: '➖', concerning: '⚠️' };
 
+// Model strings are one line each, so they can't fake a line the code writes.
+const line = (s: string): string => s.replace(/\s+/g, ' ').trim();
+
 // Replies are posted as plain text (finishReply escapes Markdown), so the renders use none.
 export function renderLegit(v: Legit, earlier: EarlierPosting[]): string {
   const lines = [TIER_LINE[v.tier]];
-  for (const s of v.signals) lines.push(`- ${WEIGHT_EMOJI[s.weight]} ${SIGNAL_LABEL[s.signal]}: ${s.finding}`);
+  for (const s of v.signals) lines.push(`- ${WEIGHT_EMOJI[s.weight]} ${SIGNAL_LABEL[s.signal]}: ${line(s.finding)}`);
   if (earlier.length) {
     lines.push(`Seen before on this board: ${earlier.length} ${earlier.length === 1 ? 'time' : 'times'} (${earlier.map((e) => e.created).join(', ')})`);
   }
-  if (v.notes.trim()) lines.push(v.notes.trim());
+  if (v.notes.trim()) lines.push(line(v.notes));
   return lines.join('\n');
 }
 
@@ -104,16 +107,16 @@ const notStated = (s: string): boolean => /^\s*not stated\.?\s*$/i.test(s) || !s
 
 /** `cardDeadline` is the card head's deadline, shown when the posting text gives none. */
 export function renderNeeds(v: Needs, cardDeadline = ''): string {
-  const deadline = notStated(v.deadline) && cardDeadline ? `${cardDeadline} (from the card)` : v.deadline;
+  const deadline = notStated(v.deadline) && cardDeadline ? `${cardDeadline} (from the card)` : line(v.deadline);
   const lines = [
-    ...(v.documents.length ? [`Documents: ${v.documents.join('; ')}`] : []),
-    `Language: ${v.language}`,
+    ...(v.documents.length ? [`Documents: ${v.documents.map(line).join('; ')}`] : []),
+    `Language: ${line(v.language)}`,
     `Deadline: ${deadline}`,
-    `How to apply: ${v.how_to_apply}`,
-    `Contact: ${v.contact}`,
-    `Salary: ${v.salary}`,
+    `How to apply: ${line(v.how_to_apply)}`,
+    `Contact: ${line(v.contact)}`,
+    `Salary: ${line(v.salary)}`,
   ];
-  if (!notStated(v.notes)) lines.push(v.notes.trim());
+  if (!notStated(v.notes)) lines.push(line(v.notes));
   return lines.join('\n');
 }
 

@@ -7,7 +7,7 @@ Report what the posting states, and nothing you guess:
 - `documents`: what to send (CV, cover letter, certificates, references, portfolio, work samples...), one item per
   entry. An empty list if the posting names none.
 - `language`: the language to apply in, and the languages the role needs, with levels if given.
-- `deadline`: the application deadline or start date the posting gives.
+- `deadline`: the application deadline the posting gives (not the start date; put that in `notes`).
 - `how_to_apply`: how and where to apply: the form, email or portal, any reference number or subject line to quote,
   and steps such as a test task.
 - `contact`: the contact person or team the posting names.
