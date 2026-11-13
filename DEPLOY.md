@@ -13,8 +13,8 @@ DeploymentService (`serve`) in your project.
 | `NORTHFLANK_JOB_ID` (injected via `${refs.job.id}`) | | ✓ |
 | `TRELLO_KEY`, `TRELLO_TOKEN` (secret group `<worker>`) | ✓ | ✓ |
 | `TRELLO_APP_SECRET`, `TRIGGER_SECRET`, `NORTHFLANK_API_TOKEN` (secret group `<worker>-service`, restricted to `serve`) | | ✓ |
-| LLM keys: `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `GROQ_API_KEY`, … (secret group `<worker>-llm`, restricted to `run`) | ✓ | |
-| `CLAUDE_CODE_OAUTH_TOKEN` (the owner's own Claude subscription; secret group `<worker>-llm`, restricted to `run`) | ✓ | |
+| LLM keys: `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `GROQ_API_KEY`, … (secret group `<worker>-llm`; the bot builds its providers from `serve`'s env, [`stageOpts`](src/bot/stages/handler.ts#L19)) | ✓ | ✓ |
+| `CLAUDE_CODE_OAUTH_TOKEN` (the owner's own Claude subscription; secret group `<worker>-claude`) | ✓ | [see below](#web-research-company-deep) |
 
 ## Steps
 
@@ -33,9 +33,10 @@ DeploymentService (`serve`) in your project.
 4. Run the template (Templates → Import JSON). Fill all no-default arguments; leave `PUBLIC_URL` empty for
    now. `serve` will fail its health check until steps 5–6 add secrets and `PUBLIC_URL` — that is expected.
 5. Create secret group `<worker>` (`TRELLO_KEY`, `TRELLO_TOKEN`; assign to both resources), secret group
-   `<worker>-llm` (LLM keys including `CLAUDE_CODE_OAUTH_TOKEN`; restricted to `run` — the service never
-   receives these), and secret group `<worker>-service` (`TRELLO_APP_SECRET`, `TRIGGER_SECRET`,
-   `NORTHFLANK_API_TOKEN`; restricted to `serve` — the job never receives these).
+   `<worker>-llm` (LLM keys; both resources), secret group `<worker>-claude` (`CLAUDE_CODE_OAUTH_TOKEN`;
+   restricted to `run`, add `serve` only as [below](#web-research-company-deep)), and secret group
+   `<worker>-service` (`TRELLO_APP_SECRET`, `TRIGGER_SECRET`, `NORTHFLANK_API_TOKEN`; restricted to `serve` —
+   the job never receives these). Each model process still gets only its own token.
    - Generate `TRIGGER_SECRET`: `openssl rand -hex 32` (must be ≥ 32 characters).
    - `TRELLO_APP_SECRET` comes from the Trello app settings for your `TRELLO_KEY`.
    - Restart `serve` after creating the groups.
@@ -46,6 +47,19 @@ DeploymentService (`serve`) in your project.
    the rule with the placeholder `<TRIGGER_SECRET>`; replace it before saving.
 9. Fill the `Settings` card and `Personal details` card on your System board (see
    [Onboarding step 4](docs/product.md)); then comment `@bot run` on a System board card.
+
+## Web research (`company`, `deep`)
+
+It runs only when `serve` has `CLAUDE_CODE_OAUTH_TOKEN` and the user's providers include `claude`; otherwise it
+replies "unavailable" ([`researcherFor`](src/bot/stages/researcher.ts#L79)). WebFetch runs inside the `serve`
+container, before the code sees any URL, so a page can make it reach an internal address, or chain a second fetch
+that sends what it read elsewhere. The address check comes only after the run ([researcher.ts](src/bot/stages/researcher.ts#L140))
+and decides only what is posted.
+
+Before `serve` gets the token, deny its egress to RFC 1918 ranges, link-local (169.254.0.0/16, cloud metadata
+included), loopback and the platform's internal service network. If the host offers no egress policy, keep the token
+off `serve`: the bot then uses the user's other providers. With `template-local.json`, `serve` holds every key, so
+this applies as soon as the token is there.
 
 ## Northflank notes
 
