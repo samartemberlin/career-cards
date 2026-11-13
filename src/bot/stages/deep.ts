@@ -7,9 +7,9 @@ import { advisorMessages } from '../prompt.ts';
 import { TIMEOUT_REPLY, callStage, oneLine, stageErrorReply } from './call.ts';
 import { botMaskingFor, isReply, loadJob, researchInputFor, stageOpts } from './handler.ts';
 import {
-  RESEARCH_TIMEOUT_MS, RESEARCH_UNAVAILABLE, renderResearch, researchErrorReply, researcherFor, runResearch, webFooter,
+  RESEARCH_HEADING, RESEARCH_TIMEOUT_MS, RESEARCH_UNAVAILABLE, fitResearch, researchErrorReply, researcherFor, runResearch, webFooter,
 } from './researcher.ts';
-import type { Research, ResearchResult } from './researcher.ts';
+import type { ResearchResult } from './researcher.ts';
 
 export const DeepSchema = z.object({
   fit: z.string().max(600),
@@ -30,20 +30,8 @@ export function renderDeep(v: Deep): string {
   return parts.filter((p) => p.length).map((p) => p.join('\n')).join('\n\n');
 }
 
-// finishReply cuts a reply past three comments, and escaping can make the text longer: with the advice at its longest,
-// this keeps the footer in. The heading says "unverified" too, in case it is still cut.
-const RESEARCH_CHARS_MAX = 4000;
-const RESEARCH_HEADING = 'Research (from the web, unverified):';
-
-function fitted(r: Research): { research: string; cited: Set<string> } {
-  const points = [...r.points];
-  let research = renderResearch(r);
-  while (points.length > 1 && research.length > RESEARCH_CHARS_MAX) {
-    points.pop();
-    research = renderResearch({ ...r, points });
-  }
-  return { research, cited: new Set(points.map((p) => p.source)) };
-}
+// With the advice at its longest and escaping making the text longer, this keeps the reply within finishReply's cut.
+const RESEARCH_CHARS_MAX = 5000;
 
 export const jobDeepDive: Handler = async (ctx) => {
   const loaded = await loadJob(ctx, 'deep');
@@ -69,8 +57,7 @@ export const jobDeepDive: Handler = async (ctx) => {
   }
   if (ctx.signal.aborted) return { text: TIMEOUT_REPLY };
 
-  const { research, cited } = fitted(r.research);
-  const sources = r.sources.filter((u) => cited.has(u));
+  const { research, sources } = fitResearch(r, RESEARCH_CHARS_MAX);
   try {
     const advice = await callStage(advisorMessages('deep', { job, research }, masking), DeepSchema, o);
     return { text: [renderDeep(advice.value), '', RESEARCH_HEADING, research, '', webFooter(sources)].join('\n'), links: sources };

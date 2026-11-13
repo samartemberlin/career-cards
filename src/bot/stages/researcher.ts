@@ -15,15 +15,17 @@ import { StageOutputInvalid, oneLine, parseJsonObject, stageErrorReply } from '.
 import type { ResearchInput } from './research-input.ts';
 import { parseToolLog } from './tool-log.ts';
 
-export const ResearchSchema = z.object({
-  summary: z.string().max(600),
-  points: z.array(z.object({
-    section: z.string().max(60),
-    text: z.string().max(400),
-    source: z.string().max(500),
-  }).strict()).max(20),
+const Point = z.object({
+  section: z.string().max(60),
+  text: z.string().max(400),
+  source: z.string().max(500),
 }).strict();
-export type Research = z.infer<typeof ResearchSchema>;
+export const ResearchSchema = z.object({
+  // No longer asked for: it cited no page. Still accepted, so an answer that has one isn't refused, and then dropped.
+  summary: z.string().max(600).optional(),
+  points: z.array(Point).max(20),
+}).strict();
+export type Research = { points: z.infer<typeof Point>[] };
 
 /** `sources`: the opened pages the kept points cite, as `sourceUrl` gives them, in first-cited order. */
 export type ResearchResult = { research: Research; sources: string[]; tokens: number };
@@ -161,22 +163,44 @@ export async function runResearch(input: ResearchInput, o: {
     points.push({ ...pt, source: src });
     if (!sources.includes(src)) sources.push(src);
   }
-  // Every claim must cite a page that loaded; a summary alone cites nothing.
   if (!points.length) throw new ResearchRefused('no_sources');
-  return { research: { summary: parsed.data.summary, points }, sources, tokens: run.usage.total_tokens ?? 0 };
+  return { research: { points }, sources, tokens: run.usage.total_tokens ?? 0 };
 }
 
-/** Plain lines: the summary, then each section with its points and their sources. */
+/** Plain lines: each section with its points and their sources. */
 export function renderResearch(r: Research): string {
   const sections = new Map<string, string[]>();
   for (const pt of r.points) {
     const head = oneLine(pt.section) || 'Notes';
     sections.set(head, [...(sections.get(head) ?? []), `- ${oneLine(pt.text)} (source: ${pt.source})`]);
   }
-  const lines = [oneLine(r.summary)];
-  for (const [head, items] of sections) lines.push('', `${head}:`, ...items);
-  return (lines[0] ? lines : lines.slice(2)).join('\n');
+  return [...sections].map(([head, items]) => [`${head}:`, ...items].join('\n')).join('\n\n');
 }
 
 export const webFooter = (sources: string[]): string =>
   `from the web, unverified, sources: ${sources.slice(0, FOOTER_SOURCES_MAX).join(', ')}`;
+
+/** Heads a research reply, so the label survives even where finishReply cuts the footer off. */
+export const RESEARCH_HEADING = 'Research (from the web, unverified):';
+
+/**
+ * The rendered research with the sources it cites, fitted so that it and its footer stay within `maxChars`, dropping
+ * points from the end. finishReply cuts the raw text before links shrink, so a long answer could lose the footer. Only
+ * points citing the footer's sources are kept: the reply lists at most 10 links in text order, and a point past them
+ * would read `[link removed]`, like a stripped attack.
+ */
+export function fitResearch(r: Pick<ResearchResult, 'research' | 'sources'>, maxChars: number): { research: string; sources: string[] } {
+  const listed = new Set(r.sources.slice(0, FOOTER_SOURCES_MAX));
+  const points = r.research.points.filter((p) => listed.has(p.source));
+  const fit = () => {
+    const sources = r.sources.filter((u) => points.some((p) => p.source === u));
+    const research = renderResearch({ points });
+    return { research, sources, length: research.length + 2 + webFooter(sources).length };
+  };
+  let out = fit();
+  while (points.length > 1 && out.length > maxChars) {
+    points.pop();
+    out = fit();
+  }
+  return { research: out.research, sources: out.sources };
+}
