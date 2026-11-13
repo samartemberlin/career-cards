@@ -94,9 +94,13 @@ export async function main(
     keep: 0,
   }).log;
 
-  const starter = serialStarter(
-    o.starter ?? selectStarter(env, () => localRunStarter({ env, log, lockFile: runLockPath(env, cfg.boards) })),
-  );
+  let kind = 'northflank';
+  const selected = o.starter ?? selectStarter(env, () => {
+    kind = 'local';
+    return localRunStarter({ env, log, lockFile: runLockPath(env, cfg.boards) });
+  });
+  if (!o.starter) log(`starter: ${kind}`);
+  const starter = serialStarter(selected);
 
   const api = scopeUserBoards(o.trello ?? createTrelloClient(cfg.trello), cfg.boards);
   const me = await api.me();

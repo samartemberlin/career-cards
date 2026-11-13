@@ -2,16 +2,17 @@ import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
-import { mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LOCK_STALE_MS } from '../../src/run/lock.ts';
-import { localRunStarter, runChildEnv, serialStarter, startRun, SERVICE_ONLY_ENV } from '../../src/serve/runs.ts';
+import { localRunStarter, RUN_DEADLINE_MS, runChildEnv, serialStarter, startRun, SERVICE_ONLY_ENV } from '../../src/serve/runs.ts';
 import type { RunStarter } from '../../src/serve/runs.ts';
 import type { SpawnLike } from '../../src/pipeline/llm.ts';
 
 const FIXTURE = fileURLToPath(new URL('../fixtures/run-fake/run.mjs', import.meta.url));
+const HANG = fileURLToPath(new URL('../fixtures/run-fake/hang.mjs', import.meta.url));
 
 const children: ChildProcess[] = [];
 const trackedSpawn: SpawnLike = (cmd, args, options) => {
@@ -221,4 +222,123 @@ test('serialStarter: a failed start or check frees the slot', async () => {
   assert.equal(await startRun(s, 'manual', () => {}), 'unknown');
   fail = null;
   assert.equal(await startRun(s, 'manual', () => {}), 'started');
+});
+
+test('RUN_DEADLINE_MS is below LOCK_STALE_MS', () => {
+  assert.equal(RUN_DEADLINE_MS, 3600_000);
+  assert.ok(RUN_DEADLINE_MS < LOCK_STALE_MS);
+});
+
+/** Timers the test fires by hand: the deadline never waits in real time. */
+function manualTimers() {
+  const timers: { ms: number; fire: () => void; cleared: boolean }[] = [];
+  const setTimer = (fn: () => void, ms: number) => {
+    const t = { ms, fire: fn, cleared: false };
+    timers.push(t);
+    return () => { t.cleared = true; };
+  };
+  return { timers, setTimer };
+}
+
+function hangStarter(env: Record<string, string | undefined>, lockFile?: string) {
+  const lines: string[] = [];
+  const waiters: { re: RegExp; done: () => void }[] = [];
+  const { timers, setTimer } = manualTimers();
+  const s = localRunStarter({
+    env: { PATH: process.env.PATH, ...env },
+    script: HANG,
+    spawn: trackedSpawn,
+    setTimer,
+    ...(lockFile ? { lockFile } : {}),
+    log: (l) => {
+      lines.push(l);
+      for (const w of waiters) if (w.re.test(l)) w.done();
+    },
+  });
+  const seen = (re: RegExp) =>
+    lines.some((l) => re.test(l)) ? Promise.resolve() : new Promise<void>((done) => waiters.push({ re, done }));
+  return { s, lines, timers, seen };
+}
+
+test('localRunStarter: a run past the deadline is killed and the slot frees', { timeout: 10_000 }, async (t) => {
+  const lock = join(lockDir(t), 'run.lock');
+  const { s, lines, timers, seen } = hangStarter({ FAKE_IGNORE_SIGTERM: '1', FAKE_LOCK_FILE: lock }, lock);
+  assert.equal(await startRun(s, 'manual', () => {}), 'started');
+  await seen(/^run: ready$/);
+  assert.deepEqual(timers.map((x) => x.ms), [RUN_DEADLINE_MS]);
+  assert.equal(await startRun(s, 'manual', () => {}), 'busy');
+
+  timers[0]!.fire();
+  assert.ok(lines.includes('run killed after deadline'), lines.join('\n'));
+  // SIGTERM is ignored by this child: it stays, and so does the slot, until the grace timer sends SIGKILL.
+  assert.equal(timers.length, 2);
+  assert.equal(await s.isRunning(), true);
+
+  timers[1]!.fire();
+  await seen(/^run exited by signal SIGKILL$/);
+  assert.equal(existsSync(lock), false, 'the killed run\'s lock is removed');
+  assert.equal(await s.isRunning(), false);
+  assert.equal(lines.filter((l) => /^run exited/.test(l)).length, 1, lines.join('\n'));
+});
+
+test('localRunStarter: a run that stops on SIGTERM frees the slot and cancels the SIGKILL', { timeout: 10_000 }, async () => {
+  const { s, timers, seen } = hangStarter({});
+  await s.start('manual');
+  await seen(/^run: ready$/);
+  timers[0]!.fire();
+  await seen(/^run exited by signal SIGTERM$/);
+  assert.equal(await s.isRunning(), false);
+  assert.equal(timers[1]?.cleared, true);
+});
+
+test('localRunStarter: a run that ends in time cancels its deadline', { timeout: 10_000 }, async () => {
+  const { timers, setTimer } = manualTimers();
+  let onExit = () => {};
+  const exited = new Promise<void>((r) => { onExit = r; });
+  const s = localRunStarter({
+    env: { PATH: process.env.PATH }, script: FIXTURE, spawn: trackedSpawn, setTimer,
+    log: (l) => { if (/^run exited/.test(l)) onExit(); },
+  });
+  await s.start('manual');
+  await exited;
+  assert.equal(timers.length, 1);
+  assert.equal(timers[0]!.cleared, true);
+});
+
+test('localRunStarter: a lock taken over by another run is left alone after a deadline kill', { timeout: 10_000 }, async (t) => {
+  const lock = join(lockDir(t), 'run.lock');
+  const { s, timers, seen } = hangStarter({ FAKE_LOCK_FILE: lock }, lock);
+  await s.start('manual');
+  await seen(/^run: ready$/);
+  writeFileSync(lock, '999999 2026-11-13T00:00:00.000Z another run');
+  timers[0]!.fire();
+  await seen(/^run exited by signal SIGTERM$/);
+  assert.equal(existsSync(lock), true);
+  assert.equal(await s.isRunning(), true);
+});
+
+test('localRunStarter: a killed run frees the slot even while a grandchild holds its pipes', { timeout: 10_000 }, async (t) => {
+  const { s, lines, timers, seen } = hangStarter({ FAKE_GRANDCHILD: '1' });
+  await s.start('manual');
+  await seen(/^run: ready$/);
+  const pid = Number(lines.find((l) => l.startsWith('run: grandchild '))!.slice('run: grandchild '.length));
+  // Also on a timeout: a live grandchild holds this test process's pipes and would keep the suite from ending.
+  t.after(() => { try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ } });
+  timers[0]!.fire();
+  await seen(/^run exited by signal SIGTERM$/);
+  assert.equal(await s.isRunning(), false);
+});
+
+test('localRunStarter: a run that ended while a grandchild holds its pipes frees the slot at the deadline', { timeout: 10_000 }, async (t) => {
+  const { s, lines, timers, seen } = hangStarter({ FAKE_GRANDCHILD: '1', FAKE_EXIT: '1' });
+  await s.start('manual');
+  const c = children.at(-1)!;
+  await seen(/^run: ready$/);
+  const pid = Number(lines.find((l) => l.startsWith('run: grandchild '))!.slice('run: grandchild '.length));
+  t.after(() => { try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ } });
+  if (c.exitCode === null) await new Promise((r) => c.once('exit', r));
+  assert.equal(await s.isRunning(), true);
+  timers[0]!.fire();
+  await seen(/^run exited with code 0$/);
+  assert.equal(await s.isRunning(), false);
 });
