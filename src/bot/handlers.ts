@@ -12,6 +12,8 @@ import { handleOpen } from './open.ts';
 import { applyNeeds, checkLegit } from './stages/reader.ts';
 import { cvTips, explainFit } from './stages/advisor.ts';
 import { recordFeedback } from './feedback.ts';
+import { companyResearch } from './stages/company.ts';
+import type { Openings } from './stages/company.ts';
 import type { UrlGuard } from '../net/safe-fetch.ts';
 import type { CallOpts, Env } from '../pipeline/llm.ts';
 
@@ -19,6 +21,8 @@ export type OpenResult = { verdict: 'open' | 'closed' | 'unknown'; reason: strin
 export type NetDeps = {
   fetchJd: ProcessDeps['fetchJd'];
   checkOpen: (url: string) => Promise<OpenResult>;
+  /** The company's other open roles from its careers board, or null when none is found. Absent: straight to the researcher. */
+  openings?: (company: string, exclude: string) => Promise<Openings | null>;
   /** Tests only: lets loopback pass the address checks. */
   urlGuard?: UrlGuard;
 };
@@ -43,6 +47,8 @@ export type CommandCtx = {
   signal: AbortSignal;
   /** The card's newest 50 comments, as the gate read them. */
   comments: TComment[];
+  /** The research cap's refusal line, or null: for a research action the router picked, whose comment counts as `model`. */
+  researchCap: () => Promise<string | null>;
 };
 
 /** `uncounted`: no model call was made, so the reply does not count against a cap. */
@@ -80,6 +86,7 @@ export const HANDLERS: Partial<Record<string, Handler>> = {
   apply_needs: applyNeeds,
   explain_fit: explainFit,
   cv_tips: cvTips,
+  company_research: companyResearch,
   record_feedback: recordFeedback,
 };
 

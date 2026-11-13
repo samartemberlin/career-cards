@@ -5,6 +5,7 @@ import type { RouterOutput } from './catalogue.ts';
 import { proposal } from './confirm.ts';
 import type { Proposal } from './marker.ts';
 import { loadCardContext } from './context.ts';
+import { capClassOf } from './caps.ts';
 import { HANDLERS } from './handlers.ts';
 import type { CommandCtx, HandlerResult } from './handlers.ts';
 import { routerMessages } from './prompt.ts';
@@ -35,8 +36,11 @@ export async function route(
   return (await callStage(routerMessages(input), RouterOutputSchema, o)).value;
 }
 
-/** What the comment gets: the reply, or a proposal for `@bot yes` to run. Posting is the dispatcher's job. */
-export async function handleFreeText(ctx: CommandCtx, botName: string): Promise<HandlerResult & { proposal?: Proposal }> {
+/**
+ * What the comment gets: the reply, or a proposal for `@bot yes` to run. Posting is the dispatcher's job.
+ * `cls: 'research'`: a research action ran, so the comment counts once, as research instead of model.
+ */
+export async function handleFreeText(ctx: CommandCtx, botName: string): Promise<HandlerResult & { proposal?: Proposal; cls?: 'research' }> {
   const request = requestOf(ctx.action.text, botName);
   const cc = await loadCardContext(ctx.api, ctx.boards, ctx.action, ctx.me.id, ctx.comments);
 
@@ -81,10 +85,15 @@ export async function handleFreeText(ctx: CommandCtx, botName: string): Promise<
   const handler = HANDLERS[spec.id];
   if (!handler) return { text: `\`${spec.verbs[0]}\` isn't available yet.` };
   if (ctx.signal.aborted) return { text: TIMEOUT_REPLY };
+  const research = capClassOf(spec) === 'research';
+  if (research) {
+    const over = await ctx.researchCap();
+    if (over) return { text: over };
+  }
   try {
-    // The router call already counts, so a handler's `uncounted` doesn't apply here.
-    const { text, links } = await handler(ctx, action.args);
-    return links ? { text, links } : { text };
+    // The router call already counts, so a handler's `uncounted` doesn't apply here: it only keeps the class `model`.
+    const { text, links, uncounted } = await handler(ctx, action.args);
+    return { text, ...(links ? { links } : {}), ...(research && !uncounted ? { cls: 'research' as const } : {}) };
   } catch (e) {
     if (ctx.signal.aborted) return { text: TIMEOUT_REPLY };
     ctx.log(`handler ${spec.id} failed on ${ctx.action.id}: ${(e instanceof Error ? `${e.name}: ${e.message}` : String(e)).split('\n')[0]}`);

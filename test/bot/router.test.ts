@@ -277,7 +277,7 @@ for (const row of ROUTER_OUTPUTS) {
 }
 
 test('SORRY_REPLY lists the registered verbs', () => {
-  assert.match(SORRY_REPLY(), /^Sorry, I couldn't work that out\. Try again, or use one of: open, legit, needs, fit, cv, why, feedback, last, run\.$/);
+  assert.match(SORRY_REPLY(), /^Sorry, I couldn't work that out\. Try again, or use one of: open, legit, needs, fit, cv, company, why, feedback, last, run\.$/);
 });
 
 test('over the model cap: the refusal line and no model call', async () => {
@@ -304,11 +304,17 @@ test('quota: QUOTA_REPLY and nothing runs', async () => {
   }
 });
 
-test('a router-picked researcher action before PR 8 replies "not available yet"', async () => {
+test('a router-picked researcher action runs its handler and counts as research', async () => {
   const s = await setup(routed({ id: 'company_research', args: { topic: 'news' } }));
-  const { posted } = await say(s, '@samplebot any news about this company?');
-  assert.deepEqual(posted.map(body), ["@usera `company` isn't available yet."]);
-  assert.equal(parseMarker(posted[0]!)!.cls, 'model');
+  const spy = spyAll();
+  try {
+    const { posted } = await say(s, '@samplebot any news about this company?');
+    assert.deepEqual(spy.calls, [{ id: 'company_research', args: { topic: 'news' } }]);
+    assert.deepEqual(posted.map(body), ['@usera ran company_research']);
+    assert.equal(parseMarker(posted[0]!)!.cls, 'research');
+  } finally {
+    spy.restore();
+  }
 });
 
 test('a router-picked explain_filter fetches only through ctx.net', async () => {
