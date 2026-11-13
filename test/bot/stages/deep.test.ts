@@ -45,9 +45,9 @@ const cfg: UserConfig = {
 const ABOUT = 'https://acme.example/about';
 const NEWS = 'https://news.example/acme';
 const RESEARCH: Research = {
-  summary: 'Acme Media publishes newsletters. Its founder met Jane Roe once.',
   points: [
     { section: 'Day to day', text: 'Editors run three newsletters.', source: ABOUT },
+    { section: 'Team', text: 'Its founder met Jane Roe once.', source: ABOUT },
     { section: 'Recent moves', text: 'Raised a seed round.', source: NEWS },
   ],
 };
@@ -176,31 +176,33 @@ test('deep posts one reply with the advisor\'s sections, the research and the un
   assert.ok(r.text.endsWith(`from the web, unverified, sources: ${ABOUT}, ${NEWS}`));
 });
 
-test('a maximal answer keeps the unverified footer once posted, citing only the points kept', async () => {
+test('a maximal answer keeps the unverified footer once posted, citing only the points kept, with no link removed', async () => {
   const words = (n: number, tag: string) => `${tag} ${'word '.repeat(n)}`.slice(0, n).trim();
-  const pages = Array.from({ length: 20 }, (_, i) => `https://site${i}.example/page-${i}`);
-  const big: Research = {
-    summary: words(600, 'summary'),
-    points: pages.map((source, i) => ({ section: words(60, `Section ${i}`), text: words(400, `point ${i}`), source })),
-  };
-  const s = await setup({
-    web: () => ({ fetches: pages.map((url) => ({ url, ok: true })), answer: big }),
-    advisor: JSON.stringify({
-      fit: words(600, 'fit'), angle: words(600, 'angle'),
-      risks: Array.from({ length: 5 }, (_, i) => words(200, `risk ${i}`)),
-      questions: Array.from({ length: 6 }, (_, i) => words(200, `question ${i}`)),
-    }),
-  });
-  const r = await jobDeepDive(s.ctx, {});
-  assert.ok(r.links!.length < pages.length, 'some points were left out');
-  for (const link of r.links!) assert.ok(r.text.includes(`(source: ${link})`));
-  const posted = finishReply({
-    text: r.text, author: 'usera', marker: { actionId: 'fa4e0000000000000000c001', cls: 'research' },
-    masker: buildMasker(cfg.personalDetails), allowedLinks: r.links!,
-  }).join('\n');
-  assert.match(posted, /Research \\\(from the web, unverified\\\)\\:/);
-  assert.match(posted, /\nfrom the web, unverified, sources\\: \\\[link 1\\\], \\\[link 2\\\]/);
-  assert.doesNotMatch(posted, /\(cut\)/);
+  for (const urlLength of [30, 400]) {
+    const pages = Array.from({ length: 20 }, (_, i) => `https://site${i}.example/page-${i}`.padEnd(urlLength, 'p'));
+    const big = {
+      summary: words(600, 'summary'),
+      points: pages.map((source, i) => ({ section: words(60, `Section ${i}`), text: words(400, `point ${i}`), source })),
+    };
+    const s = await setup({
+      web: () => ({ fetches: pages.map((url) => ({ url, ok: true })), answer: big }),
+      advisor: JSON.stringify({
+        fit: words(600, 'fit'), angle: words(600, 'angle'),
+        risks: Array.from({ length: 5 }, (_, i) => words(200, `risk ${i}`)),
+        questions: Array.from({ length: 6 }, (_, i) => words(200, `question ${i}`)),
+      }),
+    });
+    const r = await jobDeepDive(s.ctx, {});
+    assert.ok(r.links!.length < pages.length, 'some points were left out');
+    for (const link of r.links!) assert.ok(r.text.includes(`(source: ${link})`));
+    const posted = finishReply({
+      text: r.text, author: 'usera', marker: { actionId: 'fa4e0000000000000000c001', cls: 'research' },
+      masker: buildMasker(cfg.personalDetails), allowedLinks: r.links!,
+    }).join('\n');
+    assert.match(posted, /Research \\\(from the web, unverified\\\)\\:/, `${urlLength}`);
+    assert.match(posted, /\nfrom the web, unverified, sources\\: \\\[link 1\\\](, \\\[link \d\\\])*\n/, `${urlLength}`);
+    assert.doesNotMatch(posted, /\(cut\)|link removed/, `${urlLength}`);
+  }
 });
 
 test('renderDeep gives plain headings and leaves out empty lists', () => {

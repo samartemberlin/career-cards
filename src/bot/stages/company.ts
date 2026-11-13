@@ -15,7 +15,8 @@ import type { Handler, HandlerResult } from '../handlers.ts';
 import { oneLine } from './call.ts';
 import { isReply, loadJob, researchInputFor, stageOpts } from './handler.ts';
 import {
-  RESEARCH_TIMEOUT_MS, RESEARCH_UNAVAILABLE, renderResearch, researchErrorReply, researcherFor, runResearch, sourceUrl, webFooter,
+  RESEARCH_HEADING, RESEARCH_TIMEOUT_MS, RESEARCH_UNAVAILABLE, fitResearch, researchErrorReply, researcherFor, runResearch, sourceUrl,
+  webFooter,
 } from './researcher.ts';
 
 export type Openings = { careersUrl: string; jobs: { title: string; url: string; location: string }[] };
@@ -28,6 +29,8 @@ const SHOWN_MAX = 9;
 // Under the 300 s comment timeout, with room to post the reply.
 const HANDLER_BUDGET_MS = 270_000;
 const TMP_PREFIX = 'career-cards-discover-';
+// Well under finishReply's 12,000-character cut of the raw text.
+const RESEARCH_CHARS_MAX = 8000;
 
 const Resolved = z.object({ name: z.string(), careers_url: z.string().url(), api: z.string().url().optional() });
 
@@ -131,7 +134,8 @@ export const companyResearch: Handler = async (ctx, args) => {
       exec: o.call?.execImpl,
       timeoutMs: Math.min(RESEARCH_TIMEOUT_MS, HANDLER_BUDGET_MS - (Date.now() - started)),
     });
-    return { text: `${renderResearch(r.research)}\n\n${webFooter(r.sources)}`, links: r.sources };
+    const { research, sources } = fitResearch(r, RESEARCH_CHARS_MAX);
+    return { text: [RESEARCH_HEADING, research, '', webFooter(sources)].join('\n'), links: sources };
   } catch (e) {
     return { text: researchErrorReply(e, ctx.log) };
   }

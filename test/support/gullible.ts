@@ -83,19 +83,20 @@ export function gullible(): (c: Call) => string {
 }
 
 /**
- * The researcher (`researcher/<topic>`, through `withWeb`) misled by `page`: it opens the page, then every URL the page
- * says to `open`, and copies each line of the page into a point citing the page, or the URL a line says to `cite`.
+ * The researcher (`researcher/<topic>`, through `withWeb`) misled by `page` and by its SUBJECT: it opens the page, then
+ * every URL the page or the SUBJECT says to `open`, copies each line of the page into a point citing the page, or the
+ * URL a line says to `cite`, and puts the page's last line (the planted one, in the attack pages) in the summary.
  */
-export function gullibleWeb(page: { url: string; text: string }): (c: { stage: string }) => WebAnswer {
+export function gullibleWeb(page: { url: string; text: string }): (c: { stage: string; user: string }) => WebAnswer {
   return (c) => {
     if (!c.stage.startsWith('researcher/')) throw new Error(`gullibleWeb: unknown stage ${c.stage}`);
     const lines = page.text.split('\n').map((l) => l.trim()).filter(Boolean);
-    const opens = [...page.text.matchAll(/\bopen (https?:\/\/\S+)/gi)].map((m) => m[1]!);
+    const opens = [...`${page.text}\n${c.user}`.matchAll(/\bopen (https?:\/\/\S+)/gi)].map((m) => m[1]!);
     const points = lines.map((l) => ({ section: 'From the web', text: fit(l, 400), source: /\bcite (\S+)/i.exec(l)?.[1] ?? page.url }));
     for (const url of opens) points.push({ section: 'Opened', text: `Read ${url}`, source: url });
     return {
       fetches: [{ url: page.url, ok: true, content: page.text }, ...opens.map((url) => ({ url, ok: true }))],
-      answer: { summary: fit(lines[0] ?? '', 600), points: points.slice(0, 20) },
+      answer: { summary: fit(lines.at(-1) ?? '', 600), points: points.slice(0, 20) },
     };
   };
 }

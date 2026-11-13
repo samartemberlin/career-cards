@@ -11,7 +11,7 @@ import { RESEARCH_TOPICS, isResearchInput, researchInputFromJob } from '../../..
 import { isReply, researchInputFor } from '../../../src/bot/stages/handler.ts';
 import {
   RESEARCH_TIMEOUT_MS, RESEARCH_UNAVAILABLE, ResearchRefused, renderResearch, researchErrorReply, researcherFor,
-  runResearch, sourceUrl, webFooter,
+  fitResearch, runResearch, sourceUrl, webFooter,
 } from '../../../src/bot/stages/researcher.ts';
 import type { Research } from '../../../src/bot/stages/researcher.ts';
 import { MASKING_REPLY, QUOTA_REPLY, StageOutputInvalid, TIMEOUT_REPLY } from '../../../src/bot/stages/call.ts';
@@ -35,7 +35,6 @@ const input = () => researchInputFromJob(JOB, 'about');
 const ABOUT = 'https://acme.example/about';
 const NEWS = 'https://news.example/acme-raises';
 const ANSWER: Research = {
-  summary: 'Acme Media publishes newsletters.',
   points: [
     { section: 'What they do', text: 'Runs three newsletters.', source: ABOUT },
     { section: 'Funding', text: 'Raised a seed round.', source: NEWS },
@@ -124,6 +123,13 @@ test('points citing pages not opened are dropped; sources are exact opened URLs 
   assert.deepEqual(r.research.points.map((x) => x.text), ['Runs three newsletters.', 'Raised a seed round.']);
   assert.deepEqual(r.sources, [ABOUT, NEWS]);
   assert.equal(r.tokens, 42);
+});
+
+test('a summary is tolerated in the answer but never posted, and an answer without one parses', async () => {
+  const r = await run({ ...goodRun(), answer: { ...ANSWER, summary: 'UNCITED-SENTINEL' } }).p;
+  assert.ok(!renderResearch(r.research).includes('UNCITED-SENTINEL'));
+  assert.ok(!JSON.stringify(r.research).includes('UNCITED-SENTINEL'));
+  assert.equal((await run(goodRun()).p).research.points.length, 2);
 });
 
 test('a source differing only by #fragment matches, and the reply cites the opened page', async () => {
@@ -299,17 +305,29 @@ test('sourceUrl drops a URL that finishReply would trim, and anything not http(s
 });
 
 test('renderResearch: plain lines grouped by section; webFooter lists at most 8 sources', () => {
-  const text = renderResearch({ summary: 'Acme\nMedia **bold**.', points: [
-    { section: 'Funding', text: 'Seed.', source: NEWS },
+  const text = renderResearch({ points: [
+    { section: 'Funding', text: 'Seed\n**bold**.', source: NEWS },
     { section: 'What they do', text: 'Newsletters.', source: ABOUT },
     { section: 'Funding', text: 'Series A.', source: NEWS },
   ] });
   assert.equal(text, [
-    'Acme Media **bold**.', '', 'Funding:', `- Seed. (source: ${NEWS})`, `- Series A. (source: ${NEWS})`,
+    'Funding:', `- Seed **bold**. (source: ${NEWS})`, `- Series A. (source: ${NEWS})`,
     '', 'What they do:', `- Newsletters. (source: ${ABOUT})`,
   ].join('\n'));
   const urls = Array.from({ length: 10 }, (_, i) => `https://s${i}.example/`);
   assert.equal(webFooter(urls), `from the web, unverified, sources: ${urls.slice(0, 8).join(', ')}`);
+});
+
+test('fitResearch keeps only points citing the first 8 sources, then drops points from the end to fit, keeping one', () => {
+  const urls = Array.from({ length: 12 }, (_, i) => `https://s${i}.example/`);
+  const research: Research = { points: urls.map((source, i) => ({ section: 'S', text: `Point ${i}.`, source })) };
+  const all = fitResearch({ research, sources: urls }, 10_000);
+  assert.deepEqual(all.sources, urls.slice(0, 8));
+  assert.equal(all.research, renderResearch({ points: research.points.slice(0, 8) }));
+  const some = fitResearch({ research, sources: urls }, 200);
+  assert.ok(some.research.length + 2 + webFooter(some.sources).length <= 200);
+  assert.deepEqual(some.sources, urls.slice(0, some.sources.length));
+  assert.deepEqual(fitResearch({ research, sources: urls }, 1).sources, [urls[0]]);
 });
 
 test('researchErrorReply has a line per refusal and falls back to stageErrorReply', () => {

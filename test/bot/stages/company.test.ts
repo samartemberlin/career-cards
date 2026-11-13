@@ -54,7 +54,7 @@ const WEB: WebAnswer = {
 let nextId = 0xe000;
 const newId = () => `fa4e${(nextId++).toString(16).padStart(20, '0')}`;
 
-type Opts = { company?: string; router?: unknown; providers?: string; openings?: boolean };
+type Opts = { company?: string; router?: unknown; providers?: string; openings?: boolean; web?: WebAnswer };
 
 async function setup(o: Opts = {}) {
   const fake = FakeTrello.fromRecordings(load('jobs'), load('profiles'), load('system'));
@@ -73,7 +73,7 @@ async function setup(o: Opts = {}) {
       if (stage === 'router') return JSON.stringify({ reply: 'ROUTER-REPLY', action: o.router ?? null });
       throw new Error(`unexpected stage ${stage}`);
     }),
-    () => WEB,
+    () => o.web ?? WEB,
   );
   const deps: DispatchDeps = {
     api, boards: BOARDS, me: await api.me(), seen: createRecentIds(), now: () => NOW, log: (s) => logs.push(s),
@@ -132,6 +132,24 @@ test('company about: the researcher runs with topic about, and the reply ends wi
     assert.equal(parseMarker(posted[0]!)!.cls, 'research');
     assert.equal(s.record(), null, 'no openings lookup for topic about');
   } finally { s.cleanup(); }
+});
+
+test('a maximal research answer keeps the unverified label and footer once posted, with no link removed', async () => {
+  const words = (n: number, tag: string) => `${tag} ${'word '.repeat(n)}`.slice(0, n).trim();
+  for (const urlLength of [30, 400]) {
+    const pages = Array.from({ length: 20 }, (_, i) => `https://site${i}.example/`.padEnd(urlLength, 'p'));
+    const s = await setup({ web: {
+      fetches: pages.map((url) => ({ url, ok: true })),
+      answer: { summary: words(600, 'summary'), points: pages.map((source, i) => ({ section: words(60, `Section ${i}`), text: words(400, `point ${i}`), source })) },
+    } });
+    try {
+      const text = (await say(s, '@samplebot company news')).map(body).join('\n');
+      const lines = text.split('\n\nLinks:\n')[0]!.trim().split('\n');
+      assert.match(lines[0]!, /^@usera Research \(from the web, unverified\):$/, `${urlLength}`);
+      assert.match(lines.at(-1)!, /^from the web, unverified, sources: (\[link \d\](, )?){1,8}$/, `${urlLength}`);
+      assert.doesNotMatch(text, /\[link removed\]|\(cut\)/, `${urlLength}`);
+    } finally { s.cleanup(); }
+  }
 });
 
 test('company openings resolves in code and calls no model', async () => {
