@@ -138,7 +138,7 @@ describe('buildScoreContext', () => {
 });
 
 describe('masking for the bot', () => {
-  // The brief's `roe.example/cv` is not caught: `.example` is not in the bare-domain TLD list, so the link has a `www.`.
+  // A bare `roe.example/cv` is not pattern-masked: `.example` is not in the bare-domain TLD list.
   const cv = 'Jane Roe · jane@roe.example · +49 30 1234567 · www.roe.example/cv';
   const originals = ['Jane Roe', 'jane@roe.example', '+49 30 1234567', 'www.roe.example/cv'];
   const user = { sharedCv: cv, personalDetails: ['Jane Roe'] };
