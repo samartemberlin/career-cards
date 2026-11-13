@@ -29,7 +29,7 @@ run:  lock → config cards → job keys → scan → dedup → filter → JD �
 
 ## Stage and security model
 
-No stage gets untrusted content, private data and a way out at once. Stage runners: [router.ts](../src/bot/router.ts), [reader.ts](../src/bot/stages/reader.ts), [advisor.ts](../src/bot/stages/advisor.ts), [researcher.ts](../src/bot/stages/researcher.ts) (used by [company.ts](../src/bot/stages/company.ts) and [deep.ts](../src/bot/stages/deep.ts)).
+No stage gets untrusted content, private data and a way out at once. Stage runners: [router.ts](../src/bot/router.ts), [reader.ts](../src/bot/stages/reader.ts), [advisor.ts](../src/bot/stages/advisor.ts), [researcher.ts](../src/bot/stages/researcher.ts) with [tool-log.ts](../src/bot/stages/tool-log.ts) (used by [company.ts](../src/bot/stages/company.ts) and [deep.ts](../src/bot/stages/deep.ts)).
 
 | Stage | Inputs | Tools | Private data | Network |
 |---|---|---|---|---|
@@ -60,6 +60,6 @@ No stage gets untrusted content, private data and a way out at once. Stage runne
 - Router output is a strict zod union of catalogue ids with closed args — a forged action fails validation. [catalogue.ts](../src/bot/catalogue.ts)
 - A typed `@bot <verb>` counts as confirmation — the user named the action; only router picks need `yes`. [catalogue.ts](../src/bot/catalogue.ts)
 - Model calls run `claude` as a child with an explicit env, own cwd and fixed tool flags — no secret or tool leaks in. [llm.ts](../src/pipeline/llm.ts)
-- No prompt-injection classifier — containment by stage capabilities is the defence. [injection.test.ts](../test/bot/injection.test.ts)
+- No prompt-injection classifier — containment by stage capabilities is the defence. [injection.test.ts](../test/bot/injection.test.ts), [injection-web.test.ts](../test/bot/injection-web.test.ts)
 - zod at data boundaries (config cards, model JSON) — one schema is both runtime check and type. [schema.ts](../src/config/schema.ts)
 - Every Trello call in `src/` goes through `scopeUserBoards` — the guard prevents our own code (and model-driven actions) from writing to boards or lists outside the allowed scope; `src/` sees `BotApi`: create, archive, comment; no call can unarchive, edit, or add checklists or attachments to an existing card; a leaked token bypasses it entirely. [scoped.ts](../src/trello/scoped.ts), [api.ts](../src/trello/api.ts)

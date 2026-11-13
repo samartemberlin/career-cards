@@ -2,7 +2,7 @@
 // all of it (`gullible`), through the real dispatcher over FakeTrello. What must hold is the code's doing alone.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createTrelloClient } from '../../src/trello/client.ts';
 import { scopeUserBoards } from '../../src/trello/scoped.ts';
@@ -25,7 +25,10 @@ import { FakeTrello } from '../support/fake-trello.ts';
 import { commentWebhook } from '../support/webhook.ts';
 import { fakeModel } from '../support/fake-model.ts';
 import type { RecordedCall } from '../support/fake-model.ts';
-import { gullible } from '../support/gullible.ts';
+import { withWeb } from '../support/fake-research.ts';
+import { gullible, gullibleWeb } from '../support/gullible.ts';
+import { readInjectionFixtures } from '../support/injection-fixtures.ts';
+import type { LookupAll } from '../../src/net/safe-fetch.ts';
 import type { Recording } from '../../tools/sample/scrub.ts';
 
 const FIX = join(import.meta.dirname, '..', 'fixtures');
@@ -33,12 +36,10 @@ const TRELLO = Object.fromEntries(['jobs', 'profiles', 'system'].map((n) =>
   [n, readFileSync(join(FIX, 'trello', `${n}.recording.json`), 'utf8')])) as Record<string, string>;
 const load = (name: string) => JSON.parse(TRELLO[name]!) as Recording;
 
-type JobFixture = { name: string; covers: string[]; jd: string };
-const JOBS: JobFixture[] = readdirSync(join(FIX, 'injection', 'jobs')).filter((f) => f.endsWith('.md')).sort().map((f) => {
-  const m = /^---\ncovers: \[([^\]]*)\]\n---\n([\s\S]*)$/.exec(readFileSync(join(FIX, 'injection', 'jobs', f), 'utf8'));
-  assert.ok(m, `${f}: front matter`);
-  return { name: f.replace(/\.md$/, ''), covers: m[1]!.split(',').map((s) => s.trim()).filter(Boolean), jd: m[2]!.trim() };
-});
+const JOBS = readInjectionFixtures(join(FIX, 'injection', 'jobs')).map((f) => ({ ...f, jd: f.text }));
+const WEB_PAGES = readInjectionFixtures(join(FIX, 'injection', 'web'));
+const NEUTRAL_PAGE = WEB_PAGES.find((p) => p.name === 'neutral')!;
+const lookup: LookupAll = async () => [{ address: '203.0.113.7', family: 4 }];
 const job = (name: string) => JOBS.find((j) => j.name === name)!;
 const COMMENTS = JSON.parse(readFileSync(join(FIX, 'injection', 'comments.json'), 'utf8')) as
   { covers: string[]; comments: { by: 'user' | 'bot'; text: string }[] };
@@ -57,7 +58,7 @@ const APPLY = 'https://acme.example/apply';
 const CV_SENTINEL = 'CV-SENTINEL-9b1';
 const RUBRIC_SENTINEL = 'RUBRIC-SENTINEL-9b1';
 const ENV = {
-  PATH: '/usr/bin', HOME: '/home/app', CLAUDE_CODE_OAUTH_TOKEN: 'tok-claude-0000', LLM_RPM: '0',
+  PATH: '/usr/bin', HOME: '/home/app', CLAUDE_CODE_OAUTH_TOKEN: 'tok-claude-0000', LLM_RPM: '0', CLAUDE_RPM: '0',
   TRELLO_KEY: 'trello-key-0000', TRELLO_TOKEN: 'trello-token-0000', TRELLO_APP_SECRET: 'app-secret-0000', GEMINI_API_KEY: 'gem-0000',
 };
 
@@ -82,13 +83,14 @@ async function setup(o: { jd?: string; call?: CallOpts } = {}) {
   const logs: string[] = [];
   const starts: RunTrigger[] = [];
   const fetched: string[] = [];
-  const m = fakeModel(gullible());
+  const m = withWeb(fakeModel(gullible()), gullibleWeb(NEUTRAL_PAGE));
   const deps: DispatchDeps = {
     api, boards: BOARDS, me: await api.me(), seen: createRecentIds(), now: () => NOW, log: (s) => logs.push(s),
     starter: { isRunning: async () => false, start: async (t: RunTrigger) => { starts.push(t); } },
     net: {
       fetchJd: async (j) => { fetched.push(j.url); return null; },
       checkOpen: async (url) => { fetched.push(url); return { verdict: 'unknown', reason: 'test' }; },
+      urlGuard: { lookup },
     },
     env: ENV,
     call: o.call ?? m.call,
@@ -144,7 +146,7 @@ function assertNoExfil(comments: string[]) {
 // --- every fixture, every way in ---
 
 const WAYS = ['@samplebot what do you make of this posting?', '@samplebot open', '@samplebot legit', '@samplebot needs',
-  '@samplebot fit', '@samplebot cv', '@samplebot last'];
+  '@samplebot fit', '@samplebot cv', '@samplebot last', '@samplebot company', '@samplebot deep'];
 const CONFIRM_IDS = CATALOGUE.filter((s) => s.router === 'confirm').map((s) => s.id);
 
 for (const fx of JOBS) {
@@ -454,15 +456,14 @@ test('a link in a System card\'s own text is still listed', async () => {
 // --- coverage and the model children ---
 
 test('every catalogue action is covered', () => {
-  const PENDING: Record<string, string> = { company_research: 'PR 8', job_deep_dive: 'PR 8' };
-  const covered = new Set([...JOBS.flatMap((j) => j.covers), ...COMMENTS.covers]);
+  const covered = new Set([...JOBS, ...WEB_PAGES].flatMap((j) => j.covers).concat(COMMENTS.covers));
   for (const id of covered) assert.ok(CATALOGUE.some((s) => s.id === id), `unknown id ${id}`);
-  for (const id of Object.keys(PENDING)) assert.ok(!covered.has(id), `${id} is covered now: drop it from PENDING`);
-  assert.deepEqual([...covered, ...Object.keys(PENDING)].sort(), CATALOGUE.map((s) => s.id).sort());
+  assert.deepEqual([...covered].sort(), CATALOGUE.map((s) => s.id).sort());
 });
 
-test('every model child\'s env holds no secret but its own token', () => {
+test('every model or researcher child env holds no secret but its own token', () => {
   assert.ok(ALL_CALLS.length > 50, `${ALL_CALLS.length} calls`);
+  assert.ok(ALL_CALLS.filter((c) => c.tools === 'web').length >= JOBS.length * 2, 'researcher calls');
   for (const c of ALL_CALLS) {
     assert.equal(c.via, 'claude');
     assert.ok(Object.keys(c.env!).every((k) => ['PATH', 'HOME', 'CLAUDE_CODE_OAUTH_TOKEN'].includes(k)), Object.keys(c.env!).join(','));
