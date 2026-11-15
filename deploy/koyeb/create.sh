@@ -33,6 +33,9 @@ koyeb apps create "$APP" 2>/dev/null || echo "app $APP already exists, continuin
 
 # Public image — no registry secret needed.
 # Secrets referenced via {{secret.NAME}} are looked up at deploy time.
+# If the service creation fails with "unknown instance type", run
+# `koyeb instance-types list` to find the free-tier type name and update
+# the --instance-type flag below.
 koyeb services create serve \
   --app "$APP" \
   --docker "$IMAGE" \
