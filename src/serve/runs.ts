@@ -67,6 +67,8 @@ export function serialStarter(s: RunStarter): RunStarter {
   };
 }
 
+const RUN_SEMI_SPACE_MB = 16;
+
 export const SERVICE_ONLY_ENV = ['TRELLO_APP_SECRET', 'TRIGGER_SECRET', 'NORTHFLANK_API_TOKEN', 'PUBLIC_URL', 'PORT'] as const;
 
 export function runChildEnv(env: Env, heapMb?: number): Record<string, string> {
@@ -74,7 +76,11 @@ export function runChildEnv(env: Env, heapMb?: number): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(env)) if (v !== undefined && !drop.has(k)) out[k] = v;
   // Through NODE_OPTIONS rather than an argument, so the run's own node children (scan, fetch-jd) get the cap too.
-  if (heapMb !== undefined) out.NODE_OPTIONS = [out.NODE_OPTIONS, `--max-old-space-size=${heapMb}`].filter(Boolean).join(' ');
+  // Node 24's young generation can grow to 3 × 64 MB on top of the old space; 16 MB semi-spaces keep it near 48 MB.
+  if (heapMb !== undefined) {
+    const caps = `--max-old-space-size=${heapMb} --max-semi-space-size=${RUN_SEMI_SPACE_MB}`;
+    out.NODE_OPTIONS = [out.NODE_OPTIONS, caps].filter(Boolean).join(' ');
+  }
   return out;
 }
 
@@ -218,7 +224,8 @@ export function localRunStarter(o: {
         if (killed) killGroup(c, 'SIGKILL');
         if (killed && o.lockFile && c.pid !== undefined) await dropLockOf(o.lockFile, c.pid);
         if (child === c) child = null;
-        const why = heapFatal ? ` (heap limit${o.heapMb !== undefined ? ` ${o.heapMb} MB` : ''} reached)` : '';
+        // A child of the run (scan, fetch-jd) can hit the cap too while the run itself goes on.
+        const why = heapFatal && (signal || code !== 0) ? ` (heap limit${o.heapMb !== undefined ? ` ${o.heapMb} MB` : ''} reached)` : '';
         o.log(`${signal ? `run exited by signal ${signal}` : `run exited with code ${code}`}${why}`);
       };
 

@@ -40,7 +40,7 @@ const REQUIRED = [
 export const TRIGGER_SECRET_MIN = 32;
 export const QUEUE_MAX = 50;
 /** MB of V8 heap for the local run and each of its node children. See DEPLOY.md for the measurement behind it. */
-export const RUN_HEAP_MB_DEFAULT = 256;
+export const RUN_HEAP_MB_DEFAULT = 160;
 
 /** Problems name the variable, never its value. */
 export function parseServeEnv(env: Env): ServeConfig {

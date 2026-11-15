@@ -434,11 +434,11 @@ test('localRunStarter: the run starts at the lowest CPU priority, and pid() name
   assert.ok(lines.includes('run: priority 19'), lines.join('\n'));
 });
 
-test('localRunStarter: heapMb reaches the run and its node children through NODE_OPTIONS, kept options first', async () => {
+test('localRunStarter: heapMb and a small young generation reach the run and its node children through NODE_OPTIONS, kept options first', async () => {
   const { s, lines, exited } = allocStarter({ NODE_OPTIONS: '--no-warnings' }, 300);
   await s.start('manual');
   await exited;
-  assert.ok(lines.includes('run: node_options --no-warnings --max-old-space-size=300'), lines.join('\n'));
+  assert.ok(lines.includes('run: node_options --no-warnings --max-old-space-size=300 --max-semi-space-size=16'), lines.join('\n'));
 });
 
 test('localRunStarter: without heapMb NODE_OPTIONS is passed on unchanged', async () => {
