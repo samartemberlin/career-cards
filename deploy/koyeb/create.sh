@@ -11,7 +11,7 @@
 #
 # Prerequisites:
 #   - koyeb CLI installed and logged in (koyeb login)
-#   - Secrets created with: koyeb secrets create <NAME>  (see DEPLOY.md § Koyeb)
+#   - Secrets created with: koyeb secrets create <NAME>  (see deploy/koyeb/README.md)
 #   - Env vars exported: JOBS_BOARD_ID, PROFILES_BOARD_ID, SYSTEM_BOARD_ID
 #
 # Usage:

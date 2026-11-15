@@ -19,13 +19,15 @@ starts on the next deployment.
 
 ## Steps
 
+Before these steps, follow [DEPLOY.md steps 1–2](../../DEPLOY.md#steps) (fork and Trello boards). Then:
+
 1. Sign up at [koyeb.com](https://koyeb.com). Install the CLI and log in:
    ```sh
    curl https://raw.githubusercontent.com/koyeb/koyeb-cli/main/install.sh | bash
    koyeb login
    ```
 
-2. Run `tools/onboard.ts` to create Trello boards (see [deploy/render/README.md](../render/README.md) step 3 for flags). Use `--dry-run` first. Store the board IDs:
+2. Save board IDs from `tools/.onboard.json` to a local env file:
    ```sh
    mkdir -p ~/.config/career-cards
    cat > ~/.config/career-cards/koyeb.env <<'EOF'
@@ -58,10 +60,4 @@ starts on the next deployment.
    koyeb services update serve --app career-cards-worker --env PUBLIC_URL=<URL>
    ```
 
-6. Run `node tools/onboard.ts --url <URL> <flags from step 2>` to register webhooks.
-
-7. Add `SERVE_URL=<URL>` as a GitHub repo **variable** (Settings → Variables → Actions) and
-   `TRIGGER_SECRET` as a repo **secret** (Settings → Secrets → Actions) for the nightly trigger.
-
-8. Fill the `Settings` card and `Personal details` card on your System board (see
-   [Onboarding step 4](../../docs/product.md)); then comment `/bot run` on a System board card.
+Then follow [DEPLOY.md steps 4–6](../../DEPLOY.md#steps).
