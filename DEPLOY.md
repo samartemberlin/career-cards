@@ -15,7 +15,7 @@ DeploymentService (`serve`) in your project.
 | `TRELLO_APP_SECRET`, `TRIGGER_SECRET`, `NORTHFLANK_API_TOKEN` (secret group `<worker>-service`, restricted to `serve`) | | ✓ |
 | LLM keys: `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `GROQ_API_KEY`, … (secret group `<worker>-llm`; the bot builds its providers from `serve`'s env, [`stageOpts`](src/bot/stages/handler.ts#L19)) | ✓ | ✓ |
 | `CLAUDE_CODE_OAUTH_TOKEN` (the owner's own Claude subscription; secret group `<worker>-claude`) | ✓ | [see below](#web-research-company-deep) |
-| `RUN_HEAP_MB` (optional): V8 old-space cap (MB) of a run `serve` starts itself and of each of its node children (not the `claude` CLI). Unset: 160 when the container has at most 1 GB, else none ([serve.ts](src/serve.ts)). A run over it ends as `run exited … (heap limit N MB reached)`, not a container kill. Measured without scoring (dummy AI keys): uncapped, a 512 MB / 0.15 vCPU container was OOM-killed; capped, it peaked at 375 MB | | ✓ |
+| `RUN_HEAP_MB` (optional): V8 old-space cap (MB) of a run `serve` starts itself and of each of its node children (not the `claude` CLI). Unset: 160 when the container has at most 1 GB, else none ([serve.ts](src/serve.ts)); if the `metrics: limits` line shows no `mem … MB`, set it yourself on a small host. A run over it ends as `run exited … (heap limit N MB reached)`, not a container kill. Measured without scoring (dummy AI keys): uncapped, a 512 MB / 0.15 vCPU container was OOM-killed; capped, it peaked at 375 MB | | ✓ |
 
 ## Steps
 

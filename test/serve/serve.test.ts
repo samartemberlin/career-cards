@@ -233,11 +233,11 @@ test('end to end: the trigger and @samplebot run at once → one run started', a
 
 test('serve logs the local starter when no NORTHFLANK_* is set', async () => {
   const s = setup();
-  const svc = await main(ENV, { trello: s.trello, listen: false, out: (l) => s.logs.push(l) });
+  const svc = await main({ ...ENV, RUN_HEAP_MB: '700' }, { trello: s.trello, listen: false, out: (l) => s.logs.push(l) });
   closers.push(svc.close);
   assert.ok(s.logs.includes('starter: local'), s.logs.join('\n'));
   await svc.metrics;
-  assert.ok(s.logs.some((l) => l.startsWith('metrics: limits ')), s.logs.join('\n'));
+  assert.ok(s.logs.some((l) => l.startsWith('metrics: limits ') && l.endsWith(' · run heap 700 MB')), s.logs.join('\n'));
   assert.ok(s.logs.some((l) => /^metrics: .*serve \d+$/.test(l)), s.logs.join('\n'));
 });
 
