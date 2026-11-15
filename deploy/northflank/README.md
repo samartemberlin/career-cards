@@ -2,7 +2,7 @@
 
 > Card needed in practice and an open incident (2026-11-15): see [../README.md](../README.md).
 
-[`template.json`](template.json) creates one ManualJob (`run`) and one DeploymentService (`serve`) in your Northflank project. The `:main` tag updates on every push to `main`; Northflank pulls it on the next service restart or job run.
+[`template.json`](template.json) creates one ManualJob (`run`) and one DeploymentService (`serve`) in your Northflank project. Northflank pulls a new `:main` image on the next service restart or job run.
 
 ## Additional env vars (Northflank only)
 
@@ -31,11 +31,9 @@ Before these steps, follow [DEPLOY.md steps 1–2](../../DEPLOY.md#steps) (fork 
    - Restart `serve` after creating the groups.
 3. Copy the `serve` URL and re-run the template with `PUBLIC_URL` set to that URL. (Setting it directly on
    the service would be overwritten by the next template run.)
-4. Create the Trello automation rule by hand (Automation → Rules; Trello has no API for it). `tools/onboard.ts`
-   prints the rule with the placeholder `<TRIGGER_SECRET>`; replace it before saving. This rule is the nightly
-   trigger for Northflank; the GitHub Actions workflow is not needed.
-
-Then follow [DEPLOY.md steps 4 and 6](../../DEPLOY.md#steps) (step 5 sets up the GitHub nightly trigger, which Northflank does not need).
+4. Follow [DEPLOY.md step 4](../../DEPLOY.md#steps); with `--url` it also prints the Trello automation rule.
+   Create that rule by hand (Automation → Rules; Trello has no API for it) and replace `<TRIGGER_SECRET>` before
+   saving. This rule is the nightly trigger for Northflank, so skip DEPLOY.md step 5; then do step 6.
 
 ## Northflank notes
 
