@@ -1,5 +1,6 @@
 import { spawn as nodeSpawn } from 'node:child_process';
 import { readFile, unlink } from 'node:fs/promises';
+import { setPriority } from 'node:os';
 import type { ChildProcess } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import type { Readable } from 'node:stream';
@@ -10,6 +11,9 @@ import type { RunTrigger } from '../run/stats.ts';
 
 /** PR 5's platform starter implements this too: `isRunning` asks for an active job run, `start` creates one. */
 export type RunStarter = { isRunning(): Promise<boolean>; start(trigger: RunTrigger): Promise<void> };
+
+/** `pid` is the run child's while one runs. */
+export type LocalRunStarter = RunStarter & { pid(): number | undefined };
 
 export type StartResult = 'started' | 'busy' | 'unknown' | 'failed';
 
@@ -65,12 +69,19 @@ export function serialStarter(s: RunStarter): RunStarter {
 
 export const SERVICE_ONLY_ENV = ['TRELLO_APP_SECRET', 'TRIGGER_SECRET', 'NORTHFLANK_API_TOKEN', 'PUBLIC_URL', 'PORT'] as const;
 
-export function runChildEnv(env: Env): Record<string, string> {
+export function runChildEnv(env: Env, heapMb?: number): Record<string, string> {
   const drop = new Set<string>(SERVICE_ONLY_ENV);
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(env)) if (v !== undefined && !drop.has(k)) out[k] = v;
+  // Through NODE_OPTIONS rather than an argument, so the run's own node children (scan, fetch-jd) get the cap too.
+  if (heapMb !== undefined) out.NODE_OPTIONS = [out.NODE_OPTIONS, `--max-old-space-size=${heapMb}`].filter(Boolean).join(' ');
   return out;
 }
+
+/** Lowest priority: on a small host the run would otherwise starve serve, and /healthz with it. Children inherit it. */
+export const RUN_NICE = 19;
+
+const HEAP_FATAL = /Reached heap limit|JavaScript heap out of memory/;
 
 const RUN_SCRIPT = fileURLToPath(new URL('../run.ts', import.meta.url));
 
@@ -123,27 +134,46 @@ export function localRunStarter(o: {
   script?: string;
   lockFile?: string;
   setTimer?: SetTimer;
-}): RunStarter {
+  /** V8 heap cap (MB) of the run and its node children; unset leaves node's default. */
+  heapMb?: number;
+}): LocalRunStarter {
   const spawn = o.spawn ?? nodeSpawn;
   const setTimer = o.setTimer ?? realTimer;
   let child: ChildProcess | null = null;
 
+  let heapFatal = false;
   const forward = (stream: Readable | null) => {
-    if (stream) createInterface({ input: stream, crlfDelay: Infinity }).on('line', (l) => o.log(`run: ${l}`));
+    if (stream) {
+      createInterface({ input: stream, crlfDelay: Infinity }).on('line', (l) => {
+        if (HEAP_FATAL.test(l)) heapFatal = true;
+        o.log(`run: ${l}`);
+      });
+    }
   };
 
   return {
+    pid() {
+      return child?.pid;
+    },
     async isRunning() {
       return child !== null || (o.lockFile ? await lockHeld(o.lockFile) : false);
     },
     start(trigger) {
       if (child) return Promise.reject(new Error('a run started by this service is still running'));
       const c = spawn(process.execPath, [o.script ?? RUN_SCRIPT, '--trigger', trigger], {
-        env: runChildEnv(o.env),
+        env: runChildEnv(o.env, o.heapMb),
         stdio: ['ignore', 'pipe', 'pipe'],
         detached: true,
       });
+      if (c.pid !== undefined) {
+        try {
+          setPriority(c.pid, RUN_NICE);
+        } catch (e) {
+          o.log(`run priority not lowered: ${firstLine(e)}`);
+        }
+      }
       child = c;
+      heapFatal = false;
       forward(c.stdout);
       forward(c.stderr);
 
@@ -188,7 +218,8 @@ export function localRunStarter(o: {
         if (killed) killGroup(c, 'SIGKILL');
         if (killed && o.lockFile && c.pid !== undefined) await dropLockOf(o.lockFile, c.pid);
         if (child === c) child = null;
-        o.log(signal ? `run exited by signal ${signal}` : `run exited with code ${code}`);
+        const why = heapFatal ? ` (heap limit${o.heapMb !== undefined ? ` ${o.heapMb} MB` : ''} reached)` : '';
+        o.log(`${signal ? `run exited by signal ${signal}` : `run exited with code ${code}`}${why}`);
       };
 
       return new Promise<void>((resolve, reject) => {

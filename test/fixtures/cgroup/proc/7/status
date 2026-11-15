@@ -1,0 +1,11 @@
+Name:	node
+Umask:	0022
+State:	S (sleeping)
+Tgid:	7
+Ngid:	0
+Pid:	7
+PPid:	1
+TracerPid:	0
+VmPeak:	 1100000 kB
+VmRSS:	 72704 kB
+Threads:	7

@@ -1,0 +1,11 @@
+Name:	sh
+Umask:	0022
+State:	S (sleeping)
+Tgid:	30
+Ngid:	0
+Pid:	30
+PPid:	1
+TracerPid:	0
+VmPeak:	 1100000 kB
+VmRSS:	 1024 kB
+Threads:	7

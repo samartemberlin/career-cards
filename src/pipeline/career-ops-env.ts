@@ -1,6 +1,6 @@
 // career-ops is third-party code, and fetch-jd.mjs reads untrusted pages: it gets no Trello, model or other secret,
-// only what it needs to run.
-const PASSED_ENV = ['PATH', 'HOME', 'LANG'];
+// only what it needs to run. NODE_OPTIONS carries the service's heap cap (RUN_HEAP_MB) to these node children.
+const PASSED_ENV = ['PATH', 'HOME', 'LANG', 'NODE_OPTIONS'];
 
 export type ParentEnv = Record<string, string | undefined>;
 

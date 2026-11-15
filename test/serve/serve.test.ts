@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { subscribe, unsubscribe } from 'node:diagnostics_channel';
-import { main, parseServeEnv } from '../../src/serve.ts';
+import { main, parseServeEnv, RUN_HEAP_MB_DEFAULT } from '../../src/serve.ts';
 import { UsageError } from '../../src/run.ts';
 import { createTrelloClient } from '../../src/trello/client.ts';
 import type { TMember } from '../../src/trello/api.ts';
@@ -52,6 +52,19 @@ test('parseServeEnv: defaults and the callback URL source', () => {
   assert.equal(cfg.port, 8080);
   assert.equal(cfg.publicUrl, 'https://bot.example/');
   assert.deepEqual(cfg.boards, BOARDS);
+  assert.equal(cfg.runHeapMb, RUN_HEAP_MB_DEFAULT);
+});
+
+test('RUN_HEAP_MB sets the run heap cap; anything but a positive integer is rejected by name', () => {
+  assert.equal(parseServeEnv({ ...ENV, RUN_HEAP_MB: '700' }).runHeapMb, 700);
+  for (const bad of ['0', '-5', '1.5', 'lots']) {
+    assert.throws(() => parseServeEnv({ ...ENV, RUN_HEAP_MB: bad }), (e: unknown) => {
+      assert.ok(e instanceof UsageError);
+      assert.match(e.message, /RUN_HEAP_MB must be a positive whole number of MB/);
+      assert.ok(!e.message.includes(bad));
+      return true;
+    }, bad);
+  }
 });
 
 test('a short TRIGGER_SECRET is rejected', () => {
@@ -214,6 +227,9 @@ test('serve logs the local starter when no NORTHFLANK_* is set', async () => {
   const svc = await main(ENV, { trello: s.trello, listen: false, out: (l) => s.logs.push(l) });
   closers.push(svc.close);
   assert.ok(s.logs.includes('starter: local'), s.logs.join('\n'));
+  await svc.metrics;
+  assert.ok(s.logs.some((l) => l.startsWith('metrics: limits ') && l.endsWith(` · run heap ${RUN_HEAP_MB_DEFAULT} MB`)), s.logs.join('\n'));
+  assert.ok(s.logs.some((l) => /^metrics: .*serve \d+$/.test(l)), s.logs.join('\n'));
 });
 
 test('serve logs the northflank starter when all NORTHFLANK_* are set, and no value', async () => {
@@ -222,5 +238,7 @@ test('serve logs the northflank starter when all NORTHFLANK_* are set, and no va
   const svc = await main({ ...ENV, ...nf }, { trello: s.trello, listen: false, out: (l) => s.logs.push(l) });
   closers.push(svc.close);
   assert.ok(s.logs.includes('starter: northflank'), s.logs.join('\n'));
+  await svc.metrics;
+  assert.ok(s.logs.some((l) => l.startsWith('metrics: limits ') && !l.includes('run heap')), s.logs.join('\n'));
   for (const v of Object.values(nf)) assert.ok(s.logs.every((l) => !l.includes(v)));
 });

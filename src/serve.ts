@@ -12,7 +12,8 @@ import { createQueue } from './serve/queue.ts';
 import type { Queue } from './serve/queue.ts';
 import { selectStarter } from './serve/northflank.ts';
 import { localRunStarter, serialStarter } from './serve/runs.ts';
-import type { RunStarter } from './serve/runs.ts';
+import type { LocalRunStarter, RunStarter } from './serve/runs.ts';
+import { startMetrics } from './serve/metrics.ts';
 import { handleComment } from './bot/dispatch.ts';
 import type { DispatchDeps } from './bot/dispatch.ts';
 import type { NetDeps } from './bot/handlers.ts';
@@ -28,6 +29,7 @@ export type ServeConfig = {
   triggerSecret: string;
   trello: { key: string; token: string };
   boards: UserBoards;
+  runHeapMb: number;
 };
 
 const REQUIRED = [
@@ -37,6 +39,8 @@ const REQUIRED = [
 
 export const TRIGGER_SECRET_MIN = 32;
 export const QUEUE_MAX = 50;
+/** MB of V8 heap for the local run and each of its node children. See DEPLOY.md for the measurement behind it. */
+export const RUN_HEAP_MB_DEFAULT = 256;
 
 /** Problems name the variable, never its value. */
 export function parseServeEnv(env: Env): ServeConfig {
@@ -64,6 +68,12 @@ export function parseServeEnv(env: Env): ServeConfig {
     if (!/^\d+$/.test(env.PORT) || port > 65535) problems.push('PORT must be a port number');
   }
 
+  let runHeapMb = RUN_HEAP_MB_DEFAULT;
+  if (env.RUN_HEAP_MB !== undefined && env.RUN_HEAP_MB !== '') {
+    runHeapMb = Number(env.RUN_HEAP_MB);
+    if (!/^\d+$/.test(env.RUN_HEAP_MB) || runHeapMb < 1) problems.push('RUN_HEAP_MB must be a positive whole number of MB');
+  }
+
   if (problems.length) throw new UsageError(problems.join('\n'));
   return {
     port,
@@ -72,6 +82,7 @@ export function parseServeEnv(env: Env): ServeConfig {
     triggerSecret: secret,
     trello: { key: env.TRELLO_KEY!, token: env.TRELLO_TOKEN! },
     boards: resolveBoards(env),
+    runHeapMb,
   };
 }
 
@@ -86,7 +97,7 @@ export async function main(
     listen?: boolean;
     out?: (s: string) => void;
   } = {},
-): Promise<{ server: Server; queue: Queue; close(): Promise<void> }> {
+): Promise<{ server: Server; queue: Queue; metrics: Promise<void>; close(): Promise<void> }> {
   const cfg = parseServeEnv(env);
   const log = createRunLog({
     sink: o.out ?? ((s) => process.stdout.write(`${s}\n`)),
@@ -94,17 +105,18 @@ export async function main(
     keep: 0,
   }).log;
 
-  let kind = 'northflank';
+  let local: LocalRunStarter | undefined;
   const selected = o.starter ?? selectStarter(env, () => {
-    kind = 'local';
-    return localRunStarter({ env, log, lockFile: runLockPath(env, cfg.boards) });
+    local = localRunStarter({ env, log, lockFile: runLockPath(env, cfg.boards), heapMb: cfg.runHeapMb });
+    return local;
   });
-  if (!o.starter) log(`starter: ${kind}`);
+  if (!o.starter) log(`starter: ${local ? 'local' : 'northflank'}`);
   const starter = serialStarter(selected);
 
   const api = scopeUserBoards(o.trello ?? createTrelloClient(cfg.trello), cfg.boards);
   const me = await api.me();
   for (const id of [cfg.boards.jobs, cfg.boards.profiles, cfg.boards.system]) await api.board(id);
+  const metrics = startMetrics({ log, runPid: () => local?.pid(), ...(local ? { runHeapMb: cfg.runHeapMb } : {}) });
 
   const deps: DispatchDeps = {
     api,
@@ -143,7 +155,9 @@ export async function main(
   return {
     server,
     queue,
+    metrics: metrics.ready,
     async close() {
+      metrics.stop();
       await new Promise<void>((resolve) => {
         server.close(() => resolve());
         server.closeAllConnections();
