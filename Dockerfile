@@ -1,5 +1,8 @@
 FROM node:24-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54
 
+# serve would be PID 1, which ignores SIGTERM unless handled and never reaps orphaned children.
+RUN apt-get update && apt-get install -y --no-install-recommends tini && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Separate from COPY . . so a source-only change doesn't re-run npm install.
@@ -18,5 +21,5 @@ ENV HOME=/home/node
 # App files stay root-owned and read-only for node.
 USER node
 
-ENTRYPOINT ["node", "src/main.ts"]
+ENTRYPOINT ["/usr/bin/tini", "--", "node", "src/main.ts"]
 CMD ["serve"]

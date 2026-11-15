@@ -164,8 +164,7 @@ export function localRunStarter(o: {
       }, RUN_DEADLINE_MS);
 
       // Its own group no longer gets the terminal's Ctrl+C, so the service passes its own stop signal on, then re-raises
-      // it to stop as it would have without this listener. As PID 1 (the container) the re-raise is dropped, as SIGTERM
-      // was before; the platform's SIGKILL ends the container.
+      // it to stop as it would have without this listener. In the image tini is PID 1, so serve is not, and the re-raise works.
       const onStop = (sig: NodeJS.Signals) => {
         killGroup(c, sig);
         process.kill(process.pid, sig);
