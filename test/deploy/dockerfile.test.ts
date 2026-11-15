@@ -18,8 +18,10 @@ describe('Dockerfile', () => {
 
   it('declares no secret-looking ENV or ARG', () => assert.doesNotMatch(df, /^(ENV|ARG)\s+\S*(KEY|TOKEN|SECRET)/im));
 
-  it('entrypoint is main.ts, default command serve', () => {
-    assert.match(df, /ENTRYPOINT\s+\["node",\s*"src\/main\.ts"\]/);
+  it('installs tini', () => assert.match(df, /apt-get install[^\n]*\btini\b/));
+
+  it('entrypoint is main.ts under tini, default command serve', () => {
+    assert.match(df, /ENTRYPOINT\s+\["\/usr\/bin\/tini",\s*"--",\s*"node",\s*"src\/main\.ts"\]/);
     assert.match(df, /CMD\s+\["serve"\]/);
   });
 });
