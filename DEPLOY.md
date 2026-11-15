@@ -15,6 +15,7 @@ DeploymentService (`serve`) in your project.
 | `TRELLO_APP_SECRET`, `TRIGGER_SECRET`, `NORTHFLANK_API_TOKEN` (secret group `<worker>-service`, restricted to `serve`) | | ✓ |
 | LLM keys: `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `GROQ_API_KEY`, … (secret group `<worker>-llm`; the bot builds its providers from `serve`'s env, [`stageOpts`](src/bot/stages/handler.ts#L19)) | ✓ | ✓ |
 | `CLAUDE_CODE_OAUTH_TOKEN` (the owner's own Claude subscription; secret group `<worker>-claude`) | ✓ | [see below](#web-research-company-deep) |
+| `RUN_HEAP_MB` (optional): V8 old-space cap (MB) of a run `serve` starts itself and of each of its node children (not the `claude` CLI). Unset: 160 when the container has at most 1 GB, else none ([serve.ts](src/serve.ts)); if the `metrics: limits` line shows no `mem … MB`, set it yourself on a small host. A run over it ends as `run exited … (heap limit N MB reached)`, not a container kill. Measured without scoring (dummy AI keys): uncapped, a 512 MB / 0.15 vCPU container was OOM-killed; capped, it peaked at 375 MB | | ✓ |
 
 ## Steps
 
@@ -78,6 +79,9 @@ directly, so it needs the LLM keys too. The child process never receives `SERVIC
 The service plus the scan child (and any `claude` subprocess) share the plan's RAM. Use at least 1 GB
 (`SERVICE_PLAN` defaults to `nf-compute-50`); if the Sandbox restricts this to `nf-compute-20` (512 MB),
 the run may fail.
+
+`serve` logs `metrics: mem 412/512 MB peak 438 · oom_kill 0 · cpu thr 37% · serve 71 · run 180 · kids 3: 156 MB` (cgroup v2
+and /proc) every 30 s during a local run and every 10 min when idle, after one `metrics: limits …` line at start ([metrics.ts](src/serve/metrics.ts)).
 
 ## Koyeb
 

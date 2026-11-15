@@ -404,3 +404,61 @@ test('localRunStarter: a run that ended while a grandchild outside its group hol
   await seen(/^run exited with code 0$/);
   assert.equal(await s.isRunning(), false);
 });
+
+const ALLOC = fileURLToPath(new URL('../fixtures/run-fake/alloc.mjs', import.meta.url));
+
+function allocStarter(env: Record<string, string | undefined>, heapMb?: number) {
+  const lines: string[] = [];
+  let onExit = () => {};
+  const exited = new Promise<void>((r) => { onExit = r; });
+  const s = localRunStarter({
+    env: { PATH: process.env.PATH, ...env },
+    script: ALLOC,
+    spawn: trackedSpawn,
+    ...(heapMb !== undefined ? { heapMb } : {}),
+    log: (l) => {
+      lines.push(l);
+      if (/^run exited/.test(l)) onExit();
+    },
+  });
+  return { s, lines, exited };
+}
+
+test('localRunStarter: the run starts at the lowest CPU priority, and pid() names it while it runs', async () => {
+  const { s, lines, exited } = allocStarter({});
+  assert.equal(s.pid(), undefined);
+  await s.start('manual');
+  assert.equal(s.pid(), children.at(-1)!.pid);
+  await exited;
+  assert.equal(s.pid(), undefined);
+  assert.ok(lines.includes('run: priority 19'), lines.join('\n'));
+});
+
+test('localRunStarter: heapMb and a small young generation reach the run and its node children through NODE_OPTIONS, kept options first', async () => {
+  const { s, lines, exited } = allocStarter({ NODE_OPTIONS: '--no-warnings' }, 300);
+  await s.start('manual');
+  await exited;
+  assert.ok(lines.includes('run: node_options --no-warnings --max-old-space-size=300 --max-semi-space-size=16'), lines.join('\n'));
+});
+
+test('localRunStarter: without heapMb NODE_OPTIONS is passed on unchanged', async () => {
+  const { s, lines, exited } = allocStarter({});
+  await s.start('manual');
+  await exited;
+  assert.ok(lines.includes('run: node_options '), lines.join('\n'));
+});
+
+test('localRunStarter: output that only quotes the heap error does not label a failed run', async () => {
+  const { s, lines, exited } = allocStarter({ FAKE_QUOTE: '1', FAKE_FAIL: '1' }, 300);
+  await s.start('manual');
+  await exited;
+  assert.ok(lines.includes('run exited with code 3'), lines.join('\n'));
+});
+
+test('localRunStarter: a run past its heap cap ends as a failed run that names the cap', { timeout: 20_000 }, async () => {
+  const { s, lines, exited } = allocStarter({ FAKE_ALLOC: '1' }, 32);
+  await s.start('manual');
+  await exited;
+  assert.ok(lines.some((l) => /^run exited (by signal SIGABRT|with code \d+) \(heap limit 32 MB reached\)$/.test(l)), lines.join('\n'));
+  assert.equal(await s.isRunning(), false);
+});

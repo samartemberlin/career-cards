@@ -66,7 +66,7 @@ export type FetchJdOpts = {
   atsFetch?: AtsFetch;
   careerOpsDir?: string;
   linkedinFetch?: LinkedinFetch;
-  /** Only PATH, HOME and LANG of it reach fetch-jd.mjs. */
+  /** Only careerOpsEnv's names of it reach fetch-jd.mjs. */
   env?: ParentEnv;
   /** Epoch ms: no request runs past it. */
   deadline?: number;

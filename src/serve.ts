@@ -12,7 +12,8 @@ import { createQueue } from './serve/queue.ts';
 import type { Queue } from './serve/queue.ts';
 import { selectStarter } from './serve/northflank.ts';
 import { localRunStarter, serialStarter } from './serve/runs.ts';
-import type { RunStarter } from './serve/runs.ts';
+import type { LocalRunStarter, RunStarter } from './serve/runs.ts';
+import { readOwnCgroup, startMetrics } from './serve/metrics.ts';
 import { handleComment } from './bot/dispatch.ts';
 import type { DispatchDeps } from './bot/dispatch.ts';
 import type { NetDeps } from './bot/handlers.ts';
@@ -28,6 +29,8 @@ export type ServeConfig = {
   triggerSecret: string;
   trello: { key: string; token: string };
   boards: UserBoards;
+  /** From RUN_HEAP_MB; unset → `defaultRunHeapMb` of the container's memory limit. */
+  runHeapMb?: number;
 };
 
 const REQUIRED = [
@@ -37,6 +40,18 @@ const REQUIRED = [
 
 export const TRIGGER_SECRET_MIN = 32;
 export const QUEUE_MAX = 50;
+/**
+ * Old-space MB for the local run and each of its node children on a small host. Measured in a 512 MB / 0.15 vCPU
+ * container (scan and description fetches; scoring failed fast on dummy keys): the run's heapUsed stayed near 80 MB
+ * and the container peaked at 375 MB with this cap; without caps it was OOM-killed.
+ */
+export const SMALL_HOST_HEAP_MB = 160;
+const SMALL_HOST_MAX_BYTES = 1024 * 2 ** 20;
+
+/** Caps only hosts of at most 1 GB; a bigger or unlimited one keeps node's own defaults. */
+export function defaultRunHeapMb(memMax: number | null | undefined): number | undefined {
+  return typeof memMax === 'number' && memMax <= SMALL_HOST_MAX_BYTES ? SMALL_HOST_HEAP_MB : undefined;
+}
 
 /** Problems name the variable, never its value. */
 export function parseServeEnv(env: Env): ServeConfig {
@@ -64,6 +79,12 @@ export function parseServeEnv(env: Env): ServeConfig {
     if (!/^\d+$/.test(env.PORT) || port > 65535) problems.push('PORT must be a port number');
   }
 
+  let runHeapMb: number | undefined;
+  if (env.RUN_HEAP_MB !== undefined && env.RUN_HEAP_MB !== '') {
+    runHeapMb = Number(env.RUN_HEAP_MB);
+    if (!/^\d+$/.test(env.RUN_HEAP_MB) || runHeapMb < 1) problems.push('RUN_HEAP_MB must be a positive whole number of MB');
+  }
+
   if (problems.length) throw new UsageError(problems.join('\n'));
   return {
     port,
@@ -72,6 +93,7 @@ export function parseServeEnv(env: Env): ServeConfig {
     triggerSecret: secret,
     trello: { key: env.TRELLO_KEY!, token: env.TRELLO_TOKEN! },
     boards: resolveBoards(env),
+    ...(runHeapMb !== undefined ? { runHeapMb } : {}),
   };
 }
 
@@ -86,7 +108,7 @@ export async function main(
     listen?: boolean;
     out?: (s: string) => void;
   } = {},
-): Promise<{ server: Server; queue: Queue; close(): Promise<void> }> {
+): Promise<{ server: Server; queue: Queue; metrics: Promise<void>; close(): Promise<void> }> {
   const cfg = parseServeEnv(env);
   const log = createRunLog({
     sink: o.out ?? ((s) => process.stdout.write(`${s}\n`)),
@@ -94,17 +116,19 @@ export async function main(
     keep: 0,
   }).log;
 
-  let kind = 'northflank';
+  let local: LocalRunStarter | undefined;
+  const heapMb = cfg.runHeapMb ?? defaultRunHeapMb((await readOwnCgroup()).memMax);
   const selected = o.starter ?? selectStarter(env, () => {
-    kind = 'local';
-    return localRunStarter({ env, log, lockFile: runLockPath(env, cfg.boards) });
+    local = localRunStarter({ env, log, lockFile: runLockPath(env, cfg.boards), ...(heapMb !== undefined ? { heapMb } : {}) });
+    return local;
   });
-  if (!o.starter) log(`starter: ${kind}`);
+  if (!o.starter) log(`starter: ${local ? 'local' : 'northflank'}`);
   const starter = serialStarter(selected);
 
   const api = scopeUserBoards(o.trello ?? createTrelloClient(cfg.trello), cfg.boards);
   const me = await api.me();
   for (const id of [cfg.boards.jobs, cfg.boards.profiles, cfg.boards.system]) await api.board(id);
+  const metrics = startMetrics({ log, runPid: () => local?.pid(), ...(local && heapMb !== undefined ? { runHeapMb: heapMb } : {}) });
 
   const deps: DispatchDeps = {
     api,
@@ -143,7 +167,9 @@ export async function main(
   return {
     server,
     queue,
+    metrics: metrics.ready,
     async close() {
+      metrics.stop();
       await new Promise<void>((resolve) => {
         server.close(() => resolve());
         server.closeAllConnections();

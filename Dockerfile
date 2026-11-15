@@ -18,6 +18,10 @@ COPY . .
 # Writable HOME so the claude CLI can create ~/.claude.
 ENV HOME=/home/node
 
+# glibc gives each thread its own malloc arena, so native memory grows with the host's core count. Two arenas lowered
+# a sample run's peak in a 512 MB container from 428 to 375 MB.
+ENV MALLOC_ARENA_MAX=2
+
 # App files stay root-owned and read-only for node.
 USER node
 

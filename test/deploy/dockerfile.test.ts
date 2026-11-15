@@ -18,6 +18,8 @@ describe('Dockerfile', () => {
 
   it('declares no secret-looking ENV or ARG', () => assert.doesNotMatch(df, /^(ENV|ARG)\s+\S*(KEY|TOKEN|SECRET)/im));
 
+  it('limits glibc malloc arenas (native memory on small hosts)', () => assert.match(df, /^ENV MALLOC_ARENA_MAX=2$/m));
+
   it('installs tini', () => assert.match(df, /apt-get install[^\n]*\btini\b/));
 
   it('entrypoint is main.ts under tini, default command serve', () => {
