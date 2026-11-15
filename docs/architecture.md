@@ -36,7 +36,7 @@ No stage gets untrusted content, private data and a way out at once. Stage runne
 | router | request; conversation, card text (untrusted); masked profile; catalogue | none | masked | none |
 | reader | job text (untrusted) | none | none | none |
 | advisor | job text (untrusted), masked profile; for `deep`, research (untrusted) | none | masked | none |
-| researcher | company, job title, posting URL, topic | web search and fetch | none | yes |
+| researcher | company, job title, posting URL, topic | web search; pages only through [`fetch_page`](../src/net/fetch-tool.ts) | none | public addresses only |
 | code | the action's typed args | Trello, page fetch for `open` | as needed | `open`: posting URL only, no private addresses |
 
 - Stage output is posted, never fed to the router or a stage with tools; the one chain is researcher → advisor (`deep`).

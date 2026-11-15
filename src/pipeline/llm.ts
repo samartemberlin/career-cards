@@ -28,6 +28,7 @@ import type { ChildProcess, SpawnOptions } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { FETCH_MCP_CONFIG, FETCH_TOOL } from '../net/fetch-tool.ts';
 
 export type Env = Record<string, string | undefined>;
 export type Message = { role: 'system' | 'user' | 'assistant'; content: string };
@@ -237,16 +238,18 @@ export function llmConfig(env: Env, settings: LlmSettings): LlmConfig {
 
 export type SpawnLike = (cmd: string, args: string[], options: SpawnOptions) => ChildProcess;
 
-// Tool flags for `claude -p`, checked against `claude --help` of Claude Code 2.1.322 (2026-11-10):
-//   --tools <tools...>          "Use "" to disable all tools ... or specify tool names (e.g. "Bash,Edit,Read")"
+// Tool flags for `claude -p`, checked against `claude --help` of Claude Code 2.1.322 (2026-11-10, 2026-11-15):
+//   --tools <tools...>          "Use "" to disable all tools ... or specify tool names (e.g. "Bash,Edit,Read")": built-in only
+//   --mcp-config <configs...>   "Load MCP servers from JSON files or strings"
+//   --strict-mcp-config         "Only use MCP servers from --mcp-config": none, or only our fetch tool's
 //   --allowedTools <tools...>   tools allowed without a permission prompt (none can be answered in -p mode)
-//   --strict-mcp-config         "Only use MCP servers from --mcp-config": we pass none, so no MCP servers at all
 // Re-check these when the CLI is upgraded: a renamed flag must not silently re-enable tools.
-// `--restricted` (in the help of 2.1.323) is left out until a test shows the pinned CLI accepts it: an unknown flag
-// would make every claude call fail.
+// `web` has no WebFetch: it runs inside the CLI, unguarded. Pages are read through FETCH_TOOL instead.
+// `--restricted` is left out until a test shows the pinned CLI accepts it: an unknown flag would make every claude
+// call fail.
 export const MODEL_TOOL_FLAGS = {
   none: ['--tools', '', '--strict-mcp-config'],
-  web: ['--tools', 'WebSearch,WebFetch', '--allowedTools', 'WebSearch,WebFetch', '--strict-mcp-config'],
+  web: ['--tools', 'WebSearch', '--mcp-config', FETCH_MCP_CONFIG, '--strict-mcp-config', '--allowedTools', `WebSearch,${FETCH_TOOL}`],
 } as const satisfies Record<string, readonly string[]>;
 
 export type ModelProcessOpts = {

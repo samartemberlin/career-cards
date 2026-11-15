@@ -10,11 +10,13 @@ import type { FetchLike } from '../pipeline/jd.ts';
 
 export class BlockedUrlError extends Error {
   url: string;
+  reason: string;
   constructor(url: string, reason: string) {
     const shown = withoutCredentials(url);
     super(`blocked ${shown}: ${reason}`);
     this.name = 'BlockedUrlError';
     this.url = shown;
+    this.reason = reason;
   }
 }
 
@@ -119,7 +121,7 @@ export async function assertPublicUrl(url: string, o: UrlGuard = {}): Promise<UR
   return u;
 }
 
-export type SafeResponse = { ok: boolean; status: number; url: string; text: string };
+export type SafeResponse = { ok: boolean; status: number; url: string; text: string; contentType?: string };
 
 export type SafeFetchOpts = UrlGuard & {
   maxRedirects?: number;
@@ -151,7 +153,7 @@ function guardedLookup(url: string, lookup: LookupAll, allow: (ip: string) => bo
 
 const REDIRECTS = new Set([301, 302, 303, 307, 308]);
 
-type Hop = { status: number; location?: string; text: string };
+type Hop = { status: number; location?: string; text: string; contentType?: string };
 type HopOpts = UrlGuard & { maxBytes: number; headers: Record<string, string>; signal: AbortSignal };
 
 function hop(u: URL, o: HopOpts): Promise<Hop> {
@@ -181,7 +183,7 @@ function hop(u: URL, o: HopOpts): Promise<Hop> {
       let size = 0;
       const finish = (): void => {
         done();
-        resolve({ status, text: Buffer.concat(chunks).subarray(0, o.maxBytes).toString('utf8') });
+        resolve({ status, text: Buffer.concat(chunks).subarray(0, o.maxBytes).toString('utf8'), contentType: res.headers['content-type'] });
       };
       res.on('data', (c: Buffer) => {
         chunks.push(c);
@@ -215,7 +217,7 @@ export async function safeFetch(url: string, o: SafeFetchOpts = {}): Promise<Saf
     const u = await assertPublicUrl(current, { lookup: timedLookup, allow });
     const r = await hop(u, { maxBytes, headers, lookup: timedLookup, allow, signal });
     if (r.location === undefined) {
-      return { ok: r.status >= 200 && r.status < 300, status: r.status, url: u.href, text: r.text };
+      return { ok: r.status >= 200 && r.status < 300, status: r.status, url: u.href, text: r.text, contentType: r.contentType };
     }
     let next: string;
     try { next = new URL(r.location, u).href; } catch { throw new BlockedUrlError(u.href, 'bad redirect'); }

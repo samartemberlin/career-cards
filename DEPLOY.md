@@ -51,15 +51,12 @@ DeploymentService (`serve`) in your project.
 ## Web research (`company`, `deep`)
 
 It runs only when `serve` has `CLAUDE_CODE_OAUTH_TOKEN` and the user's providers include `claude`; otherwise it
-replies "unavailable" ([`researcherFor`](src/bot/stages/researcher.ts#L79)). WebFetch runs inside the `serve`
-container, before the code sees any URL, so a page can make it reach an internal address, or chain a second fetch
-that sends what it read elsewhere. The address check comes only after the run ([researcher.ts](src/bot/stages/researcher.ts#L140))
-and decides only what is posted.
+replies "unavailable" ([`researcherFor`](src/bot/stages/researcher.ts#L81)). The researcher has no WebFetch: it reads
+pages only through our `fetch_page` tool ([fetch-tool.ts](src/net/fetch-tool.ts)), which uses
+[safe-fetch](src/net/safe-fetch.ts) and refuses internal addresses (private ranges, loopback, link-local with cloud
+metadata) before any request, on every redirect and at connect time. Its server starts with an empty environment.
 
-Before `serve` gets the token, deny its egress to RFC 1918 ranges, link-local (169.254.0.0/16, cloud metadata
-included), loopback and the platform's internal service network. If the host offers no egress policy, keep the token
-off `serve`: the bot then uses the user's other providers. With `template-local.json`, `serve` holds every key, so
-this applies as soon as the token is there.
+A host egress policy denying `serve` those ranges is still good defence in depth.
 
 ## Northflank notes
 
