@@ -9,6 +9,7 @@ import {
   llmConfig, providerProblems, rankModels, retryHint, runModelProcess,
 } from '../../src/pipeline/llm.ts';
 import type { FetchJson, LlmConfig, Message, SpawnLike } from '../../src/pipeline/llm.ts';
+import { FETCH_MCP_CONFIG, FETCH_TOOL } from '../../src/net/fetch-tool.ts';
 
 // A fetch stand-in: only the fields the LLM layer reads.
 type Res = Awaited<ReturnType<FetchJson>>;
@@ -306,8 +307,8 @@ test('runModelProcess: tool flags, cwd and stdin', async () => {
   const web: { args?: string[] } = {};
   await runModelProcess([], '', { env: {}, cwd: '/', tools: 'web', spawnImpl: nodeInstead('', web) });
   const w = web.args ?? [];
-  assert.equal(w[w.indexOf('--tools') + 1], 'WebSearch,WebFetch');
-  assert.equal(w[w.indexOf('--allowedTools') + 1], 'WebSearch,WebFetch');
+  assert.equal(w[w.indexOf('--tools') + 1], 'WebSearch');
+  assert.equal(w[w.indexOf('--allowedTools') + 1], `WebSearch,${FETCH_TOOL}`);
 });
 
 test('runModelProcess: a non-zero exit rejects with code, stdout and stderr', async () => {
@@ -322,9 +323,11 @@ test('MODEL_TOOL_FLAGS.none disables all tools and MCP servers', () => {
   assert.deepEqual([...MODEL_TOOL_FLAGS.none], ['--tools', '', '--strict-mcp-config']);
 });
 
-test('MODEL_TOOL_FLAGS.web names exactly WebSearch,WebFetch', () => {
-  assert.deepEqual([...MODEL_TOOL_FLAGS.web],
-    ['--tools', 'WebSearch,WebFetch', '--allowedTools', 'WebSearch,WebFetch', '--strict-mcp-config']);
+test('MODEL_TOOL_FLAGS.web: built-in WebSearch only, our fetch tool as the only MCP server, no WebFetch anywhere', () => {
+  assert.deepEqual([...MODEL_TOOL_FLAGS.web], ['--tools', 'WebSearch', '--mcp-config', FETCH_MCP_CONFIG, '--strict-mcp-config',
+    '--allowedTools', 'WebSearch,mcp__web__fetch_page']);
+  assert.ok(!MODEL_TOOL_FLAGS.web.some((f) => /webfetch/i.test(f)));
+  assert.deepEqual(Object.keys(JSON.parse(FETCH_MCP_CONFIG).mcpServers), ['web']);
 });
 
 // --- aborts: the caller gave up, so it is not a provider failure ---

@@ -1,12 +1,14 @@
-// The researcher stage: `claude -p` with WebSearch and WebFetch only, in an empty directory, seeing the four public
-// fields of ResearchInput. What it opened comes from the CLI's tool log, never from the model's own account: a point
-// counts only if it cites a page that loaded, and one fetch of an internal address discards the whole run.
+// The researcher stage: `claude -p` with WebSearch and our guarded fetch tool only, in an empty directory, seeing the
+// four public fields of ResearchInput. What it opened comes from the CLI's tool log, never from the model's own
+// account: a point counts only if it cites a page that loaded, and one fetch of an internal address discards the run.
+// The fetch tool already refuses those addresses before any request; the check here is a second line.
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { BlockedUrlError, assertPublicUrl } from '../../net/safe-fetch.ts';
 import type { UrlGuard } from '../../net/safe-fetch.ts';
+import { FETCH_TOOL } from '../../net/fetch-tool.ts';
 import { QuotaExhausted, classifyClaudeFailure, coolDown, isCooling, orAbort, runModelProcess } from '../../pipeline/llm.ts';
 import type { LlmConfig, ModelProcessError, Provider } from '../../pipeline/llm.ts';
 import { researcherMessages } from '../prompt.ts';
@@ -43,7 +45,7 @@ export class ResearchRefused extends Error {
 export const RESEARCH_TIMEOUT_MS = 180_000;
 const MAX_TURNS = '12';
 const HOUR = 3600 * 1000;
-const WEB_TOOLS = ['WebFetch', 'WebSearch'];
+const WEB_TOOLS = ['WebSearch', FETCH_TOOL].sort();
 const FOOTER_SOURCES_MAX = 8;
 
 export const RESEARCH_UNAVAILABLE =

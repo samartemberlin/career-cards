@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { PassThrough } from 'node:stream';
 import type { ChildProcess } from 'node:child_process';
 import type { JobFields } from '../../../src/bot/context.ts';
@@ -18,6 +18,7 @@ import { MASKING_REPLY, QUOTA_REPLY, StageOutputInvalid, TIMEOUT_REPLY } from '.
 import { QuotaExhausted, isCooling, llmConfig, runModelProcess } from '../../../src/pipeline/llm.ts';
 import type { Provider, SpawnLike } from '../../../src/pipeline/llm.ts';
 import type { LookupAll } from '../../../src/net/safe-fetch.ts';
+import { FETCH_TOOL } from '../../../src/net/fetch-tool.ts';
 import { fakeModel } from '../../support/fake-model.ts';
 import { withWeb } from '../../support/fake-research.ts';
 import type { WebAnswer } from '../../support/fake-research.ts';
@@ -82,7 +83,7 @@ test('researcherMessages takes only the four fields', () => {
 test('every research topic has its own axes in the system prompt', () => {
   const systems = RESEARCH_TOPICS.map((t) => researcherMessages(researchInputFromJob(JOB, t))[0]!.content);
   assert.equal(new Set(systems).size, RESEARCH_TOPICS.length);
-  assert.ok(systems.every((s) => /WebSearch/.test(s) && /WebFetch/.test(s)));
+  assert.ok(systems.every((s) => /WebSearch/.test(s) && /`fetch_page`/.test(s) && !/WebFetch/.test(s)));
   assert.ok(!systems.join('\n').includes('Candidate angle'));
 });
 
@@ -194,11 +195,20 @@ test('a guard with a loosened allow still refuses 127.0.0.1', async () => {
   await assert.rejects(p, (e: unknown) => e instanceof ResearchRefused && e.reason === 'internal_address');
 });
 
-test('a tool set other than WebSearch,WebFetch → tool_set; the CLI order does not matter', async () => {
-  const { p, logs } = run({ ...goodRun(), tools: ['WebSearch', 'WebFetch', 'Bash'] });
+test('a tool set other than WebSearch and our fetch tool → tool_set; the CLI order does not matter', async () => {
+  for (const tools of [['WebSearch', FETCH_TOOL, 'Bash'], ['WebSearch', FETCH_TOOL, 'WebFetch'], ['WebSearch', 'WebFetch'], ['WebSearch'],
+    ['WebSearch', FETCH_TOOL, FETCH_TOOL]]) {
+    const { p, logs } = run({ ...goodRun(), tools });
+    await assert.rejects(p, (e: unknown) => e instanceof ResearchRefused && e.reason === 'tool_set', tools.join());
+    assert.ok(logs.some((l) => l.includes('unexpected tool set')), tools.join());
+  }
+  await run({ ...goodRun(), tools: [FETCH_TOOL, 'WebSearch'] }).p;
+});
+
+test('the captured WebFetch stream fails closed on its tool set', async () => {
+  const stdout = readFileSync(new URL('../../fixtures/claude/research-stream.jsonl', import.meta.url), 'utf8');
+  const p = runResearch(input(), { provider: provider(), signal: new AbortController().signal, exec: async () => stdout, log: () => {} });
   await assert.rejects(p, (e: unknown) => e instanceof ResearchRefused && e.reason === 'tool_set');
-  assert.ok(logs.some((l) => l.includes('Bash')));
-  await run({ ...goodRun(), tools: ['WebSearch', 'WebFetch'] }).p;
 });
 
 test('invalid JSON → StageOutputInvalid', async () => {
