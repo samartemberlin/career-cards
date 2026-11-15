@@ -79,6 +79,94 @@ The service plus the scan child (and any `claude` subprocess) share the plan's R
 (`SERVICE_PLAN` defaults to `nf-compute-50`); if the Sandbox restricts this to `nf-compute-20` (512 MB),
 the run may fail.
 
+## Koyeb
+
+**Requires a credit card at signup** ($29 pre-auth hold, cancelled immediately).  
+Free tier: 512 MB RAM, 0.1 vCPU; one free service; Frankfurt (`fra`) or DC (`was`).  
+Idle: scales to zero after 1 hour with no inbound traffic; cold start: typically &lt;10 s.  
+Sources verified 2026-11-15: [pricing FAQ](https://www.koyeb.com/docs/faqs/pricing) · [instances](https://www.koyeb.com/docs/reference/instances)
+
+**RAM note:** `serve` runs the scan as a child process (local starter). Both share the 512 MB free limit.
+A run may OOM. Upgrade to `nano` (1 GB RAM) if it does.
+
+**Nightly-sleep risk:** The free instance scales to zero after 1 h with no inbound traffic. The workflow
+[`nightly-trigger.yml`](.github/workflows/nightly-trigger.yml) polls `/healthz` every 10 min during the
+run to prevent this.
+
+1. Sign up at [koyeb.com](https://koyeb.com). Install the CLI and log in:
+   ```sh
+   curl https://raw.githubusercontent.com/koyeb/koyeb-cli/main/install.sh | bash
+   koyeb login
+   ```
+
+2. Save a local env file (chmod 600) with your board IDs from `tools/.onboard.json`:
+   ```sh
+   mkdir -p ~/.config/career-cards
+   cat > ~/.config/career-cards/koyeb.env <<'EOF'
+   JOBS_BOARD_ID=<from onboard.ts>
+   PROFILES_BOARD_ID=<from onboard.ts>
+   SYSTEM_BOARD_ID=<from onboard.ts>
+   EOF
+   chmod 600 ~/.config/career-cards/koyeb.env
+   ```
+
+3. Create Koyeb secrets (paste value then Ctrl-D; skip any provider key you don't use):
+   ```sh
+   koyeb secrets create TRELLO_KEY
+   koyeb secrets create TRELLO_TOKEN
+   koyeb secrets create TRELLO_APP_SECRET
+   koyeb secrets create TRIGGER_SECRET   # openssl rand -hex 32
+   koyeb secrets create GEMINI_API_KEY
+   koyeb secrets create OPENROUTER_API_KEY
+   koyeb secrets create GROQ_API_KEY
+   ```
+
+4. Create the service (references secrets by name; no values in shell history):
+   ```sh
+   source ~/.config/career-cards/koyeb.env
+   bash deploy/koyeb/create.sh
+   ```
+
+5. Copy the service URL from [app.koyeb.com](https://app.koyeb.com). Fill `PUBLIC_URL`:
+   ```sh
+   koyeb services update serve --app career-cards-worker --env PUBLIC_URL=<URL>
+   ```
+
+6. Run `node tools/onboard.ts --url <URL> <flags from step 3 of Northflank setup>`.
+
+7. Add `SERVE_URL=<URL>` and `TRIGGER_SECRET` as secrets in your GitHub repo
+   (Settings → Secrets → Actions) so the nightly trigger workflow can call the service.
+
+## Render
+
+**No credit card required at signup.**  
+Free tier: 512 MB RAM, 0.1 vCPU; 750 h/month.  
+Idle: spins down after 15 min with no inbound HTTP; cold start ~60 s (Trello retries cover the gap for webhooks).  
+Sources verified 2026-11-15: [free tier](https://render.com/docs/free) · [compute plans](https://render.com/docs/compute-plans) · [deploy image](https://render.com/docs/deploying-an-image)
+
+**RAM note:** same as Koyeb — in-process scan shares 512 MB. Upgrade to `starter` or `standard`
+(1 GB) in [`deploy/render/render.yaml`](deploy/render/render.yaml) if runs OOM.
+
+**Nightly-sleep risk:** Render spins down after 15 min of no inbound HTTP. Without the Keepalive step in
+[`nightly-trigger.yml`](.github/workflows/nightly-trigger.yml), any run longer than 15 min will be killed
+mid-scan. Render cron jobs are paid-tier only; use the GitHub Actions workflow instead.
+
+1. Sign up at [render.com](https://render.com). No card needed.
+
+2. Fork `samartemberlin/career-cards`. Make the GHCR package public (GitHub → package settings). Edit
+   [`deploy/render/render.yaml`](deploy/render/render.yaml): change `image.url` to
+   `ghcr.io/<you>/career-cards:main`.
+
+3. In the Render dashboard: **+ New → Blueprint** → connect your fork → set **Blueprint file path** to
+   `deploy/render/render.yaml`. Fill all `sync: false` variables when prompted. Leave `PUBLIC_URL` empty.
+
+4. After the first deploy, copy the service URL. Set `PUBLIC_URL` in the Render dashboard
+   (Service → Environment → Edit → `PUBLIC_URL`).
+
+5. Run `node tools/onboard.ts --url <URL> <flags>`.
+
+6. Add `SERVE_URL=<URL>` and `TRIGGER_SECRET` as GitHub repo secrets for the nightly trigger.
+
 ## Adding a platform
 
 - Add a folder `deploy/<name>/` with the platform's template or manifest.

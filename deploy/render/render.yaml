@@ -1,0 +1,55 @@
+# Render Blueprint — career-cards serve (local-starter mode).
+# Place at repo root (render.yaml) or set "Blueprint file path" in Render UI.
+#
+# Free tier: 512 MB RAM, 0.1 vCPU; 750 h/month. No credit card required.
+# Idle: spins down after 15 min with no inbound HTTP; cold start ~60 s.
+# Sources verified 2026-11-15:
+#   https://render.com/docs/free
+#   https://render.com/docs/compute-plans
+#   https://render.com/docs/blueprint-spec
+#   https://render.com/docs/health-checks
+#
+# For a fork, change image.url to ghcr.io/<you>/career-cards:main.
+
+services:
+  - type: web
+    name: career-cards-serve
+    runtime: image
+    image:
+      url: ghcr.io/samartemberlin/career-cards:main
+    plan: free
+    numInstances: 1
+    healthCheckPath: /healthz
+    envVars:
+      # Render routes HTTP to this port; the app listens on $PORT (default 8080,
+      # but Render's default is 10000 — set explicitly to match).
+      - key: PORT
+        value: "10000"
+
+      # Non-secret board IDs — prompted once at Blueprint creation.
+      - key: JOBS_BOARD_ID
+        sync: false
+      - key: PROFILES_BOARD_ID
+        sync: false
+      - key: SYSTEM_BOARD_ID
+        sync: false
+
+      # Set PUBLIC_URL after the first deploy succeeds (see DEPLOY.md § Render).
+      - key: PUBLIC_URL
+        sync: false
+
+      # Secrets — prompted once at Blueprint creation; stored only in Render.
+      - key: TRELLO_KEY
+        sync: false
+      - key: TRELLO_TOKEN
+        sync: false
+      - key: TRELLO_APP_SECRET
+        sync: false
+      - key: TRIGGER_SECRET
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
