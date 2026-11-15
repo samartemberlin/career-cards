@@ -34,7 +34,7 @@ services:
       - key: SYSTEM_BOARD_ID
         sync: false
 
-      # Set PUBLIC_URL after the first deploy succeeds (see DEPLOY.md § Render).
+      # Set PUBLIC_URL after the first deploy succeeds (see deploy/render/README.md).
       - key: PUBLIC_URL
         sync: false
 
