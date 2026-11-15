@@ -87,11 +87,16 @@ Idle: scales to zero after 1 hour with no inbound traffic; cold start: typically
 Sources verified 2026-11-15: [pricing FAQ](https://www.koyeb.com/docs/faqs/pricing) · [instances](https://www.koyeb.com/docs/reference/instances)
 
 **RAM note:** `serve` runs the scan as a child process (local starter). Both share the 512 MB free limit.
-A run may OOM. Upgrade to `nano` (1 GB RAM) if it does.
+A run may OOM. Upgrade to `eco-small` (eco, 1 GB) or `small` (standard, 1 GB) if it does.
 
 **Nightly-sleep risk:** The free instance scales to zero after 1 h with no inbound traffic. The workflow
 [`nightly-trigger.yml`](.github/workflows/nightly-trigger.yml) polls `/healthz` every 10 min during the
-run to prevent this.
+run to prevent this. Use the GitHub Actions workflow as the nightly trigger instead of a Trello
+automation rule — a Trello-triggered run gets no keepalive and would be killed by idle-sleep.
+
+**First deploy:** The service starts with `PUBLIC_URL` empty, which causes it to crash on startup
+(PUBLIC_URL is required). Get the service URL from the dashboard, fill it in step 5, and the service
+starts on the next deployment — the same pattern as the Northflank setup.
 
 1. Sign up at [koyeb.com](https://koyeb.com). Install the CLI and log in:
    ```sh
@@ -133,9 +138,10 @@ run to prevent this.
    ```
 
 6. Run `node tools/onboard.ts --url <URL> <flags from step 3 of Northflank setup>`.
+   Skip step 8 of that setup (Trello automation rule) — the GitHub Actions workflow takes its place.
 
-7. Add `SERVE_URL=<URL>` and `TRIGGER_SECRET` as secrets in your GitHub repo
-   (Settings → Secrets → Actions) so the nightly trigger workflow can call the service.
+7. Add `SERVE_URL=<URL>` as a GitHub repo **variable** (Settings → Variables → Actions) and
+   `TRIGGER_SECRET` as a repo **secret** (Settings → Secrets → Actions) for the nightly trigger.
 
 ## Render
 
@@ -144,12 +150,17 @@ Free tier: 512 MB RAM, 0.1 vCPU; 750 h/month.
 Idle: spins down after 15 min with no inbound HTTP; cold start ~60 s (Trello retries cover the gap for webhooks).  
 Sources verified 2026-11-15: [free tier](https://render.com/docs/free) · [compute plans](https://render.com/docs/compute-plans) · [deploy image](https://render.com/docs/deploying-an-image)
 
-**RAM note:** same as Koyeb — in-process scan shares 512 MB. Upgrade to `starter` or `standard`
-(1 GB) in [`deploy/render/render.yaml`](deploy/render/render.yaml) if runs OOM.
+**RAM note:** same as Koyeb — in-process scan shares 512 MB. Upgrade to `standard` (`1c-2g`, 1 vCPU,
+2 GB) in [`deploy/render/render.yaml`](deploy/render/render.yaml) if runs OOM. (`starter` = `0.5c-512mb`
+= 512 MB — same RAM as free and not enough.)
 
 **Nightly-sleep risk:** Render spins down after 15 min of no inbound HTTP. Without the Keepalive step in
 [`nightly-trigger.yml`](.github/workflows/nightly-trigger.yml), any run longer than 15 min will be killed
 mid-scan. Render cron jobs are paid-tier only; use the GitHub Actions workflow instead.
+
+**First deploy:** The service starts with `PUBLIC_URL` empty, which causes it to crash on startup
+(PUBLIC_URL is required). The Blueprint prompts for it; leave it blank. After the first deploy, copy
+the URL and set it in the Render dashboard — the service starts accepting traffic on the next restart.
 
 1. Sign up at [render.com](https://render.com). No card needed.
 
@@ -164,8 +175,10 @@ mid-scan. Render cron jobs are paid-tier only; use the GitHub Actions workflow i
    (Service → Environment → Edit → `PUBLIC_URL`).
 
 5. Run `node tools/onboard.ts --url <URL> <flags>`.
+   Skip step 8 of the Northflank setup (Trello automation rule) — the GitHub Actions workflow takes its place.
 
-6. Add `SERVE_URL=<URL>` and `TRIGGER_SECRET` as GitHub repo secrets for the nightly trigger.
+6. Add `SERVE_URL=<URL>` as a GitHub repo **variable** (Settings → Variables → Actions) and
+   `TRIGGER_SECRET` as a repo **secret** (Settings → Secrets → Actions) for the nightly trigger.
 
 ## Adding a platform
 

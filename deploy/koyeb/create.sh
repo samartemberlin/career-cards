@@ -54,13 +54,17 @@ koyeb services create serve \
   --env "TRIGGER_SECRET={{secret.TRIGGER_SECRET}}" \
   --env "GEMINI_API_KEY={{secret.GEMINI_API_KEY}}" \
   --env "OPENROUTER_API_KEY={{secret.OPENROUTER_API_KEY}}" \
-  --env "GROQ_API_KEY={{secret.GROQ_API_KEY}}" \
-  --wait
+  --env "GROQ_API_KEY={{secret.GROQ_API_KEY}}"
+# Note: --wait is intentionally omitted. The service starts with an empty PUBLIC_URL,
+# which causes it to crash immediately (PUBLIC_URL is required). Get the URL from
+# https://app.koyeb.com, then fill it in step 2 below; the service starts successfully
+# on the next deploy. This matches the Northflank "leave PUBLIC_URL empty for now" pattern.
 
 echo ""
 echo "Done. Next steps:"
 echo "  1. Copy the service URL from https://app.koyeb.com"
 echo "  2. koyeb services update serve --app $APP --env PUBLIC_URL=<URL>"
+echo "     (The service will restart and start accepting traffic.)"
 echo "  3. node tools/onboard.ts --url <URL> <onboard flags>"
-echo "  4. Add SERVE_URL and TRIGGER_SECRET to your GitHub repo secrets"
-echo "     (Settings → Secrets → Actions) for the nightly trigger workflow."
+echo "  4. Add SERVE_URL=<URL> as a GitHub repo VARIABLE (Settings → Variables → Actions)"
+echo "     and TRIGGER_SECRET as a repo secret. This enables the nightly trigger workflow."
