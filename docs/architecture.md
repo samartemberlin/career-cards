@@ -14,7 +14,7 @@ run:  lock → config cards → job keys → scan → dedup → filter → JD �
 
 | Component | Code |
 |---|---|
-| `serve`: webhooks, `/trigger/run`, gate, caps, job start | [serve.ts](../src/serve.ts), [app.ts](../src/serve/app.ts), [gate.ts](../src/serve/gate.ts), [dispatch.ts](../src/bot/dispatch.ts), [runs.ts](../src/serve/runs.ts), [northflank.ts](../src/serve/northflank.ts) |
+| `serve`: webhooks, `/trigger/run`, gate, caps, job start | [serve.ts](../src/serve.ts), [app.ts](../src/serve/app.ts), [gate.ts](../src/serve/gate.ts), [dispatch.ts](../src/bot/dispatch.ts), [runs.ts](../src/serve/runs.ts), [northflank.ts](../src/serve/northflank.ts), [metrics.ts](../src/serve/metrics.ts) |
 | `run`: one run end to end | [run-once.ts](../src/run/run-once.ts) |
 | Pipeline (ported from samjobs) | [src/pipeline/](../src/pipeline/) |
 | Trello: card formats, paced client | [cards.ts](../src/trello/cards.ts), [api.ts](../src/trello/api.ts), [client.ts](../src/trello/client.ts) |
