@@ -87,7 +87,8 @@ export function runChildEnv(env: Env, heapMb?: number): Record<string, string> {
 /** Lowest priority: on a small host the run would otherwise starve serve, and /healthz with it. Children inherit it. */
 export const RUN_NICE = 19;
 
-const HEAP_FATAL = /Reached heap limit|JavaScript heap out of memory/;
+// V8's own fatal line; a quoted job title or page text never starts with it.
+const HEAP_FATAL = /^FATAL ERROR: .*(Reached heap limit|JavaScript heap out of memory)/;
 
 const RUN_SCRIPT = fileURLToPath(new URL('../run.ts', import.meta.url));
 

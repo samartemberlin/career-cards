@@ -448,6 +448,13 @@ test('localRunStarter: without heapMb NODE_OPTIONS is passed on unchanged', asyn
   assert.ok(lines.includes('run: node_options '), lines.join('\n'));
 });
 
+test('localRunStarter: output that only quotes the heap error does not label a failed run', async () => {
+  const { s, lines, exited } = allocStarter({ FAKE_QUOTE: '1', FAKE_FAIL: '1' }, 300);
+  await s.start('manual');
+  await exited;
+  assert.ok(lines.includes('run exited with code 3'), lines.join('\n'));
+});
+
 test('localRunStarter: a run past its heap cap ends as a failed run that names the cap', { timeout: 20_000 }, async () => {
   const { s, lines, exited } = allocStarter({ FAKE_ALLOC: '1' }, 32);
   await s.start('manual');

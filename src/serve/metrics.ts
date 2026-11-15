@@ -132,13 +132,13 @@ export function limitsLine(cg: Cgroup, runHeapMb: number | undefined): string {
   return `metrics: limits ${parts.join(' · ')}`;
 }
 
-async function ownCgroup(): Promise<Cgroup> {
+export async function readOwnCgroup(): Promise<Cgroup> {
   const dir = await cgroupDir();
   return dir ? readCgroup(dir) : {};
 }
 
 async function realSample(runPid: number | undefined): Promise<Sample> {
-  const s: Sample = { cg: await ownCgroup(), serveRss: process.memoryUsage.rss() };
+  const s: Sample = { cg: await readOwnCgroup(), serveRss: process.memoryUsage.rss() };
   if (runPid === undefined) return s;
   const procs = await readProcs();
   const run = procs.find((p) => p.pid === runPid);
@@ -189,7 +189,7 @@ export function startMetrics(o: {
 
   const ready = (async () => {
     try {
-      o.log(limitsLine(await (o.readLimits ?? ownCgroup)(), o.runHeapMb));
+      o.log(limitsLine(await (o.readLimits ?? readOwnCgroup)(), o.runHeapMb));
     } catch {
       // As above.
     }
