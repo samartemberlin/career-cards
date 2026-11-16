@@ -167,10 +167,16 @@ export async function applyPlan(p: OnboardPlan, c: {
   return { done, failed };
 }
 
-/** The one webhook per board that the service needs, created with the bot's token. */
-export async function ensureWebhooks(bot: TrelloApi, ids: BoardIds, url: string): Promise<{ board: string; result: 'created' | 'exists' | string }[]> {
+/** Masks the sig in a relay callback URL to avoid leaking it in user-facing output.
+ *  `/hook/owner/repo/<sig>` → `/hook/owner/repo/<first4>…`. Non-relay URLs are unchanged. */
+export function maskHook(url: string): string {
+  return url.replace(/(\/hook\/[^/]+\/[^/]+\/)([A-Za-z0-9_-]{5,})/g, (_, prefix: string, sig: string) => `${prefix}${sig.slice(0, 4)}…`);
+}
+
+/** The one webhook per board that the service needs, created with the bot's token.
+ *  `callbackURL` is the full URL that Trello will POST to (e.g. `https://host/trello` or `https://relay/hook/owner/repo/<sig>`). */
+export async function ensureWebhooks(bot: TrelloApi, ids: BoardIds, callbackURL: string): Promise<{ board: string; result: 'created' | 'exists' | string }[]> {
   const api = scopeClient(bot, scopeOf(ids));
-  const callbackURL = `${url.replace(/\/+$/, '')}/trello`;
   const results: { board: string; result: string }[] = [];
   for (const role of ROLES) {
     let result: string;
@@ -181,10 +187,60 @@ export async function ensureWebhooks(bot: TrelloApi, ids: BoardIds, url: string)
       if (stops(e)) throw e;
       if (e instanceof WebhookExists) result = 'exists';
       // Trello checks the callback with a HEAD request before it creates the webhook and answers 400 when that fails.
-      else if (e instanceof TrelloError && e.status === 400) result = `service not reachable at ${callbackURL} (deploy first, check PUBLIC_URL)`;
-      else result = `error: ${message(e)}`;
+      else if (e instanceof TrelloError && e.status === 400) result = `service not reachable at ${maskHook(callbackURL)} (deploy first, check PUBLIC_URL)`;
+      else result = `error: ${maskHook(message(e))}`;
     }
     results.push({ board: role, result });
+  }
+  return results;
+}
+
+export type ReplaceResult = {
+  board: Role;
+  title: string;
+  /** deleted: webhook was removed; skipped: dry-run; kept: new webhook not registered; failed: delete threw */
+  action: 'deleted' | 'skipped' | 'kept' | 'failed';
+  /** The old callback URL (before replacement). */
+  oldURL: string;
+  /** Set when action is 'failed'. */
+  error?: string;
+};
+
+/**
+ * Deletes webhooks registered under the bot's token on the three boards whose callbackURL differs
+ * from the new one. Only those three boards are touched; no other boards are listed or modified.
+ * Pass `allowedBoards` (a set of board ids where ensure succeeded) to skip deletion on boards
+ * where the new webhook was not registered; those get action='kept'.
+ */
+export async function replaceWebhooks(
+  bot: TrelloApi,
+  ids: BoardIds,
+  newCallbackURL: string,
+  opts: { dryRun?: boolean; allowedBoards?: Set<string> } = {},
+): Promise<ReplaceResult[]> {
+  const boardSet = new Set<string>(ROLES.map((r) => ids[r]));
+  const all = await bot.tokenWebhooks();
+  const toReplace = all.filter((w) => boardSet.has(w.idModel) && w.callbackURL !== newCallbackURL);
+  const boardForId = (idModel: string): Role => ROLES.find((r) => ids[r] === idModel)!;
+  const results: ReplaceResult[] = [];
+  for (const w of toReplace) {
+    const board = boardForId(w.idModel);
+    const title = TITLE[board];
+    const oldURL = w.callbackURL;
+    if (opts.allowedBoards !== undefined && !opts.allowedBoards.has(w.idModel)) {
+      results.push({ board, title, action: 'kept', oldURL });
+      continue;
+    }
+    if (opts.dryRun) {
+      results.push({ board, title, action: 'skipped', oldURL });
+      continue;
+    }
+    try {
+      await bot.deleteWebhook(w.id);
+      results.push({ board, title, action: 'deleted', oldURL });
+    } catch (e) {
+      results.push({ board, title, action: 'failed', oldURL, error: message(e) });
+    }
   }
   return results;
 }

@@ -83,6 +83,8 @@ function makeStub(opts: StubOpts = {}): { api: TrelloApi; log: CallLog } {
     member: async (idOrUsername) => { log.push({ method: 'member', args: [idOrUsername] }); return { id: 'u1', username: idOrUsername }; },
     addBoardMember: async (boardId, memberId) => { log.push({ method: 'addBoardMember', args: [boardId, memberId] }); },
     createWebhook: async (idModel, callbackURL, description) => { log.push({ method: 'createWebhook', args: [idModel, callbackURL, description] }); return { id: 'wh1' }; },
+    tokenWebhooks: async () => { log.push({ method: 'tokenWebhooks', args: [] }); return []; },
+    deleteWebhook: async (id) => { log.push({ method: 'deleteWebhook', args: [id] }); },
     action: async (id) => { log.push({ method: 'action', args: [id] }); return {}; },
   };
 
@@ -196,6 +198,26 @@ test('me passes through', async () => {
   const scoped = scopeClient(api, { boards: ['board1'] });
   const result = await scoped.me();
   assert.equal(result.username, 'bot');
+});
+
+test('tokenWebhooks passes through', async () => {
+  const { api } = makeStub();
+  const scoped = scopeClient(api, { boards: ['board1'] });
+  const result = await scoped.tokenWebhooks();
+  assert.deepEqual(result, []);
+});
+
+test('deleteWebhook on a scoped client throws ScopeError (onboarding-only)', async () => {
+  const { api } = makeStub();
+  const scoped = scopeClient(api, { boards: ['board1'] });
+  await assert.rejects(
+    () => scoped.deleteWebhook('wh1'),
+    (err: unknown) => {
+      assert.ok(err instanceof ScopeError, `expected ScopeError, got ${err}`);
+      assert.match((err as ScopeError).message, /onboarding-only/);
+      return true;
+    },
+  );
 });
 
 test('myOrganizations passes through', async () => {

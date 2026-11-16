@@ -65,6 +65,7 @@ export class FakeTrello {
   /** Set to false to make POST /webhooks simulate a failed HEAD check (returns 400, not WebhookExists). */
   public webhookHeadOk: boolean = true;
   private _webhooks = new Map<string, string>();  // key: `${idModel}\0${callbackURL}` → id
+  private _webhookById = new Map<string, { id: string; idModel: string; callbackURL: string; token: string }>();
 
   // ── fail queue and request log ────────────────────────────────────────────
   private _failQueue: FailEntry[] = [];
@@ -358,8 +359,22 @@ export class FakeTrello {
           return new Response(WEBHOOK_EXISTS_MSG, { status: 400 });
         }
         const id = this._genId();
+        const auth = (init?.headers as Record<string, string> | undefined)?.authorization ?? '';
+        const token = /oauth_token="([^"]*)"/.exec(auth)?.[1] ?? '';
         this._webhooks.set(key, id);
+        this._webhookById.set(id, { id, idModel, callbackURL, token });
         return ok({ id, idModel, callbackURL, description, active: true, consecutiveFailures: 0, firstConsecutiveFailDate: null });
+      }
+    }
+
+    if (method === 'DELETE') {
+      // DELETE /webhooks/{id}
+      if ((m = /^\/webhooks\/([^/]+)$/.exec(path))) {
+        const w = this._webhookById.get(m[1]!);
+        if (!w) return notFound();
+        this._webhookById.delete(w.id);
+        this._webhooks.delete(`${w.idModel}\0${w.callbackURL}`);
+        return ok({});
       }
     }
 
@@ -526,6 +541,15 @@ export class FakeTrello {
       const item = this._actionIndex.get(m[1]!);
       if (!item) return notFound();
       return ok(this._toAction(item.entry, item.cardId, item.boardId));
+    }
+
+    // /tokens/{token}/webhooks — all webhooks created with that token
+    if ((m = /^\/tokens\/([^/]+)\/webhooks$/.exec(path))) {
+      const t = m[1]!;
+      const list = [...this._webhookById.values()]
+        .filter((w) => w.token === t)
+        .map(({ id, idModel, callbackURL }) => ({ id, idModel, callbackURL }));
+      return ok(list);
     }
 
     return notFound();

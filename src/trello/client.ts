@@ -152,7 +152,7 @@ export function createTrelloClient(o: {
           const mapped = opts.mapError(res.status, rawBody);
           if (mapped) throw mapped;
         }
-        throw new TrelloError(res.status, method, path, redact(rawBody));
+        throw new TrelloError(res.status, method, redact(path), redact(rawBody));
       }
 
       const json = await res.json() as unknown;
@@ -351,6 +351,12 @@ export function createTrelloClient(o: {
           ? new WebhookExists('POST', '/webhooks', WEBHOOK_EXISTS_MSG)
           : undefined,
     }),
+
+    tokenWebhooks: () => call('GET', `/tokens/${token}/webhooks`, {
+      schema: z.array(z.object({ id: z.string(), idModel: z.string(), callbackURL: z.string() }).strip()),
+    }),
+
+    deleteWebhook: (id) => call<void>('DELETE', `/webhooks/${encodeURIComponent(id)}`, {}),
 
     action: (id) => call<unknown>('GET', `/actions/${id}`, {
       query: { fields: 'id,type,date,idMemberCreator,data', memberCreator: true, memberCreator_fields: 'username' },

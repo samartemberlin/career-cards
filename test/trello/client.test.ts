@@ -232,6 +232,27 @@ test('error message never contains key or token', async () => {
   );
 });
 
+test('tokenWebhooks 401: error message and path do not expose the token', async () => {
+  const clock = makeClock();
+  const { fetchImpl } = makeFetch([statusResponse(401, 'invalid token')]);
+  const client = createTrelloClient({
+    key: 'KEYSECRET123', token: 'TOKSECRET456',
+    fetchImpl,
+    sleep: clock.sleep,
+    now: clock.now,
+  });
+  await assert.rejects(
+    () => client.tokenWebhooks(),
+    (err: unknown) => {
+      assert.ok(err instanceof TrelloError);
+      // The token appears in the URL path /tokens/<token>/webhooks; it must be redacted.
+      assert.ok(!err.message.includes('TOKSECRET456'), 'token must not appear in error message');
+      assert.ok(!err.path.includes('TOKSECRET456'), 'token must not appear in error path');
+      return true;
+    },
+  );
+});
+
 // --- allCards paging tests -----------------------------------------------
 
 function makeCard(id: string): object {
@@ -381,8 +402,8 @@ test('the client has no method that edits a card: cards are only created, archiv
   assert.deepEqual(Object.keys(client).sort(), [
     'action', 'addBoardMember', 'addCheckItem', 'allCards', 'attachText', 'board', 'boardComments', 'boardMembers', 'card',
     'cardComments', 'cards', 'checklist', 'comment',
-    'createBoard', 'createCard', 'createChecklist', 'createLabel', 'createList', 'createWebhook', 'labels', 'list',
-    'lists', 'me', 'member', 'myOrganizations', 'organizationMembers', 'setCardClosed', 'setListClosed',
+    'createBoard', 'createCard', 'createChecklist', 'createLabel', 'createList', 'createWebhook', 'deleteWebhook', 'labels', 'list',
+    'lists', 'me', 'member', 'myOrganizations', 'organizationMembers', 'setCardClosed', 'setListClosed', 'tokenWebhooks',
   ].sort(), 'a new client method: if it edits a card, it must not exist');
 });
 
