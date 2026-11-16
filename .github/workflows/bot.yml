@@ -72,17 +72,40 @@ jobs:
         with:
           repository: samartemberlin/career-cards
           ref: ${{ inputs.ref }}
-          submodules: true
           persist-credentials: false
+
+      # A shallow submodule fetch takes ~5 s (career-ops is ~60 MB, mostly docs and tests); a cache keyed by the
+      # pinned submodule commit restores what the code reads in about a second.
+      - name: Resolve career-ops commit
+        id: career-ops
+        run: |
+          sha=$(git rev-parse HEAD:career-ops)
+          echo "career-ops: $(git config -f .gitmodules submodule.career-ops.url) @ $sha"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Cache career-ops
+        id: career-ops-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            career-ops
+            !career-ops/.git
+            !career-ops/docs
+            !career-ops/tests
+          key: career-ops-${{ steps.career-ops.outputs.sha }}
+
+      - name: Fetch career-ops (cache miss)
+        if: steps.career-ops-cache.outputs.cache-hit != 'true'
+        run: git -c protocol.version=2 submodule update --init --depth=1 career-ops
 
       - name: Set up Node 24
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
-          cache: 'npm'
 
+      # Two runtime packages; Node strips types itself, so dev dependencies (typescript) are not needed.
       - name: Install dependencies
-        run: npm ci --no-audit --no-fund
+        run: npm ci --omit=dev --no-audit --no-fund
 
       - name: Cache claude CLI
         id: claude-cache
