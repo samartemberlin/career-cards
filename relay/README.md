@@ -18,7 +18,7 @@ comment text or tokens.
 |---|---|
 | `GITHUB_APP_ID` | secret |
 | `GITHUB_APP_PRIVATE_KEY_PKCS8` | secret, PKCS#8 PEM (below); literal `\n` is accepted |
-| `RELAY_PATH_SECRET` | secret, ≥ 32 chars (`openssl rand -base64 33`). Changing it changes every callback URL. |
+| `RELAY_PATH_SECRET` | secret, ≥ 32 chars (`openssl rand -base64 33`). Changing it changes every callback URL: re-create every user's webhooks right after (`tools/onboard.ts --replace-webhooks`), or Trello retries and then disables them. |
 | `ALLOWED_OWNERS` | comma list of GitHub owners; **set it in v1** (empty means any) |
 | `RELAY_IP_HEADER` | header the host overwrites with the client IP. Default `cf-connecting-ip` (Cloudflare). **Northflank: `x-envoy-external-address`**. Required under Node. |
 | `RELAY_SKIP_IP_CHECK` | `1` disables the Trello subnet check: tests only (Node refuses it unless `NODE_ENV=test`) |
