@@ -379,7 +379,7 @@ test('a timed-out attempt is retried like a network error (GET)', async () => {
 test('the client has no method that edits a card: cards are only created, archived, commented on or given attachments', () => {
   const client = createTrelloClient({ key: 'k', token: 't', fetchImpl: async () => okJson({}) });
   assert.deepEqual(Object.keys(client).sort(), [
-    'addBoardMember', 'addCheckItem', 'allCards', 'attachText', 'board', 'boardComments', 'boardMembers', 'card',
+    'action', 'addBoardMember', 'addCheckItem', 'allCards', 'attachText', 'board', 'boardComments', 'boardMembers', 'card',
     'cardComments', 'cards', 'checklist', 'comment',
     'createBoard', 'createCard', 'createChecklist', 'createLabel', 'createList', 'createWebhook', 'labels', 'list',
     'lists', 'me', 'member', 'myOrganizations', 'organizationMembers', 'setCardClosed', 'setListClosed',

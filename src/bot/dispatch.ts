@@ -82,8 +82,13 @@ const guardStarter = (s: RunStarter, signal: AbortSignal): RunStarter => ({
 // Two webhooks for one card must not both read the same pending proposal, so each card's comments run in order.
 const tails = new Map<string, Promise<void>>();
 
+/** Awaitable: runs the full dispatch pipeline for one comment, without chaining. */
+export function handleCommentNow(d: DispatchDeps, a: CommentAction): Promise<void> {
+  return bounded(d, a);
+}
+
 export function handleComment(d: DispatchDeps, a: CommentAction): Promise<void> {
-  const run = (tails.get(a.cardId) ?? Promise.resolve()).then(() => bounded(d, a));
+  const run = (tails.get(a.cardId) ?? Promise.resolve()).then(() => handleCommentNow(d, a));
   tails.set(a.cardId, run);
   void run.then(() => {
     if (tails.get(a.cardId) === run) tails.delete(a.cardId);

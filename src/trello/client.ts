@@ -351,5 +351,9 @@ export function createTrelloClient(o: {
           ? new WebhookExists('POST', '/webhooks', WEBHOOK_EXISTS_MSG)
           : undefined,
     }),
+
+    action: (id) => call<unknown>('GET', `/actions/${id}`, {
+      query: { fields: 'id,type,date,idMemberCreator,data', memberCreator: true, memberCreator_fields: 'username' },
+    }),
   };
 }

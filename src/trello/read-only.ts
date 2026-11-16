@@ -30,6 +30,7 @@ export function readOnlyClient(api: BotApi): BotApi {
     labels: (boardId) => api.labels(boardId),
     cardComments: (cardId, o) => api.cardComments(cardId, o),
     boardComments: (boardId, o) => api.boardComments(boardId, o),
+    action: (id) => api.action(id),
 
     // Writes — async so the guard fires as a rejected Promise, not a synchronous throw
     archiveCard: (_cardId) => deny('archiveCard'),

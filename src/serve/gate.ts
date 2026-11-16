@@ -89,7 +89,7 @@ export type DropReason =
   | 'not allowed'
   | 'answered';
 
-export type GateDeps = { api: BotApi; boards: UserBoards; me: TMember; seen: RecentIds; now: () => Date; log: (s: string) => void };
+export type GateDeps = { api: BotApi; boards: UserBoards; me: TMember; seen: RecentIds; now: () => Date; log: (s: string) => void; maxAgeMs?: number };
 
 export type GateResult = { ok: true; settings: Settings; comments: TComment[] } | { ok: false; reason: DropReason };
 
@@ -106,7 +106,7 @@ export async function gate(d: GateDeps, a: CommentAction): Promise<GateResult> {
   if (![d.boards.jobs, d.boards.profiles, d.boards.system].includes(a.boardId)) return drop('foreign board');
   if (a.authorId === d.me.id || lower(a.author) === lower(d.me.username)) return drop('own comment');
   if (a.boardId === d.boards.profiles && isOriginalsName(a.listName ?? '')) return drop('originals');
-  if (d.now().getTime() - a.date.getTime() > ACTION_MAX_AGE_MS) return drop('stale');
+  if (d.now().getTime() - a.date.getTime() > (d.maxAgeMs ?? ACTION_MAX_AGE_MS)) return drop('stale');
   if (d.seen.has(a.id)) return drop('seen');
   // Before the first await: a retry that arrives while this one is still being handled is dropped as 'seen'.
   d.seen.add(a.id);

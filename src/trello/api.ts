@@ -140,6 +140,8 @@ export interface TrelloApi {
   /** POST /webhooks — idModel, callbackURL, description in the JSON body.
    *  Throws WebhookExists when Trello returns its "already exists" 400. */
   createWebhook(idModel: string, callbackURL: string, description: string): Promise<{ id: string }>;
+  /** GET /actions/{id} — returns the raw action object for parseWebhook. */
+  action(id: string): Promise<unknown>;
 }
 
 /** The only Trello surface `src/` sees. It can create, archive and comment, and cannot change an existing card:
@@ -151,4 +153,6 @@ export type BotApi = Pick<
   | 'cardComments' | 'boardComments'
 > & {
   archiveCard(cardId: string): Promise<TCard>;
+  /** GET /actions/{id} — returns the raw action object for parseWebhook. */
+  action(id: string): Promise<unknown>;
 };
