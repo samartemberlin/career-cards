@@ -66,5 +66,5 @@ git checkout -q -b main
 git add .
 git commit -q -m "template: pin career-cards to $sha"
 git remote add origin "https://github.com/$REPO.git"
-git push --force origin main
+git -c credential.helper= -c 'credential.helper=!gh auth git-credential' push -q --force origin main
 echo "pushed $sha to $REPO"
