@@ -1,0 +1,112 @@
+name: Bot (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: "40-character commit SHA of samartemberlin/career-cards to run from"
+        required: true
+        type: string
+      action_id:
+        description: "Trello action id (24 hex)"
+        required: true
+        type: string
+      card_id:
+        description: "Trello card id (informational; also in run name)"
+        required: false
+        type: string
+        default: ''
+      board_id:
+        description: "Trello board id (informational)"
+        required: false
+        type: string
+        default: ''
+      label:
+        description: "Run label (verb-shortLink-MMDD-HHMMz)"
+        required: false
+        type: string
+        default: ''
+    secrets:
+      TRELLO_KEY:
+        required: false
+      TRELLO_TOKEN:
+        required: false
+      CLAUDE_CODE_OAUTH_TOKEN:
+        required: false
+      GEMINI_API_KEY:
+        required: false
+      OPENROUTER_API_KEY:
+        required: false
+      GROQ_API_KEY:
+        required: false
+
+jobs:
+  handle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Print parameters
+        run: |
+          echo "ref:    ${{ inputs.ref }}"
+          echo "action: ${{ inputs.action_id }}"
+          echo "label:  ${{ inputs.label }}"
+
+      - name: Checkout career-cards at pinned SHA
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: samartemberlin/career-cards
+          ref: ${{ inputs.ref }}
+          submodules: true
+          persist-credentials: false
+
+      - name: Set up Node 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          node --version
+          npm ci --no-audit --no-fund
+
+      - name: Cache claude CLI
+        id: claude-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.local/claude-cli
+          key: claude-cli-2.1.322
+
+      - name: Install claude CLI
+        if: steps.claude-cache.outputs.cache-hit != 'true'
+        run: |
+          npm install -g --prefix ~/.local/claude-cli @anthropic-ai/claude-code@2.1.322
+          echo "installed @anthropic-ai/claude-code@2.1.322"
+
+      - name: Add claude CLI to PATH
+        run: echo "$HOME/.local/claude-cli/bin" >> "$GITHUB_PATH"
+
+      - name: Print versions
+        run: |
+          node --version
+          claude --version
+
+      - name: Handle action
+        env:
+          TRELLO_KEY: ${{ secrets.TRELLO_KEY }}
+          TRELLO_TOKEN: ${{ secrets.TRELLO_TOKEN }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          JOBS_BOARD_ID: ${{ vars.JOBS_BOARD_ID }}
+          PROFILES_BOARD_ID: ${{ vars.PROFILES_BOARD_ID }}
+          SYSTEM_BOARD_ID: ${{ vars.SYSTEM_BOARD_ID }}
+          BOT_USERNAME: ${{ vars.BOT_USERNAME }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          RUN_REF: ${{ github.ref_name }}
+        run: |
+          t0=$(date +%s%N)
+          node src/main.ts bot --action "${{ inputs.action_id }}"
+          echo "elapsed: $(( ($(date +%s%N) - t0) / 1000000 )) ms"
