@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { REPLY_PARTS_MAX, finishReply, linksIn } from '../../src/bot/reply.ts';
-import { formatMarker, parseMarker } from '../../src/bot/marker.ts';
+import { formatCont, formatMarker, parseMarker } from '../../src/bot/marker.ts';
 import type { ReplyMarker } from '../../src/bot/marker.ts';
 import { REPLY_MAX } from '../../src/bot/catalogue.ts';
 import { PrivacyError, buildMasker } from '../../src/privacy.ts';
@@ -363,4 +363,10 @@ test('an over-long text without spaces is cut, not emptied', () => {
 
 test('a protocol-relative link with any first character is removed', () => {
   for (const text of ['x //\u20AC.~', 'x //_.io', 'x //\u00A9/y']) assert.doesNotMatch(read(finish(text)).text, /\/\//, text);
+});
+
+test('parts 2+ end in the continuation line for the same action', () => {
+  const parts = finish('z'.repeat(9000));
+  assert.equal(parts.length, 3);
+  for (const p of parts.slice(1)) assert.ok(p.endsWith(`\n\n${formatCont(ID)}`));
 });
