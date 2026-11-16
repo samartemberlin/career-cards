@@ -10,6 +10,6 @@
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true
   },
-  "include": ["src/**/*", "test/**/*", "tools/**/*"],
+  "include": ["src/**/*", "test/**/*", "tools/**/*", "relay/src/**/*"],
   "exclude": ["career-ops", "node_modules"]
 }

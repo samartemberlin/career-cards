@@ -1,0 +1,8 @@
+name = "career-cards-relay"
+main = "src/index.ts"
+compatibility_date = "2026-11-01"
+
+# Secrets (wrangler secret put): GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY_PKCS8, RELAY_PATH_SECRET.
+# Never set RELAY_SKIP_IP_CHECK here: it is for tests only.
+[vars]
+ALLOWED_OWNERS = "" # required in v1: comma list of GitHub owners
