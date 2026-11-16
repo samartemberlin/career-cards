@@ -372,16 +372,16 @@ describe('ensureWebhooks', () => {
   it('ensureWebhooks: created, then exists on re-run', async () => {
     const { fake, ids } = await boards();
     const bot = clientFor(fake.fetch, 'bot');
-    const first = await ensureWebhooks(bot, ids, 'https://worker.example.com');
+    const first = await ensureWebhooks(bot, ids, 'https://worker.example.com/trello');
     assert.deepEqual(first, ROLES.map((board) => ({ board, result: 'created' })));
-    const again = await ensureWebhooks(bot, ids, 'https://worker.example.com/');
+    const again = await ensureWebhooks(bot, ids, 'https://worker.example.com/trello');
     assert.deepEqual(again, ROLES.map((board) => ({ board, result: 'exists' })));
   });
 
   it('ensureWebhooks: unreachable service is reported per board, not thrown', async () => {
     const { fake, ids } = await boards();
     fake.webhookHeadOk = false;
-    const r = await ensureWebhooks(clientFor(fake.fetch, 'bot'), ids, 'https://worker.example.com');
+    const r = await ensureWebhooks(clientFor(fake.fetch, 'bot'), ids, 'https://worker.example.com/trello');
     assert.deepEqual(r, ROLES.map((board) => ({
       board,
       result: 'service not reachable at https://worker.example.com/trello (deploy first, check PUBLIC_URL)',

@@ -203,6 +203,10 @@ export function scopeClient(api: TrelloApi, scope: Scope): TrelloApi {
 
     createWebhook: async (idModel, callbackURL, description) => { assertBoard(idModel); return api.createWebhook(idModel, callbackURL, description); },
 
+    // token-level operations are not board-scoped
+    tokenWebhooks: () => api.tokenWebhooks(),
+    deleteWebhook: (id) => api.deleteWebhook(id),
+
     // action is not board-scoped: the caller re-checks the board after fetching
     action: (id) => api.action(id),
   };

@@ -140,6 +140,10 @@ export interface TrelloApi {
   /** POST /webhooks — idModel, callbackURL, description in the JSON body.
    *  Throws WebhookExists when Trello returns its "already exists" 400. */
   createWebhook(idModel: string, callbackURL: string, description: string): Promise<{ id: string }>;
+  /** GET /tokens/{token}/webhooks — all webhooks registered under this client's token. */
+  tokenWebhooks(): Promise<{ id: string; idModel: string; callbackURL: string }[]>;
+  /** DELETE /webhooks/{id} — removes the webhook. */
+  deleteWebhook(id: string): Promise<void>;
   /** GET /actions/{id} — returns the raw action object for parseWebhook. */
   action(id: string): Promise<unknown>;
 }

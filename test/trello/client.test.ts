@@ -381,8 +381,8 @@ test('the client has no method that edits a card: cards are only created, archiv
   assert.deepEqual(Object.keys(client).sort(), [
     'action', 'addBoardMember', 'addCheckItem', 'allCards', 'attachText', 'board', 'boardComments', 'boardMembers', 'card',
     'cardComments', 'cards', 'checklist', 'comment',
-    'createBoard', 'createCard', 'createChecklist', 'createLabel', 'createList', 'createWebhook', 'labels', 'list',
-    'lists', 'me', 'member', 'myOrganizations', 'organizationMembers', 'setCardClosed', 'setListClosed',
+    'createBoard', 'createCard', 'createChecklist', 'createLabel', 'createList', 'createWebhook', 'deleteWebhook', 'labels', 'list',
+    'lists', 'me', 'member', 'myOrganizations', 'organizationMembers', 'setCardClosed', 'setListClosed', 'tokenWebhooks',
   ].sort(), 'a new client method: if it edits a card, it must not exist');
 });
 

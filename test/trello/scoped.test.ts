@@ -83,6 +83,8 @@ function makeStub(opts: StubOpts = {}): { api: TrelloApi; log: CallLog } {
     member: async (idOrUsername) => { log.push({ method: 'member', args: [idOrUsername] }); return { id: 'u1', username: idOrUsername }; },
     addBoardMember: async (boardId, memberId) => { log.push({ method: 'addBoardMember', args: [boardId, memberId] }); },
     createWebhook: async (idModel, callbackURL, description) => { log.push({ method: 'createWebhook', args: [idModel, callbackURL, description] }); return { id: 'wh1' }; },
+    tokenWebhooks: async () => { log.push({ method: 'tokenWebhooks', args: [] }); return []; },
+    deleteWebhook: async (id) => { log.push({ method: 'deleteWebhook', args: [id] }); },
     action: async (id) => { log.push({ method: 'action', args: [id] }); return {}; },
   };
 

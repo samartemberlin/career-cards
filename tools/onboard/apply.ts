@@ -167,10 +167,10 @@ export async function applyPlan(p: OnboardPlan, c: {
   return { done, failed };
 }
 
-/** The one webhook per board that the service needs, created with the bot's token. */
-export async function ensureWebhooks(bot: TrelloApi, ids: BoardIds, url: string): Promise<{ board: string; result: 'created' | 'exists' | string }[]> {
+/** The one webhook per board that the service needs, created with the bot's token.
+ *  `callbackURL` is the full URL that Trello will POST to (e.g. `https://host/trello` or `https://relay/hook/owner/repo/<sig>`). */
+export async function ensureWebhooks(bot: TrelloApi, ids: BoardIds, callbackURL: string): Promise<{ board: string; result: 'created' | 'exists' | string }[]> {
   const api = scopeClient(bot, scopeOf(ids));
-  const callbackURL = `${url.replace(/\/+$/, '')}/trello`;
   const results: { board: string; result: string }[] = [];
   for (const role of ROLES) {
     let result: string;
@@ -185,6 +185,29 @@ export async function ensureWebhooks(bot: TrelloApi, ids: BoardIds, url: string)
       else result = `error: ${message(e)}`;
     }
     results.push({ board: role, result });
+  }
+  return results;
+}
+
+/**
+ * Deletes webhooks registered under the bot's token on the three boards whose callbackURL differs
+ * from the new one. Only those three boards are touched; no other boards are listed or modified.
+ */
+export async function replaceWebhooks(
+  bot: TrelloApi,
+  ids: BoardIds,
+  newCallbackURL: string,
+  opts: { dryRun?: boolean } = {},
+): Promise<{ board: string; title: string; deleted: boolean; skipped: boolean }[]> {
+  const boardSet = new Set<string>(ROLES.map((r) => ids[r]));
+  const all = await bot.tokenWebhooks();
+  const toDelete = all.filter((w) => boardSet.has(w.idModel) && w.callbackURL !== newCallbackURL);
+  const boardForId = (idModel: string): Role => ROLES.find((r) => ids[r] === idModel)!;
+  const results: { board: string; title: string; deleted: boolean; skipped: boolean }[] = [];
+  for (const w of toDelete) {
+    const board = boardForId(w.idModel);
+    if (!opts.dryRun) await bot.deleteWebhook(w.id);
+    results.push({ board, title: TITLE[board], deleted: !opts.dryRun, skipped: !!opts.dryRun });
   }
   return results;
 }
