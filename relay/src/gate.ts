@@ -28,20 +28,25 @@ export function decide(body: unknown, now: Date): Decision {
   const data = obj(action.data);
   const text = typeof data.text === 'string' ? data.text.trim() : '';
   if (!text.startsWith('/') && !text.includes('@')) return { drop: 'no-keyword' };
-  // The bot's own replies mention the asker and end with a marker line (src/bot/marker.ts); the job would drop them anyway.
-  if (text.includes('career-cards-reply:')) return { drop: 'own-reply' };
+  // Every part of the bot's own replies carries a marker line (src/bot/marker.ts, src/bot/reply.ts); the job would drop them.
+  if (/career-cards-reply/i.test(text)) return { drop: 'own-reply' };
   const card = obj(data.card);
   const ids = { action_id: action.id, card_id: card.id, board_id: obj(data.board).id ?? obj(obj(body).model).id };
   if (!Object.values(ids).every((v) => typeof v === 'string' && HEX24.test(v))) return { drop: 'bad-ids' };
   return { forward: { ...(ids as Omit<Forward, 'label'>), label: buildLabel(text, card, now) } };
 }
 
-/** `<verb>-<shortLink>-<MMDD>-<HHMM>z` (UTC). The verb is the token after a leading `/…` or `@…`, else `ask`. */
+// Copy of STATIC_VERBS in src/bot/catalogue.ts (the relay bundles nothing from src/); a test keeps them equal.
+export const VERBS = new Set(['help', 'hilfe', 'yes', 'ja', 'no', 'nein', 'open', 'offen', 'legit', 'echt', 'needs', 'fit', 'cv',
+  'lebenslauf', 'deep', 'company', 'firma', 'why', 'warum', 'feedback', 'last', 'run']);
+
+/** `<verb>-<shortLink>-<MMDD>-<HHMM>z` (UTC). The verb is a command word after a leading `/…` or `@…`, else `ask`. */
 export function buildLabel(text: string, card: { shortLink?: unknown; id?: unknown }, now: Date): string {
   const tokens = text.trim().split(/\s+/);
   const lead = tokens[0] ?? '';
   const next = tokens[1] ?? '';
-  const verb = (lead.startsWith('/') || lead.startsWith('@')) && /^[a-z-]{1,20}$/.test(next) ? next : 'ask';
+  const word = next.toLowerCase();
+  const verb = (lead.startsWith('/') || lead.startsWith('@')) && VERBS.has(word) ? word : 'ask';
   const sl = card.shortLink;
   const hex = typeof card.id === 'string' ? /^[0-9a-f]{8}/i.exec(card.id)?.[0].toLowerCase() : undefined;
   const short = typeof sl === 'string' && /^[A-Za-z0-9]{8}$/.test(sl) ? sl : (hex ?? '00000000');

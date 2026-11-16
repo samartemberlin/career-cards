@@ -67,6 +67,9 @@ export const CATALOGUE: ActionSpec[] = [
 
 const BUILTINS = new Map<string, 'help' | 'yes' | 'no'>([['help', 'help'], ['hilfe', 'help'], ['yes', 'yes'], ['ja', 'yes'], ['no', 'no'], ['nein', 'no']]);
 
+/** Every word that can follow the trigger as a command; relay/src/gate.ts keeps a copy for run names. */
+export const STATIC_VERBS: string[] = [...BUILTINS.keys(), ...CATALOGUE.flatMap((s) => s.verbs)];
+
 const actionOption = (s: ActionSpec) => z.object({ id: z.literal(s.id), args: s.args }).strict();
 type ActionOption = ReturnType<typeof actionOption>;
 

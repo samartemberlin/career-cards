@@ -132,6 +132,7 @@ export async function runResearch(input: ResearchInput, o: {
     throw new Error(e.message);
   }
 
+  log(`bot: model ${p.name ?? 'claude'}/${p.model}`);
   // A CLI upgrade that re-enabled a tool must not go unnoticed.
   const tools = [...new Set(run.tools ?? [])].sort();
   if (run.tools === null || tools.length !== run.tools.length || tools.join(',') !== WEB_TOOLS.join(',')) {

@@ -19,6 +19,13 @@ const ENV = { PATH: '/usr/bin', HOME: '/home/app', CLAUDE_CODE_OAUTH_TOKEN: 'tok
 const MSGS: Message[] = [{ role: 'system', content: `${STAGE_LINE('reader')}\nAnswer in JSON.` }, { role: 'user', content: 'JOB TEXT' }];
 const Out = z.object({ ok: z.boolean() }).strict();
 
+test('the provider and model that answered are logged', async () => {
+  const m = fakeModel(() => '{"ok":true}');
+  const logs: string[] = [];
+  await callStage(MSGS, Out, { llm: llmConfig(ENV, { providers: ['claude'] }), call: m.call, log: (s) => logs.push(s) });
+  assert.ok(logs.some((l) => /^bot: model claude\/\S+$/.test(l)), logs.join('\n'));
+});
+
 test('a claude stage child gets PATH, HOME and its own token only', async () => {
   const m = fakeModel(() => '{"ok":true}');
   const r = await callStage(MSGS, Out, { llm: llmConfig(ENV, { providers: ['claude'] }), call: m.call });

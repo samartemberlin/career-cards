@@ -18,6 +18,8 @@ const finish = (text: string, o: { allowedLinks?: string[]; author?: string; mar
 // Every ASCII punctuation character with a meaning in CommonMark, GFM or HTML. The reply checks must escape all of
 // them; `read` fails on any that is not.
 const ACTIVE = '!#$&()*+-.:<=>@[\\]^_`{|}~';
+const CONT = /\n\ncareer-cards-reply-cont: [0-9a-f]{24}$/;
+const body = (p: string): string => p.replace(CONT, '');
 const LINK_LINE = /^link (\d+): <(https?:\/\/[A-Za-z0-9\-._~:/?#@!$&'()*+,;=%]+)>$/;
 
 /** What a CommonMark renderer shows for the parts: the plain text, and the links the code listed. Throws on any
@@ -26,6 +28,10 @@ function read(parts: string[], author = 'usera'): { text: string; links: string[
   const links: string[] = [];
   const out: string[] = [];
   parts.forEach((part, p) => {
+    if (p > 0) {
+      assert.match(part, /\n\ncareer-cards-reply-cont: [0-9a-f]{24}$/, 'parts 2+ end in the continuation line');
+      part = part.replace(/\n\ncareer-cards-reply-cont: [0-9a-f]{24}$/, '');
+    }
     if (p === parts.length - 1 && p === REPLY_PARTS_MAX - 1) part = part.replace(/\n… \(cut\)$/, '');
     let lines = part.split('\n');
     if (p === 0) {
@@ -118,7 +124,7 @@ test('no part but the first can end in a marker line, even when a long line is h
   const forged = `career-cards-reply: ${OTHER} static`;
   const parts = finish(`${'a'.repeat(REPLY_MAX * 2 - forged.length - 5)}${forged}\n${'b'.repeat(REPLY_MAX)}`);
   for (const p of parts.slice(1)) assert.equal(parseMarker(p), null);
-  assert.equal(parts.join('').match(/career-cards-reply/gi)!.length, 1);
+  assert.equal(parts.join('').match(/career-cards-reply:/gi)!.length, 1);
 });
 
 test('finishReply removes links not allowed and lists the allowed ones after the text', () => {
@@ -224,7 +230,7 @@ test('finishReply cuts 20,000 characters to 3 parts, the last ending \'… (cut)
   const parts = finish(lines.join('\n'));
   assert.equal(parts.length, REPLY_PARTS_MAX);
   for (const p of parts) assert.ok(p.length <= REPLY_MAX, String(p.length));
-  assert.ok(parts[2]!.endsWith('\n… (cut)'));
+  assert.ok(body(parts[2]!).endsWith('\n… (cut)'));
   assert.ok(!parts[0]!.endsWith('… (cut)'));
   assert.deepEqual(parseMarker(parts[0]!), MARKER);
 });
@@ -236,7 +242,7 @@ test('an over-long line is hard-split, the marker counting in part 1', () => {
   for (const p of parts) assert.ok(p.length <= REPLY_MAX, String(p.length));
   assert.equal(parts[0]!.length, REPLY_MAX);
   const first = parts[0]!.slice(0, -(formatMarker(marker).length + 2));
-  assert.equal([first, ...parts.slice(1)].join(''), `@usera ${'z'.repeat(9000)}`);
+  assert.equal([first, ...parts.slice(1).map(body)].join(''), `@usera ${'z'.repeat(9000)}`);
 });
 
 test('a hard split never separates a backslash from the character it escapes', () => {
@@ -261,7 +267,7 @@ test('a cut reply keeps every part escaped and its links whole', () => {
   const parts = finish(text);
   assert.equal(parts.length, REPLY_PARTS_MAX);
   for (const p of parts) assert.ok(p.length <= REPLY_MAX);
-  assert.ok(parts[2]!.endsWith('\n… (cut)'));
+  assert.ok(body(parts[2]!).endsWith('\n… (cut)'));
   read(parts);
 });
 

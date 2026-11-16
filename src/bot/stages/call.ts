@@ -51,6 +51,7 @@ export async function callStage<T>(
   if (o.signal) opts.signal = o.signal;
   if (o.log) opts.log = o.log;
   const r = await callLLM(o.llm, messages, opts);
+  o.log?.(`bot: model ${r.provider}/${r.model}`);
   const parsed = schema.safeParse(parseJsonObject(r.text));
   // Paths only: the values are model output.
   if (!parsed.success) throw new StageOutputInvalid(`schema: ${parsed.error.issues.map((i) => i.path.join('.') || '(root)').join(', ')}`);

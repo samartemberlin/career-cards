@@ -3,7 +3,7 @@
 // Markdown or HTML can act on is escaped, so no construct renders, whatever it is. Links are never taken from the
 // text: every one is removed, and the allowed links the text mentioned are listed after it by this code, in one form.
 import { REPLY_MAX } from './catalogue.ts';
-import { formatMarker } from './marker.ts';
+import { formatCont, formatMarker } from './marker.ts';
 import type { ReplyMarker } from './marker.ts';
 import { PrivacyError } from '../privacy.ts';
 import type { Masker } from '../privacy.ts';
@@ -186,13 +186,13 @@ function cut(s: string, max: number): [string, string] {
 
 type Line = { text: string; atomic: boolean };
 
-function split(lines: Line[], firstMax: number): string[] {
+function split(lines: Line[], firstMax: number, restMax: number): string[] {
   const parts: string[] = [];
   let cur: string | null = null;
   for (let { text: line, atomic } of lines) {
     for (;;) {
       if (parts.length > REPLY_PARTS_MAX) return parts;
-      const max = parts.length === 0 ? firstMax : REPLY_MAX;
+      const max = parts.length === 0 ? firstMax : restMax;
       if (cur !== null) {
         if (cur.length + 1 + line.length <= max) {
           cur += `\n${line}`;
@@ -216,9 +216,9 @@ function split(lines: Line[], firstMax: number): string[] {
   return parts;
 }
 
-function cutLast(part: string): string {
+function cutLast(part: string, max: number): string {
   const lines = part.split('\n');
-  const room = REPLY_MAX - CUT.length - 1;
+  const room = max - CUT.length - 1;
   while (lines.join('\n').length > room) {
     if (lines.length > 1) lines.pop();
     else lines[0] = cut(lines[0]!, room)[0];
@@ -249,11 +249,14 @@ export function finishReply(r: {
     plain.links.forEach((link, i) => lines.push({ text: `link ${i + 1}: <${link}>`, atomic: true }));
   }
 
-  let parts = split(lines, firstMax);
+  const cont = formatCont(r.marker.actionId);
+  const restMax = REPLY_MAX - 2 - cont.length;
+  let parts = split(lines, firstMax, restMax);
   if (parts.length > REPLY_PARTS_MAX) {
     parts = parts.slice(0, REPLY_PARTS_MAX);
-    parts[REPLY_PARTS_MAX - 1] = cutLast(parts[REPLY_PARTS_MAX - 1]!);
+    parts[REPLY_PARTS_MAX - 1] = cutLast(parts[REPLY_PARTS_MAX - 1]!, restMax);
   }
   parts[0] = `${parts[0]}\n\n${marker}`;
+  for (let i = 1; i < parts.length; i++) parts[i] = `${parts[i]}\n\n${cont}`;
   return parts;
 }

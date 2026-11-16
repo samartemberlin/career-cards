@@ -9,6 +9,9 @@ export type Proposal = { action: { id: string; args: unknown }; expires: string 
 export type ReplyMarker = { actionId: string; cls: ReplyClass; proposal?: Proposal; resolves?: string };
 
 export const MARKER_PREFIX = 'career-cards-reply:';
+/** Ends parts 2+ of a split reply, so the relay can drop them too; parseMarker ignores it. */
+export const CONT_PREFIX = 'career-cards-reply-cont:';
+export const formatCont = (actionId: string): string => `${CONT_PREFIX} ${actionId}`;
 
 const CLASSES: readonly ReplyClass[] = ['static', 'model', 'research', 'refusal'];
 const ID = /^[0-9a-f]{24}$/;
