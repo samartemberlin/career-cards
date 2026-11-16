@@ -40,16 +40,32 @@ on:
       GROQ_API_KEY:
         required: false
 
+env:
+  CLAUDE_CLI_VERSION: "2.1.322"
+
 jobs:
   handle:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Print parameters
+        env:
+          REF: ${{ inputs.ref }}
+          ACTION_ID: ${{ inputs.action_id }}
+          CARD_ID: ${{ inputs.card_id }}
+          BOARD_ID: ${{ inputs.board_id }}
+          LABEL: ${{ inputs.label }}
+          GH_REPOSITORY: ${{ github.repository }}
+          GH_REF_NAME: ${{ github.ref_name }}
         run: |
-          echo "ref:    ${{ inputs.ref }}"
-          echo "action: ${{ inputs.action_id }}"
-          echo "label:  ${{ inputs.label }}"
+          [[ "$REF" =~ ^[0-9a-f]{40}$ ]] || { echo "ref must be a 40-char SHA" >&2; exit 1; }
+          echo "ref:        $REF"
+          echo "action:     $ACTION_ID"
+          echo "card_id:    $CARD_ID"
+          echo "board_id:   $BOARD_ID"
+          echo "label:      $LABEL"
+          echo "repository: $GH_REPOSITORY"
+          echo "ref_name:   $GH_REF_NAME"
 
       - name: Checkout career-cards at pinned SHA
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -66,33 +82,30 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: |
-          node --version
-          npm ci --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       - name: Cache claude CLI
         id: claude-cache
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.local/claude-cli
-          key: claude-cli-2.1.322
+          key: claude-cli-${{ env.CLAUDE_CLI_VERSION }}
 
       - name: Install claude CLI
         if: steps.claude-cache.outputs.cache-hit != 'true'
         run: |
-          npm install -g --prefix ~/.local/claude-cli @anthropic-ai/claude-code@2.1.322
-          echo "installed @anthropic-ai/claude-code@2.1.322"
+          npm install -g --prefix ~/.local/claude-cli @anthropic-ai/claude-code@${{ env.CLAUDE_CLI_VERSION }}
+          echo "installed @anthropic-ai/claude-code@${{ env.CLAUDE_CLI_VERSION }}"
 
-      - name: Add claude CLI to PATH
-        run: echo "$HOME/.local/claude-cli/bin" >> "$GITHUB_PATH"
-
-      - name: Print versions
+      - name: Add claude CLI to PATH and print versions
         run: |
+          echo "$HOME/.local/claude-cli/bin" >> "$GITHUB_PATH"
           node --version
-          claude --version
+          ~/.local/claude-cli/bin/claude --version
 
       - name: Handle action
         env:
+          ACTION_ID: ${{ inputs.action_id }}
           TRELLO_KEY: ${{ secrets.TRELLO_KEY }}
           TRELLO_TOKEN: ${{ secrets.TRELLO_TOKEN }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -107,6 +120,5 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           RUN_REF: ${{ github.ref_name }}
         run: |
-          t0=$(date +%s%N)
-          node src/main.ts bot --action "${{ inputs.action_id }}"
-          echo "elapsed: $(( ($(date +%s%N) - t0) / 1000000 )) ms"
+          trap 'echo "elapsed: $((SECONDS * 1000)) ms"' EXIT
+          node src/main.ts bot --action "$ACTION_ID"

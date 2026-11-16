@@ -1,6 +1,6 @@
 /**
  * Validates the reusable workflows and their template callers for correctness:
- * pinned SHAs, matching secrets, concurrency policy, and checkout ref.
+ * pinned SHAs, matching secrets, concurrency policy, checkout ref, and pin drift.
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -43,6 +43,28 @@ function checkoutSteps(job: Record<string, unknown>): Record<string, unknown>[] 
   return (job['steps'] as Record<string, unknown>[]).filter(
     (s) => typeof s['uses'] === 'string' && (s['uses'] as string).startsWith('actions/checkout@'),
   );
+}
+
+/** Collects every uses: string from all steps across all jobs in a workflow. */
+function allStepUses(wf: Workflow): string[] {
+  const jobs = wf['jobs'] as Record<string, unknown>;
+  const result: string[] = [];
+  for (const job of Object.values(jobs)) {
+    const steps = (job as Record<string, unknown>)['steps'] as Record<string, unknown>[] | undefined;
+    if (!steps) continue;
+    for (const step of steps) {
+      if (typeof step['uses'] === 'string') result.push(step['uses'] as string);
+    }
+  }
+  return result;
+}
+
+/** Reads the pinned claude-code version from the Dockerfile. */
+function dockerfileClaudeVersion(): string {
+  const dockerfile = readFileSync(join(ROOT, 'Dockerfile'), 'utf8');
+  const m = dockerfile.match(/@anthropic-ai\/claude-code@([\d.]+)/);
+  assert.ok(m, 'Dockerfile should contain @anthropic-ai/claude-code@<version>');
+  return m[1]!;
 }
 
 const templateBot = loadWorkflow('template/.github/workflows/bot.yml');
@@ -139,5 +161,49 @@ describe('reusable workflows: checkout uses inputs.ref', () => {
     assert.ok(steps.length > 0, 'reusable run should have a checkout step');
     const ref = (steps[0]!['with'] as Record<string, unknown>)['ref'];
     assert.equal(ref, '${{ inputs.ref }}', 'reusable run checkout must use ref: ${{ inputs.ref }}');
+  });
+});
+
+describe('pin-drift guards', () => {
+  it('every uses: in reusable bot ends in @<40 hex>', () => {
+    for (const uses of allStepUses(reusableBot)) {
+      const sha = usedSha(uses);
+      assert.ok(sha !== null && SHA40.test(sha), `reusable bot uses: should end in @<40 hex>, got: ${uses}`);
+    }
+  });
+
+  it('every uses: in reusable run ends in @<40 hex>', () => {
+    for (const uses of allStepUses(reusableRun)) {
+      const sha = usedSha(uses);
+      assert.ok(sha !== null && SHA40.test(sha), `reusable run uses: should end in @<40 hex>, got: ${uses}`);
+    }
+  });
+
+  it('claude CLI version in reusable bot matches Dockerfile', () => {
+    const expected = dockerfileClaudeVersion();
+    const env = reusableBot['env'] as Record<string, unknown>;
+    assert.equal(String(env['CLAUDE_CLI_VERSION']), expected, 'reusable bot CLAUDE_CLI_VERSION must match Dockerfile');
+  });
+
+  it('claude CLI version in reusable run matches Dockerfile', () => {
+    const expected = dockerfileClaudeVersion();
+    const env = reusableRun['env'] as Record<string, unknown>;
+    assert.equal(String(env['CLAUDE_CLI_VERSION']), expected, 'reusable run CLAUDE_CLI_VERSION must match Dockerfile');
+  });
+
+  it('bot caller cancel-in-progress is false', () => {
+    const concurrency = templateBot['concurrency'] as Record<string, unknown>;
+    assert.strictEqual(concurrency['cancel-in-progress'], false, 'bot caller cancel-in-progress must be false');
+  });
+
+  it('bot caller concurrency group contains inputs.card_id', () => {
+    const concurrency = templateBot['concurrency'] as Record<string, unknown>;
+    const group = String(concurrency['group']);
+    assert.ok(group.includes('inputs.card_id'), `bot caller concurrency group must reference inputs.card_id, got: ${group}`);
+  });
+
+  it('bot caller permissions.actions is write', () => {
+    const permissions = templateBot['permissions'] as Record<string, unknown>;
+    assert.equal(permissions['actions'], 'write', 'bot caller permissions.actions must be write');
   });
 });
