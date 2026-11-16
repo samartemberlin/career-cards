@@ -170,7 +170,7 @@ export async function applyPlan(p: OnboardPlan, c: {
 /** Masks the sig in a relay callback URL to avoid leaking it in user-facing output.
  *  `/hook/owner/repo/<sig>` → `/hook/owner/repo/<first4>…`. Non-relay URLs are unchanged. */
 export function maskHook(url: string): string {
-  return url.replace(/(\/hook\/[^/]+\/[^/]+\/)([A-Za-z0-9_-]{5,})/, (_, prefix: string, sig: string) => `${prefix}${sig.slice(0, 4)}…`);
+  return url.replace(/(\/hook\/[^/]+\/[^/]+\/)([A-Za-z0-9_-]{5,})/g, (_, prefix: string, sig: string) => `${prefix}${sig.slice(0, 4)}…`);
 }
 
 /** The one webhook per board that the service needs, created with the bot's token.
