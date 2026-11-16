@@ -172,6 +172,7 @@ test('junk bodies answer 200 and are dropped with one status word', async () => 
     [JSON.stringify({ action: { type: 'updateCard', data: { text: '/bot run' } } }), 'drop not-comment'],
     [comment('just a note'), 'drop no-keyword'],
     [comment('   '), 'drop no-keyword'],
+    [comment('@someone /bot open — still live.\n\ncareer-cards-reply: 6afb43d4b830fa439afd9062 static'), 'drop own-reply'],
     [JSON.stringify({ action: { type: 'commentCard', data: { text: 5 } } }), 'drop no-keyword'],
     [JSON.stringify({ action: { type: 'commentCard', data: { text: '/bot run' } } }), 'drop bad-ids'],
     ['x'.repeat(256 * 1024 + 1), 'drop size'],

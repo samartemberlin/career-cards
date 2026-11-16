@@ -28,6 +28,8 @@ export function decide(body: unknown, now: Date): Decision {
   const data = obj(action.data);
   const text = typeof data.text === 'string' ? data.text.trim() : '';
   if (!text.startsWith('/') && !text.includes('@')) return { drop: 'no-keyword' };
+  // The bot's own replies mention the asker and end with a marker line (src/bot/marker.ts); the job would drop them anyway.
+  if (text.includes('career-cards-reply:')) return { drop: 'own-reply' };
   const card = obj(data.card);
   const ids = { action_id: action.id, card_id: card.id, board_id: obj(data.board).id ?? obj(obj(body).model).id };
   if (!Object.values(ids).every((v) => typeof v === 'string' && HEX24.test(v))) return { drop: 'bad-ids' };
