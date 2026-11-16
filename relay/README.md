@@ -49,9 +49,11 @@ A repo without the App is remembered for 10 min, so right after installing, comm
 ## Deploy
 
 Northflank (v1): a service built from this repo with `relay/Dockerfile` (build context: repo root), public HTTP port
-8080, env `PORT=8080`, `RELAY_IP_HEADER=x-envoy-external-address`, `ALLOWED_OWNERS`, and the three secrets.
+8080, env `PORT=8080`, `RELAY_IP_HEADER=x-envoy-external-address`, `ALLOWED_OWNERS`, and the three secrets in a secret
+group **restricted to the relay service**. A group with no restriction is injected into every service in the project, so
+check that no other group in the project is unrestricted. The smallest plan (`nf-compute-10`) is enough.
 
-Cloudflare (fallback), from `relay/`. Bundling is untested: run `npx wrangler deploy --dry-run` once first.
+Cloudflare (fallback), from `relay/` (`npx wrangler deploy --dry-run` bundles it with no Node imports):
 ```sh
 npx wrangler secret put GITHUB_APP_ID
 npx wrangler secret put GITHUB_APP_PRIVATE_KEY_PKCS8 < app.pkcs8.pem
