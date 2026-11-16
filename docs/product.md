@@ -4,7 +4,7 @@ Each user runs their own copy of this bot. Status: built = on `main` with tests;
 
 ## User constraints
 
-- Free tiers only: Trello free plan, Northflank free Sandbox, the user's own LLM accounts. Some free LLM tiers may train on prompts.
+- Free tiers only: Trello free plan, GitHub Actions free minutes, the user's own LLM accounts. Some free LLM tiers may train on prompts.
 - Users configure everything on Trello cards. No commits, no deploys after setup.
 - One user's data, tokens and quota never pass through another user's worker or account.
 - Trello free plan: 5,000 open cards per board, 250 automation runs a month, 100 API requests per 10 s.
@@ -37,7 +37,7 @@ Each user runs their own copy of this bot. Status: built = on `main` with tests;
 | Nightly run: run column, status card, `--dry-run` | [run-once.ts](../src/run/run-once.ts), CLI [run.ts](../src/run.ts) |
 | `/bot` catalogue and static commands | [catalogue.ts](../src/bot/catalogue.ts) |
 | Webhook service, gate, caps, `yes`/`no`, `open`/`why`/`last`/`run`, reply checks | [serve.ts](../src/serve.ts), [app.ts](../src/serve/app.ts), [gate.ts](../src/serve/gate.ts), [caps.ts](../src/bot/caps.ts), [confirm.ts](../src/bot/confirm.ts), [dispatch.ts](../src/bot/dispatch.ts), [handlers.ts](../src/bot/handlers.ts), [reply.ts](../src/bot/reply.ts), [safe-fetch.ts](../src/net/safe-fetch.ts) |
-| Deploy template, onboarding tool | [deploy/northflank/template.json](../deploy/northflank/template.json), [onboard.ts](../tools/onboard.ts) ([plan](../tools/onboard/plan.ts), [apply](../tools/onboard/apply.ts)) |
+| Template repo, relay, onboarding tool | [template/](../template/), [relay/](../relay/), [onboard.ts](../tools/onboard.ts) ([plan](../tools/onboard/plan.ts), [apply](../tools/onboard/apply.ts)) |
 | Migration from samjobs | planned (PR 6) |
 | Router, `needs`, `legit`, `fit`, `cv`, `feedback` | [router.ts](../src/bot/router.ts), [stages/](../src/bot/stages/), [feedback.ts](../src/bot/feedback.ts) |
 | Research: `company`, `deep` | [company.ts](../src/bot/stages/company.ts), [deep.ts](../src/bot/stages/deep.ts), [researcher.ts](../src/bot/stages/researcher.ts) |
@@ -59,10 +59,9 @@ Each user runs their own copy of this bot. Status: built = on `main` with tests;
 4. Actions marked `confirm` wait for `/bot yes`: 24 h at most, and any later bot reply on the card closes the proposal. The reply is posted as a comment.
 
 **Onboarding**
-1. Run the [onboarding tool](../tools/onboard.ts) (`--dry-run` first): three private boards (Jobs, Profiles, System), bot added; it prints the three board IDs.
-2. Fork, deploy to Northflank from the template using those board IDs, add secret groups.
-3. Run the tool again with `--url <service url>` to register webhooks; create the one Trello automation rule by hand, as the tool prints it (Trello has no API for it).
-4. Fill `Settings`, `Personal details`, `CV` and one profile column; comment `/bot run` on the System board.
+1. Create a private repo from `samartemberlin/career-cards-template` and configure it ([template/README.md](../template/README.md)).
+2. Run `tools/onboard.ts --relay <relay> --repo <owner>/<repo>`: three private boards (Jobs, Profiles, System), bot added, relay webhook registered; it prints the board IDs to set as repo variables.
+3. Fill `Settings`, `Personal details`, `CV` and one profile column; comment `/bot help` on the System board.
 
 **Migration from samjobs** (per user, samjobs keeps running until cutover)
 1. Test user with made-up profile on test boards: three clean nightly runs.
