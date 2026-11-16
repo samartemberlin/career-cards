@@ -1,0 +1,59 @@
+name: Bot
+
+# Triggered by the relay when a Trello comment is routed to this user.
+# Dispatches the reusable bot workflow at a pinned career-cards SHA.
+#
+# After creating this repo from the template, replace every occurrence of
+# 0000000000000000000000000000000000000000 with the same 40-char SHA
+# (the career-cards commit you want to run from), then add the required
+# secrets and variables. See template/README.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      action_id:
+        description: "Trello action id (24 hex)"
+        required: true
+        type: string
+      card_id:
+        description: "Trello card id (for concurrency key)"
+        required: true
+        type: string
+      board_id:
+        description: "Trello board id"
+        required: false
+        type: string
+        default: ''
+      label:
+        description: "Run label (verb-shortLink-MMDD-HHMMz, built by relay)"
+        required: false
+        type: string
+        default: ''
+
+run-name: "bot-${{ inputs.label }}"
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: "bot-${{ inputs.card_id }}"
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  call-bot:
+    uses: samartemberlin/career-cards/.github/workflows/bot.yml@0000000000000000000000000000000000000000
+    with:
+      ref: "0000000000000000000000000000000000000000"
+      action_id: ${{ inputs.action_id }}
+      card_id: ${{ inputs.card_id }}
+      board_id: ${{ inputs.board_id }}
+      label: ${{ inputs.label }}
+    secrets:
+      TRELLO_KEY: ${{ secrets.TRELLO_KEY }}
+      TRELLO_TOKEN: ${{ secrets.TRELLO_TOKEN }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
