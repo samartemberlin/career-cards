@@ -1,5 +1,10 @@
 # Where to host a worker
 
+> **Superseded.** The deployment model changed: each user now runs from a private repo created from
+> `samartemberlin/career-cards-template`, with a shared relay forwarding Trello webhooks via a GitHub App.
+> See [DEPLOY.md](../DEPLOY.md) for the current setup and [relay/README.md](../relay/README.md) for the relay.
+> The platform notes below are kept as historical reference; the per-platform folders have been removed.
+
 A worker needs four things:
 - one container from the public image;
 - an HTTPS URL that Trello can reach;
@@ -12,9 +17,9 @@ The checks below were made against live docs and accounts in November 2026. Chec
 
 | Platform | Free tier | Card | Idle behaviour | Notes | Folder |
 |---|---|---|---|---|---|
-| Render | 512 MB, 0.1 vCPU, 750 h/month | no | sleeps after 15 min; about 60 s to wake | **Current choice for the sample worker.** [nightly-trigger.yml](../.github/workflows/nightly-trigger.yml) keeps it awake during a run. Trello retries webhooks while it wakes. | [render/](render/) |
-| Koyeb | 512 MB, 0.1 vCPU | yes, $29 pre-auth hold | scales to zero after 1 h with no traffic; under 10 s to wake | Wakes quicker than Render. The CLI name of the free instance type is unconfirmed. | [koyeb/](koyeb/) |
-| Northflank | Developer Sandbox | yes in practice: docs say no card, but deploying failed on 2026-11-15 with 409 "add a default payment method" | always on | Best fit on paper: it has jobs, so the scan can run in its own container ([template.json](northflank/template.json)). Its security incident, which the status page dates from 2026-10-30, was still "Monitoring" on 2026-11-15. | [northflank/](northflank/) |
+| Render | 512 MB, 0.1 vCPU, 750 h/month | no | sleeps after 15 min; about 60 s to wake | Was the initial sample host; a nightly-trigger workflow kept it awake during a run. Trello retries webhooks while it wakes. | — |
+| Koyeb | 512 MB, 0.1 vCPU | yes, $29 pre-auth hold | scales to zero after 1 h with no traffic; under 10 s to wake | Wakes quicker than Render. The CLI name of the free instance type is unconfirmed. | — |
+| Northflank | Developer Sandbox | yes in practice: docs say no card, but deploying failed on 2026-11-15 with 409 "add a default payment method" | always on | Has a jobs API (scan in its own container). Its security incident from 2026-10-30 was still "Monitoring" on 2026-11-15. | — |
 | Zeabur | free container, limits unconfirmed | no | sleeps when idle; a few seconds to wake | Untested. The $5/month credit runs out fast if the worker stays on. | — |
 | Oracle Cloud Always Free | ARM VMs with plenty of RAM | yes | always on | A full VM, so it has room for a sandbox or a self-hosted model. More setup work. | — |
 
