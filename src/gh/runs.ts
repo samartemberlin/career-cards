@@ -14,11 +14,14 @@ export type GhRunEnv = {
 
 /** RunStarter backed by GitHub Actions workflow_dispatch. */
 export function ghRunStarter(env: GhRunEnv, o?: { fetchImpl?: FetchLike; now?: () => Date }): RunStarter {
+  if (!env.GITHUB_TOKEN) throw new Error('GITHUB_TOKEN is not set');
+  if (!env.GITHUB_REPOSITORY) throw new Error('GITHUB_REPOSITORY is not set');
+  const ref = env.RUN_REF ?? env.GITHUB_REF_NAME;
+  if (!ref) throw new Error('RUN_REF or GITHUB_REF_NAME must be set');
   const fetchImpl = o?.fetchImpl ?? (fetch as FetchLike);
   const now = o?.now ?? (() => new Date());
   const workflow = env.RUN_WORKFLOW ?? 'run.yml';
-  const ref = env.RUN_REF ?? env.GITHUB_REF_NAME ?? 'main';
-  const [owner, repo] = (env.GITHUB_REPOSITORY ?? '/').split('/');
+  const [owner, repo] = env.GITHUB_REPOSITORY.split('/');
   const base = (env.GITHUB_API_URL ?? 'https://api.github.com').replace(/\/$/, '');
   const token = env.GITHUB_TOKEN;
 
@@ -58,11 +61,7 @@ export function ghRunStarter(env: GhRunEnv, o?: { fetchImpl?: FetchLike; now?: (
           body: JSON.stringify({ ref, inputs: { trigger, label } }),
         },
       );
-      if (!res.ok) {
-        let text = await res.text();
-        if (token) text = text.split(token).join('[TOKEN]');
-        throw new Error(`GitHub API ${res.status}: ${text.slice(0, 200)}`);
-      }
+      if (!res.ok) throw new Error(`GitHub API ${res.status} dispatching ${workflow}`);
     },
   };
 }

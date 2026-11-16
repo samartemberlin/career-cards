@@ -58,24 +58,32 @@ function fullSetup() {
 }
 
 /** Minimal api stub for tests that only need api.action to return a specific value. */
-function makeApi(actionFn: (id: string) => Promise<unknown>): BotApi {
-  const noop = async (): Promise<never> => { throw new Error('unexpected call'); };
-  return {
+function makeApi(actionFn: (id: string) => Promise<unknown>): { api: BotApi; writeCalls: string[] } {
+  const writeCalls: string[] = [];
+  const noopRead = async (): Promise<never> => { throw new Error('unexpected read call'); };
+  const recordWrite = (name: string) => async (): Promise<never> => {
+    writeCalls.push(name);
+    throw new Error(`unexpected write: ${name}`);
+  };
+  const api: BotApi = {
     action: actionFn,
     me: async () => BOT,
-    board: noop, boardMembers: noop, lists: noop, list: noop,
-    cards: noop, allCards: noop, card: noop, checklist: noop, labels: noop,
-    createLabel: noop, createList: noop,
-    comment: noop, createCard: noop, archiveCard: noop, attachText: noop,
-    cardComments: noop, boardComments: noop,
+    board: noopRead, boardMembers: noopRead, lists: noopRead, list: noopRead,
+    cards: noopRead, allCards: noopRead, card: noopRead, checklist: noopRead, labels: noopRead,
+    cardComments: noopRead, boardComments: noopRead,
+    createLabel: recordWrite('createLabel'), createList: recordWrite('createList'),
+    comment: recordWrite('comment'), createCard: recordWrite('createCard'),
+    archiveCard: recordWrite('archiveCard'), attachText: recordWrite('attachText'),
   } as BotApi;
+  return { api, writeCalls };
 }
 
 /** Minimal deps for early-drop tests (not found, not a comment, foreign board, stale). */
-function minimalDeps(actionFn: (id: string) => Promise<unknown>): { deps: ByIdDeps; logs: string[] } {
+function minimalDeps(actionFn: (id: string) => Promise<unknown>): { deps: ByIdDeps; logs: string[]; writeCalls: string[] } {
+  const { api, writeCalls } = makeApi(actionFn);
   const logs: string[] = [];
   const deps: ByIdDeps = {
-    api: makeApi(actionFn),
+    api,
     boards: BOARDS,
     me: BOT,
     seen: createRecentIds(),
@@ -85,7 +93,7 @@ function minimalDeps(actionFn: (id: string) => Promise<unknown>): { deps: ByIdDe
     net: { fetchJd: async () => null, checkOpen: async () => ({ verdict: 'unknown' as const, reason: 'test' }) },
     env: {},
   };
-  return { deps, logs };
+  return { deps, logs, writeCalls };
 }
 
 /** Build the raw action body for a commentCard, as Trello returns from GET /actions/{id}. */
@@ -112,6 +120,8 @@ test('byId: commentCard on a user board → gate passes, handler runs, logs bot:
   const code = await byId(id, deps);
 
   assert.equal(code, 0);
+  assert.ok(logs.includes('bot: gate ok'), `expected gate ok log; got: ${logs.join(' | ')}`);
+  assert.ok(logs.includes('bot: verb help'), `expected verb log; got: ${logs.join(' | ')}`);
   assert.ok(logs.some((l) => l === `bot: action ${id} handled`), `expected handled log; got: ${logs.join(' | ')}`);
   // Handler replied once
   assert.equal(fake.commentsOn(JOB_CARD).filter((c) => c.includes('career-cards-reply:')).length, 1);
@@ -121,17 +131,18 @@ test('byId: commentCard on a user board → gate passes, handler runs, logs bot:
 
 test('byId: Trello 404 on the action → drop <id>: not found, exit 0, no Trello write', async () => {
   const id = newId();
-  const { deps, logs } = minimalDeps(async (aid) => { throw new TrelloError(404, 'GET', `/actions/${aid}`, 'not found'); });
+  const { deps, logs, writeCalls } = minimalDeps(async (aid) => { throw new TrelloError(404, 'GET', `/actions/${aid}`, 'not found'); });
   const code = await byId(id, deps);
   assert.equal(code, 0);
   assert.ok(logs.includes(`drop ${id}: not found`), `logs: ${logs.join(' | ')}`);
+  assert.deepEqual(writeCalls, [], `no writes expected; got: ${writeCalls.join(', ')}`);
 });
 
 // ── drop: not a comment ───────────────────────────────────────────────────
 
-test('byId: non-commentCard action → drop <id>: not a comment, exit 0', async () => {
+test('byId: non-commentCard action → drop <id>: not a comment, exit 0, no Trello write', async () => {
   const id = newId();
-  const { deps, logs } = minimalDeps(async () => ({
+  const { deps, logs, writeCalls } = minimalDeps(async () => ({
     id, type: 'updateCard', date: NOW.toISOString(),
     idMemberCreator: USER_A.id,
     memberCreator: { username: USER_A.username },
@@ -140,29 +151,32 @@ test('byId: non-commentCard action → drop <id>: not a comment, exit 0', async 
   const code = await byId(id, deps);
   assert.equal(code, 0);
   assert.ok(logs.includes(`drop ${id}: not a comment`), `logs: ${logs.join(' | ')}`);
+  assert.deepEqual(writeCalls, [], `no writes expected; got: ${writeCalls.join(', ')}`);
 });
 
 // ── drop: foreign board ───────────────────────────────────────────────────
 
-test('byId: foreign board → drop <id>: foreign board, exit 0', async () => {
+test('byId: foreign board → drop <id>: foreign board, exit 0, no Trello write', async () => {
   const id = newId();
   const date = new Date(NOW.getTime() - 60_000);
-  const { deps, logs } = minimalDeps(async () => rawAction({ id, text: '@samplebot help', author: USER_A, cardId: JOB_CARD, boardId: FOREIGN_BOARD, date }));
+  const { deps, logs, writeCalls } = minimalDeps(async () => rawAction({ id, text: '@samplebot help', author: USER_A, cardId: JOB_CARD, boardId: FOREIGN_BOARD, date }));
   const code = await byId(id, deps);
   assert.equal(code, 0);
   assert.ok(logs.includes(`drop ${id}: foreign board`), `logs: ${logs.join(' | ')}`);
+  assert.deepEqual(writeCalls, [], `no writes expected; got: ${writeCalls.join(', ')}`);
 });
 
 // ── drop: stale ───────────────────────────────────────────────────────────
 
-test('byId: age 16 min with BOT_ACTION_MAX_AGE_MS 900_000 → drop <id>: stale, exit 0', async () => {
+test('byId: age 16 min with BOT_ACTION_MAX_AGE_MS 900_000 → drop <id>: stale, exit 0, no Trello write', async () => {
   assert.equal(BOT_ACTION_MAX_AGE_MS, 900_000);
   const id = newId();
   const date = new Date(NOW.getTime() - 16 * 60_000); // 16 min ago
-  const { deps, logs } = minimalDeps(async () => rawAction({ id, text: '@samplebot help', author: USER_A, cardId: JOB_CARD, boardId: BOARDS.jobs, date }));
+  const { deps, logs, writeCalls } = minimalDeps(async () => rawAction({ id, text: '@samplebot help', author: USER_A, cardId: JOB_CARD, boardId: BOARDS.jobs, date }));
   const code = await byId(id, deps);
   assert.equal(code, 0);
   assert.ok(logs.includes(`drop ${id}: stale`), `logs: ${logs.join(' | ')}`);
+  assert.deepEqual(writeCalls, [], `no writes expected; got: ${writeCalls.join(', ')}`);
 });
 
 // ── drop: already answered ────────────────────────────────────────────────
@@ -185,6 +199,80 @@ test('byId: already answered → drop <id>: answered, exit 0, no additional Trel
   assert.equal(code, 0);
   assert.ok(logs.includes(`drop ${id}: answered`), `logs: ${logs.join(' | ')}`);
   assert.equal(fake.requests.filter((r) => r.method !== 'GET').length, writesBefore, 'no writes');
+});
+
+// ── internal error → exit 1 ───────────────────────────────────────────────
+
+test('byId: api.comment throws → exit 1, no handled log', async () => {
+  const { fake, deps, logs } = fullSetup();
+  const id = newId();
+  fake.seedAction(BOARDS.jobs, JOB_CARD, {
+    id,
+    idMemberCreator: USER_A.id,
+    username: USER_A.username,
+    date: new Date(NOW.getTime() - 60_000).toISOString(),
+    text: '@samplebot help',
+  });
+
+  // Override comment to simulate a Trello 5xx after gate passes
+  const failingApi: ByIdDeps['api'] = {
+    ...deps.api,
+    comment: async () => { throw new Error('Trello 503'); },
+  };
+  const failDeps: ByIdDeps = { ...deps, api: failingApi, log: (s) => logs.push(s) };
+
+  const code = await byId(id, failDeps);
+
+  assert.equal(code, 1);
+  assert.ok(!logs.some((l) => l.includes('handled')), `no handled log expected; got: ${logs.join(' | ')}`);
+});
+
+// ── marker added between gate and reply → no reply ────────────────────────
+
+test('byId: marker appears between gate and reply → drop <id>: answered, zero replies', async () => {
+  const { fake, deps } = fullSetup();
+  const id = newId();
+  fake.seedAction(BOARDS.jobs, JOB_CARD, {
+    id,
+    idMemberCreator: USER_A.id,
+    username: USER_A.username,
+    date: new Date(NOW.getTime() - 60_000).toISOString(),
+    text: '@samplebot help',
+  });
+
+  // Gate calls cardComments once (no marker). The wrapper calls it again before posting.
+  // On the second call for JOB_CARD, inject a marker to simulate concurrent overlap.
+  let jobCardCalls = 0;
+  const originalCardComments = deps.api.cardComments.bind(deps.api);
+  const patchedApi: ByIdDeps['api'] = {
+    ...deps.api,
+    cardComments: async (cardId, o) => {
+      const result = await originalCardComments(cardId, o);
+      if (cardId === JOB_CARD) {
+        jobCardCalls++;
+        if (jobCardCalls >= 2) {
+          // Inject a marker: another instance already replied (TComment post-transform shape)
+          return [...result, {
+            id: newId(),
+            idMemberCreator: BOT.id,
+            username: BOT.username,
+            date: new Date(NOW.getTime() - 10_000).toISOString(),
+            text: `Help text.\n\n${formatMarker({ actionId: id, cls: 'static' })}`,
+            cardId: JOB_CARD,
+            boardId: BOARDS.jobs,
+          }];
+        }
+      }
+      return result;
+    },
+  };
+
+  const logs: string[] = [];
+  const code = await byId(id, { ...deps, api: patchedApi, log: (s) => logs.push(s) });
+
+  assert.equal(code, 0);
+  assert.ok(logs.includes(`drop ${id}: answered`), `expected drop answered; got: ${logs.join(' | ')}`);
+  assert.equal(fake.commentsOn(JOB_CARD).filter((c) => c.includes('career-cards-reply:')).length, 0, 'zero replies expected');
 });
 
 // ── two sequential calls → one reply ─────────────────────────────────────

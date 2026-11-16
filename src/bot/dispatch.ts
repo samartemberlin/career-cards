@@ -29,6 +29,9 @@ export type DispatchDeps = GateDeps & {
   /** Tests only: the model transports. */
   call?: CallOpts;
   commentTimeoutMs?: number; commentGraceMs?: number;
+  /** Step hooks for callers that log per-step (e.g. bot --action). Serve leaves them unset. */
+  onGate?: () => void;
+  onVerb?: (verb: string) => void;
 };
 
 export const COMMENT_MAX = 2000;
@@ -80,10 +83,10 @@ const guardStarter = (s: RunStarter, signal: AbortSignal): RunStarter => ({
 });
 
 // Two webhooks for one card must not both read the same pending proposal, so each card's comments run in order.
-const tails = new Map<string, Promise<void>>();
+const tails = new Map<string, Promise<unknown>>();
 
 /** Awaitable: runs the full dispatch pipeline for one comment, without chaining. */
-export function handleCommentNow(d: DispatchDeps, a: CommentAction): Promise<void> {
+export function handleCommentNow(d: DispatchDeps, a: CommentAction): Promise<'handled' | 'dropped' | 'failed'> {
   return bounded(d, a);
 }
 
@@ -93,7 +96,7 @@ export function handleComment(d: DispatchDeps, a: CommentAction): Promise<void> 
   void run.then(() => {
     if (tails.get(a.cardId) === run) tails.delete(a.cardId);
   });
-  return run;
+  return run.then(() => {}); // serve ignores the return value
 }
 
 /**
@@ -102,16 +105,18 @@ export function handleComment(d: DispatchDeps, a: CommentAction): Promise<void> 
  * card, and the comment's reply is refused too, so work that ignores the abort can't hold the card (and, through the
  * serial queue, the service) nor act alongside the card's next comment.
  */
-async function bounded(d: DispatchDeps, a: CommentAction): Promise<void> {
+async function bounded(d: DispatchDeps, a: CommentAction): Promise<'handled' | 'dropped' | 'failed'> {
   const abort = new AbortController();
   const release = new AbortController();
-  const work = handle(d, a, abort.signal, release.signal);
-  if (await settlesWithin(work, d.commentTimeoutMs ?? COMMENT_TIMEOUT_MS)) return;
+  const workResult = handle(d, a, abort.signal, release.signal);
+  const workVoid: Promise<void> = workResult.then(() => {});
+  if (await settlesWithin(workVoid, d.commentTimeoutMs ?? COMMENT_TIMEOUT_MS)) return workResult;
   d.log(`comment ${a.id} timed out`);
   abort.abort();
-  if (await settlesWithin(work, d.commentGraceMs ?? COMMENT_GRACE_MS)) return;
+  if (await settlesWithin(workVoid, d.commentGraceMs ?? COMMENT_GRACE_MS)) return workResult;
   release.abort();
   d.log(`comment ${a.id} still running after the grace; its writes are refused`);
+  return 'failed';
 }
 
 async function settlesWithin(p: Promise<void>, ms: number): Promise<boolean> {
@@ -123,18 +128,20 @@ async function settlesWithin(p: Promise<void>, ms: number): Promise<boolean> {
   }
 }
 
-async function handle(d: DispatchDeps, a: CommentAction, signal: AbortSignal, released: AbortSignal): Promise<void> {
+async function handle(d: DispatchDeps, a: CommentAction, signal: AbortSignal, released: AbortSignal): Promise<'handled' | 'dropped' | 'failed'> {
   const log = createRunLog({ sink: d.log, secrets: secretsFromEnv(d.env), keep: 0 }).log;
   try {
-    await respond({ ...d, api: guardWrites(d.api, released), log }, a, signal);
+    return await respond({ ...d, api: guardWrites(d.api, released), log }, a, signal);
   } catch (e) {
     log(`comment ${a.id} failed: ${firstLine(e)}`);
+    return 'failed';
   }
 }
 
-async function respond(d: DispatchDeps, a: CommentAction, signal: AbortSignal): Promise<void> {
+async function respond(d: DispatchDeps, a: CommentAction, signal: AbortSignal): Promise<'handled' | 'dropped'> {
   const g = await gate(d, a);
-  if (!g.ok) return;
+  if (!g.ok) return 'dropped';
+  d.onGate?.();
   const { settings } = g;
   const now = d.now();
   const botName = d.me.username;
@@ -167,7 +174,7 @@ async function respond(d: DispatchDeps, a: CommentAction, signal: AbortSignal): 
     allowedMembers: settings.allowed_members,
     botUsername: botName,
   });
-  if (problems.length) return post(IDENTITY, { text: NOT_PRIVATE, cls: 'refusal' });
+  if (problems.length) { await post(IDENTITY, { text: NOT_PRIVATE, cls: 'refusal' }); return 'handled'; }
   const refusal = a.text.length > COMMENT_MAX ? 'That comment is over 2,000 characters. Please shorten it.' : null;
 
   let masker: Masker;
@@ -177,9 +184,9 @@ async function respond(d: DispatchDeps, a: CommentAction, signal: AbortSignal): 
     if (!(e instanceof ConfigInvalid || e instanceof PrivacyError)) throw e;
     d.log(`config unusable for ${a.id}: ${e.name}`);
     await post(IDENTITY, { text: CONFIG_BROKEN, cls: 'refusal' });
-    return;
+    return 'handled';
   }
-  if (refusal) return post(masker, { text: refusal, cls: 'refusal' });
+  if (refusal) { await post(masker, { text: refusal, cls: 'refusal' }); return 'handled'; }
 
   const ctx: CommandCtx = {
     api: guardWrites(d.api, signal), boards: d.boards, me: d.me, settings, action: a, now, config,
@@ -194,6 +201,7 @@ async function respond(d: DispatchDeps, a: CommentAction, signal: AbortSignal): 
   let confirms: { actionId: string; spec: ActionSpec; args: unknown } | null = null;
 
   const m = matchStatic(a.text, trigger);
+  d.onVerb?.(m.kind === 'none' ? '(router)' : m.kind === 'builtin' ? m.name : m.spec.verbs[0]!);
   if (m.kind === 'bad_args') {
     reply = async () => ({ text: m.message, cls });
   } else if (m.kind === 'none') {
@@ -231,20 +239,21 @@ async function respond(d: DispatchDeps, a: CommentAction, signal: AbortSignal): 
 
   const over = overCap(cls, a.cardId, await loadUsage(d.api, d.boards, { botId: d.me.id, now }), settings.caps);
   // Any later bot reply closes a proposal (confirm.ts), this refusal too.
-  if (over) return post(masker, { text: confirms ? overClosing(over) : over, cls: 'refusal' });
+  if (over) { await post(masker, { text: confirms ? overClosing(over) : over, cls: 'refusal' }); return 'handled'; }
 
   if (confirms) {
     await allowedLinks();
     // Too late to run it, and this reply closes the proposal: the user asks again.
-    if (signal.aborted) return post(masker, { text: TIMEOUT_REPLY, cls: 'refusal' });
+    if (signal.aborted) { await post(masker, { text: TIMEOUT_REPLY, cls: 'refusal' }); return 'handled'; }
     // The resolution is on the card before the action runs: if posting it fails, nothing runs, and a later `yes`
     // finds the proposal resolved even when the action's own reply never got posted. It carries the cap class, so
     // the result after it is posted as uncounted.
     await post(masker, { text: `Confirmed: ${confirms.spec.verbs[0]}.`, cls, resolves: confirms.actionId });
     await post(masker, { ...(await reply()), cls: 'refusal' });
-    return;
+    return 'handled';
   }
   await post(masker, await reply());
+  return 'handled';
 }
 
 async function runHandler(ctx: CommandCtx, spec: ActionSpec, args: unknown, cls: CapClass): Promise<Reply> {

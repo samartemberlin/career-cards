@@ -33,15 +33,25 @@ test('ghRunStarter.isRunning is false when both queued and in_progress lists are
   const starter = ghRunStarter(ENV, { fetchImpl });
   assert.equal(await starter.isRunning(), false);
   assert.equal(calls.length, 2);
+  // Both calls must hit the right workflow URL with the right status and bearer token
+  const base = `${ENV.GITHUB_API_URL}/repos/${ENV.GITHUB_REPOSITORY}/actions/workflows/${ENV.RUN_WORKFLOW}/runs`;
+  assert.equal(calls[0]!.url, `${base}?status=queued&per_page=1`);
+  assert.equal(calls[1]!.url, `${base}?status=in_progress&per_page=1`);
+  const auth0 = (calls[0]!.init?.headers as Record<string, string>)?.Authorization;
+  assert.equal(auth0, `Bearer ${ENV.GITHUB_TOKEN}`);
 });
 
 test('ghRunStarter.isRunning is true when the API lists one in_progress run', async () => {
-  const { fetchImpl } = makeFetch([
+  const { fetchImpl, calls } = makeFetch([
     { status: 200, body: { total_count: 0, workflow_runs: [] } },
     { status: 200, body: { total_count: 1, workflow_runs: [{ id: 1 }] } },
   ]);
   const starter = ghRunStarter(ENV, { fetchImpl });
   assert.equal(await starter.isRunning(), true);
+  // Both calls: queued then in_progress
+  const base = `${ENV.GITHUB_API_URL}/repos/${ENV.GITHUB_REPOSITORY}/actions/workflows/${ENV.RUN_WORKFLOW}/runs`;
+  assert.equal(calls[0]!.url, `${base}?status=queued&per_page=1`);
+  assert.equal(calls[1]!.url, `${base}?status=in_progress&per_page=1`);
 });
 
 test('ghRunStarter.isRunning is true when queued run exists (stops early)', async () => {
@@ -52,6 +62,8 @@ test('ghRunStarter.isRunning is true when queued run exists (stops early)', asyn
   assert.equal(await starter.isRunning(), true);
   // Short-circuits on queued; does not call in_progress
   assert.equal(calls.length, 1);
+  const base = `${ENV.GITHUB_API_URL}/repos/${ENV.GITHUB_REPOSITORY}/actions/workflows/${ENV.RUN_WORKFLOW}/runs`;
+  assert.equal(calls[0]!.url, `${base}?status=queued&per_page=1`);
 });
 
 test('ghRunStarter.start POSTs workflow_dispatch with ref, trigger and label', async () => {
@@ -71,13 +83,15 @@ test('ghRunStarter.start POSTs workflow_dispatch with ref, trigger and label', a
   assert.equal(auth, `Bearer ${ENV.GITHUB_TOKEN}`);
 });
 
-test('ghRunStarter.start: non-2xx throws an error naming the status and never the token', async () => {
+test('ghRunStarter.start: non-2xx throws naming status and workflow, never the token or body', async () => {
   const { fetchImpl } = makeFetch([{ status: 422, body: 'validation error' }]);
   const starter = ghRunStarter(ENV, { fetchImpl });
   await assert.rejects(
     () => starter.start('manual'),
     (e: Error) => {
       assert.ok(e.message.includes('422'), `expected 422 in: ${e.message}`);
+      assert.ok(e.message.includes(ENV.RUN_WORKFLOW!), `expected workflow name in: ${e.message}`);
+      assert.ok(!e.message.includes('validation error'), `body must not appear in: ${e.message}`);
       assert.ok(!e.message.includes(ENV.GITHUB_TOKEN), `token must not appear in: ${e.message}`);
       return true;
     },
