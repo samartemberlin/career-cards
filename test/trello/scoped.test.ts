@@ -200,6 +200,26 @@ test('me passes through', async () => {
   assert.equal(result.username, 'bot');
 });
 
+test('tokenWebhooks passes through', async () => {
+  const { api } = makeStub();
+  const scoped = scopeClient(api, { boards: ['board1'] });
+  const result = await scoped.tokenWebhooks();
+  assert.deepEqual(result, []);
+});
+
+test('deleteWebhook on a scoped client throws ScopeError (onboarding-only)', async () => {
+  const { api } = makeStub();
+  const scoped = scopeClient(api, { boards: ['board1'] });
+  await assert.rejects(
+    () => scoped.deleteWebhook('wh1'),
+    (err: unknown) => {
+      assert.ok(err instanceof ScopeError, `expected ScopeError, got ${err}`);
+      assert.match((err as ScopeError).message, /onboarding-only/);
+      return true;
+    },
+  );
+});
+
 test('myOrganizations passes through', async () => {
   const { api } = makeStub();
   const scoped = scopeClient(api, { boards: ['board1'] });

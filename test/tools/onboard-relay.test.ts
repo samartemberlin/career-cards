@@ -7,7 +7,7 @@ import { FakeTrello } from '../support/fake-trello.ts';
 import { createTrelloClient } from '../../src/trello/client.ts';
 import type { TMember } from '../../src/trello/api.ts';
 import type { BoardIds, Role } from '../../tools/onboard/plan.ts';
-import { replaceWebhooks } from '../../tools/onboard/apply.ts';
+import { maskHook, replaceWebhooks } from '../../tools/onboard/apply.ts';
 import { denyBoardListing } from '../../tools/sample/guard.ts';
 import { main } from '../../tools/onboard.ts';
 
@@ -242,7 +242,8 @@ describe('--replace-webhooks', () => {
     // Replace: delete the ones pointing at OLD_URL, leave NEW_URL alone.
     const result = await replaceWebhooks(bot, ids, NEW_URL);
     assert.equal(result.length, 3, 'all three boards had differing webhooks');
-    assert.ok(result.every((r) => r.deleted), 'all three should be deleted');
+    assert.ok(result.every((r) => r.action === 'deleted'), 'all three should be deleted');
+    assert.ok(result.every((r) => r.oldURL === OLD_URL), 'old URL recorded in every result');
     const after = await bot.tokenWebhooks();
     assert.equal(after.length, 0, 'all old webhooks removed');
   });
@@ -272,7 +273,47 @@ describe('--replace-webhooks', () => {
     const result = await replaceWebhooks(bot, ids, NEW_URL);
     assert.equal(result.length, 1, 'only jobs webhook differs');
     assert.equal(result[0]!.board, 'jobs');
-    assert.ok(result[0]!.deleted);
+    assert.equal(result[0]!.action, 'deleted');
+  });
+
+  it('replaceWebhooks does not touch a webhook on a 4th board or the owner token', async () => {
+    const { fake, ids } = await boards();
+    const OLD_URL = 'https://old.example.com/trello';
+    const NEW_URL = 'https://new.example.com/trello';
+    // Bot token creates webhooks on all three state boards.
+    const bot = clientFor(fake.fetch);
+    for (const role of ROLES) {
+      await bot.createWebhook(ids[role], OLD_URL, `career-cards ${role}`);
+    }
+    // Bot token also has a webhook on a 4th board (not in the state).
+    const fourthId = 'f'.repeat(24);
+    await bot.createWebhook(fourthId, OLD_URL, 'other board');
+    // Owner token creates a webhook on the jobs board with a distinct URL.
+    // (FakeTrello deduplicates by idModel+callbackURL regardless of token, so we use a different URL.)
+    const OWNER_URL = 'https://owner.example.com/hook';
+    const owner = createTrelloClient({
+      key: ENV.OWNER_TRELLO_KEY, token: ENV.OWNER_TRELLO_TOKEN,
+      fetchImpl: denyBoardListing(fake.fetch), sleep: async () => {},
+    });
+    await owner.createWebhook(ids.jobs, OWNER_URL, 'owner webhook on jobs');
+
+    const result = await replaceWebhooks(bot, ids, NEW_URL);
+    // Only the three state boards are deleted (via bot token).
+    assert.equal(result.length, 3, `expected 3 results, got ${result.length}`);
+    const deletedBoards = result.map((r) => r.board).sort();
+    assert.deepEqual(deletedBoards, ['jobs', 'profiles', 'system']);
+    assert.ok(result.every((r) => r.action === 'deleted'));
+
+    // The bot's 4th-board webhook must survive.
+    const remaining = await bot.tokenWebhooks();
+    assert.ok(remaining.some((w) => w.idModel === fourthId), '4th board webhook must survive');
+    // The owner-token webhook on jobs must survive (different token, not touched by replaceWebhooks).
+    const ownerRemaining = await owner.tokenWebhooks();
+    assert.ok(ownerRemaining.some((w) => w.idModel === ids.jobs && w.callbackURL === OWNER_URL), 'owner token webhook must survive');
+
+    // Exactly 3 DELETE calls: one per state board, none for the 4th.
+    const deletes = fake.requests.filter((r) => r.method === 'DELETE');
+    assert.equal(deletes.length, 3, `expected 3 DELETE calls, got ${deletes.length}`);
   });
 
   it('--dry-run deletes nothing', async () => {
@@ -286,7 +327,8 @@ describe('--replace-webhooks', () => {
     // Run with dryRun: true
     const result = await replaceWebhooks(bot, ids, NEW_URL, { dryRun: true });
     assert.equal(result.length, 3);
-    assert.ok(result.every((r) => r.skipped && !r.deleted), 'dry run: skipped not deleted');
+    assert.ok(result.every((r) => r.action === 'skipped'), 'dry run: all should be skipped');
+    assert.ok(result.every((r) => r.oldURL === OLD_URL), 'old URL recorded');
     // Webhooks still exist
     const after = await bot.tokenWebhooks();
     assert.equal(after.length, 3, 'webhooks unchanged in dry run');
@@ -313,14 +355,16 @@ describe('--replace-webhooks', () => {
       { ...ENV, RELAY_PATH_SECRET: RELAY_SECRET },
     );
     assert.equal(code, 0, out);
-    // Should print "would be deleted" for each board
-    assert.match(out, /would be deleted/);
+    // Should print "would be deleted" for each board, with the old callback shown (masked if relay).
+    assert.match(out, /would be deleted Jobs.*old\.example\.com/);
+    assert.match(out, /would be deleted Profiles.*old\.example\.com/);
+    assert.match(out, /would be deleted System.*old\.example\.com/);
     // No DELETE requests should be made
     const deletes = fake.requests.filter((r) => r.method === 'DELETE');
     assert.equal(deletes.length, 0, `unexpected DELETE requests in dry run:\n${out}`);
   });
 
-  it('CLI --replace-webhooks deletes differing webhooks and prints "webhook deleted <title>"', async () => {
+  it('CLI --replace-webhooks deletes differing webhooks and prints "webhook deleted <title> (was: <old>)"', async () => {
     const fake = new FakeTrello();
     const state: { ids: Partial<BoardIds> } = { ids: {} };
     await cli(fake, state)(['--workspace', WS]);
@@ -335,13 +379,84 @@ describe('--replace-webhooks', () => {
       { ...ENV, RELAY_PATH_SECRET: RELAY_SECRET },
     );
     assert.equal(code, 0, out);
-    assert.match(out, /webhook deleted Jobs/);
-    assert.match(out, /webhook deleted Profiles/);
-    assert.match(out, /webhook deleted System/);
+    assert.match(out, /webhook deleted Jobs.*was:.*old\.example\.com/);
+    assert.match(out, /webhook deleted Profiles.*was:.*old\.example\.com/);
+    assert.match(out, /webhook deleted System.*was:.*old\.example\.com/);
     // Confirm webhooks are gone
     const remaining = await bot.tokenWebhooks();
     // The new webhooks were created by ensureWebhooks, old ones were deleted
     const oldHooks = remaining.filter((h) => h.callbackURL === OLD_URL);
     assert.equal(oldHooks.length, 0, 'old webhooks should be deleted');
+  });
+
+  it('--replace-webhooks without --url or --relay is a usage error', async () => {
+    const fake = new FakeTrello();
+    const state: { ids: Partial<BoardIds> } = { ids: {} };
+    const { code, out } = await cli(fake, state)(['--replace-webhooks']);
+    assert.equal(code, 2, `expected usage error:\n${out}`);
+    assert.match(out, /--replace-webhooks requires --url or --relay/);
+  });
+
+  it('webhook HEAD failure with --relay: output shows masked sig, not full sig', async () => {
+    const fake = new FakeTrello();
+    fake.webhookHeadOk = false;
+    const state: { ids: Partial<BoardIds> } = { ids: {} };
+    // First create boards without webhook registration.
+    await cli(fake, state)(['--workspace', WS]);
+    const { code, out } = await cli(fake, state)(
+      ['--relay', 'https://relay.example.com', '--repo', 'org/myrepo'],
+      { ...ENV, RELAY_PATH_SECRET: RELAY_SECRET },
+    );
+    assert.equal(code, 1, `expected failure:\n${out}`);
+    // The output must mention the masked hook path (first 4 chars of sig + ellipsis)
+    assert.match(out, /\/hook\/org\/myrepo\/[A-Za-z0-9_-]{4}…/, `expected masked hook in output:\n${out}`);
+    // But must not contain the full 22-char sig
+    assert.ok(!/\/hook\/org\/myrepo\/[A-Za-z0-9_-]{22}/.test(out), `full sig must not appear in output:\n${out}`);
+    // Secret itself must not appear
+    assert.ok(!out.includes(RELAY_SECRET), `RELAY_PATH_SECRET must not appear in output:\n${out}`);
+  });
+
+  it('replaceWebhooks kept: old webhook survives when ensure failed for that board', async () => {
+    const fake = new FakeTrello();
+    // HEAD check will fail, making ensureWebhooks return 'service not reachable' for all boards.
+    fake.webhookHeadOk = false;
+    const state: { ids: Partial<BoardIds> } = { ids: {} };
+    // Create boards first (no webhooks yet).
+    await cli(fake, state)(['--workspace', WS]);
+    const ids = state.ids as BoardIds;
+    // Create old webhooks on all three boards with the bot token.
+    fake.webhookHeadOk = true;
+    const bot = clientFor(fake.fetch);
+    const OLD_URL = 'https://old.example.com/trello';
+    for (const role of ROLES) {
+      await bot.createWebhook(ids[role], OLD_URL, `career-cards ${role}`);
+    }
+    // Now re-disable HEAD and run with --replace-webhooks: ensure fails → old webhooks kept.
+    fake.webhookHeadOk = false;
+    const { code, out } = await cli(fake, state)(
+      ['--replace-webhooks', '--relay', 'https://relay.example.com', '--repo', 'org/myrepo'],
+      { ...ENV, RELAY_PATH_SECRET: RELAY_SECRET },
+    );
+    assert.equal(code, 1, `expected failure:\n${out}`);
+    // No DELETE requests should be made.
+    const deletes = fake.requests.filter((r) => r.method === 'DELETE');
+    assert.equal(deletes.length, 0, `no DELETE when ensure failed:\n${out}`);
+    // Old webhooks must still be there.
+    fake.webhookHeadOk = true;
+    const remaining = await bot.tokenWebhooks();
+    const oldHooks = remaining.filter((w) => w.callbackURL === OLD_URL);
+    assert.equal(oldHooks.length, 3, 'all three old webhooks must survive when ensure failed');
+  });
+});
+
+describe('maskHook', () => {
+  it('masks the sig in a relay URL', () => {
+    assert.equal(maskHook('https://relay.example.com/hook/org/repo/abcdefghijklmnopqrstuv'), 'https://relay.example.com/hook/org/repo/abcd…');
+  });
+  it('leaves a non-relay URL unchanged', () => {
+    assert.equal(maskHook('https://host.example.com/trello'), 'https://host.example.com/trello');
+  });
+  it('leaves a short sig unchanged (too short to be real)', () => {
+    assert.equal(maskHook('https://relay.example.com/hook/org/repo/abcd'), 'https://relay.example.com/hook/org/repo/abcd');
   });
 });

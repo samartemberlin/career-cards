@@ -11,7 +11,7 @@ import { readOnlyClient } from '../src/trello/read-only.ts';
 import { denyBoardListing } from './sample/guard.ts';
 import { formatPlan, planOnboarding, readBoards } from './onboard/plan.ts';
 import type { BoardIds, Role } from './onboard/plan.ts';
-import { USERNAME, applyPlan, automationRule, ensureWebhooks, replaceWebhooks, scopedTo } from './onboard/apply.ts';
+import { USERNAME, applyPlan, automationRule, ensureWebhooks, maskHook, replaceWebhooks, scopedTo } from './onboard/apply.ts';
 import { hookSig, MIN_SECRET, validRepo } from '../relay/src/sig.ts';
 
 const DEFAULT_STATE = join(import.meta.dirname, '.onboard.json');
@@ -71,6 +71,9 @@ function parseArgs(argv: string[]): Args {
     if (parts.length !== 2 || !parts[0] || !parts[1]) throw new UsageError('--repo must be <owner>/<repo>');
     const [owner, repo] = parts as [string, string];
     if (!validRepo(owner, repo)) throw new UsageError('--repo must be a valid GitHub owner/repo');
+  }
+  if (a.replaceWebhooks && a.url === undefined && a.relay === undefined) {
+    throw new UsageError('--replace-webhooks requires --url or --relay');
   }
   return a;
 }
@@ -166,10 +169,14 @@ export async function main(
     if (args.dryRun) {
       out('Dry run: nothing was changed.');
       // --replace-webhooks --dry-run: list what would be replaced without deleting.
-      if (args.replaceWebhooks && callbackURL !== undefined && ids.jobs && ids.profiles && ids.system) {
-        const dryIds: BoardIds = { jobs: ids.jobs, profiles: ids.profiles, system: ids.system };
-        for (const w of await replaceWebhooks(botRaw, dryIds, callbackURL, { dryRun: true })) {
-          if (w.skipped) out(`webhook would be deleted ${w.title} (dry run)`);
+      if (args.replaceWebhooks && callbackURL !== undefined) {
+        if (ids.jobs && ids.profiles && ids.system) {
+          const dryIds: BoardIds = { jobs: ids.jobs, profiles: ids.profiles, system: ids.system };
+          for (const w of await replaceWebhooks(botRaw, dryIds, callbackURL, { dryRun: true })) {
+            if (w.action === 'skipped') out(`webhook would be deleted ${w.title} (was: ${maskHook(w.oldURL)}) (dry run)`);
+          }
+        } else {
+          out('replace-webhooks: not all three boards in state, skipped');
         }
       }
       return plan.refuse.length ? 1 : 0;
@@ -200,14 +207,22 @@ export async function main(
     }
     const all: BoardIds = { jobs: saved.jobs, profiles: saved.profiles, system: saved.system };
     if (callbackURL !== undefined && after.refuse.length === 0) {
-      for (const w of await ensureWebhooks(botRaw, all, callbackURL)) {
+      const ensureResults = await ensureWebhooks(botRaw, all, callbackURL);
+      for (const w of ensureResults) {
         out(`${TITLE[w.board as Role]}: webhook ${w.result}`);
         ok &&= w.result === 'created' || w.result === 'exists';
       }
-    }
-    if (args.replaceWebhooks && callbackURL !== undefined) {
-      for (const w of await replaceWebhooks(botRaw, all, callbackURL)) {
-        if (w.deleted) out(`webhook deleted ${w.title}`);
+      if (args.replaceWebhooks) {
+        const allowedBoards = new Set(
+          ensureResults
+            .filter((w) => w.result === 'created' || w.result === 'exists')
+            .map((w) => all[w.board as Role]),
+        );
+        for (const w of await replaceWebhooks(botRaw, all, callbackURL, { allowedBoards })) {
+          if (w.action === 'deleted') out(`webhook deleted ${w.title} (was: ${maskHook(w.oldURL)})`);
+          else if (w.action === 'kept') { out(`webhook kept ${w.title} (new one not registered)`); ok = false; }
+          else if (w.action === 'failed') { out(`webhook delete failed ${w.title}: ${w.error!}`); ok = false; }
+        }
       }
     }
     out(`JOBS_BOARD_ID=${all.jobs} PROFILES_BOARD_ID=${all.profiles} SYSTEM_BOARD_ID=${all.system}`);

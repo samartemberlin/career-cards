@@ -232,6 +232,27 @@ test('error message never contains key or token', async () => {
   );
 });
 
+test('tokenWebhooks 401: error message and path do not expose the token', async () => {
+  const clock = makeClock();
+  const { fetchImpl } = makeFetch([statusResponse(401, 'invalid token')]);
+  const client = createTrelloClient({
+    key: 'KEYSECRET123', token: 'TOKSECRET456',
+    fetchImpl,
+    sleep: clock.sleep,
+    now: clock.now,
+  });
+  await assert.rejects(
+    () => client.tokenWebhooks(),
+    (err: unknown) => {
+      assert.ok(err instanceof TrelloError);
+      // The token appears in the URL path /tokens/<token>/webhooks; it must be redacted.
+      assert.ok(!err.message.includes('TOKSECRET456'), 'token must not appear in error message');
+      assert.ok(!err.path.includes('TOKSECRET456'), 'token must not appear in error path');
+      return true;
+    },
+  );
+});
+
 // --- allCards paging tests -----------------------------------------------
 
 function makeCard(id: string): object {

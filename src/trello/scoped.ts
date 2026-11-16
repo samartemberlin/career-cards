@@ -203,9 +203,9 @@ export function scopeClient(api: TrelloApi, scope: Scope): TrelloApi {
 
     createWebhook: async (idModel, callbackURL, description) => { assertBoard(idModel); return api.createWebhook(idModel, callbackURL, description); },
 
-    // token-level operations are not board-scoped
+    // token-level reads are not board-scoped; deletes are onboarding-only (use the raw client)
     tokenWebhooks: () => api.tokenWebhooks(),
-    deleteWebhook: (id) => api.deleteWebhook(id),
+    deleteWebhook: () => Promise.reject(new ScopeError('deleteWebhook is onboarding-only')),
 
     // action is not board-scoped: the caller re-checks the board after fetching
     action: (id) => api.action(id),
