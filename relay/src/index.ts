@@ -3,6 +3,7 @@
 // Logs exactly one status line per request, never bodies, ids, comment text or tokens.
 import { decide, inSubnet, MAX_BODY } from './gate.ts';
 import { Fail, githubApp, type Fetch } from './github-app.ts';
+import { hookSig, MIN_SECRET, sameSig, validRepo } from './sig.ts';
 
 export type Env = {
   GITHUB_APP_ID?: string;
@@ -10,11 +11,14 @@ export type Env = {
   ALLOWED_OWNERS?: string;
   RELAY_IP_HEADER?: string;
   RELAY_SKIP_IP_CHECK?: string;
+  RELAY_PATH_SECRET?: string;
 };
 export type Ctx = { waitUntil(p: Promise<unknown>): void };
 export type Deps = { fetch: Fetch; now: () => number; log: (line: string) => void };
 
-const PATH = /^\/hook\/([A-Za-z0-9-]{1,39})\/([A-Za-z0-9._-]{1,100})$/;
+const PATH = /^\/hook\/([^/]+)\/([^/]+)(?:\/([^/]*))?$/;
+// Per owner/repo, a second line of defence behind the path signature.
+export const RATE = { burst: 20, windowMs: 10 * 60_000 };
 
 class TooBig extends Error {}
 
@@ -42,6 +46,19 @@ async function readCapped(req: Request): Promise<string> {
 
 export function createRelay(deps: Deps) {
   const gh = githubApp(deps);
+  const buckets = new Map<string, { tokens: number; at: number }>();
+
+  function take(id: string): boolean {
+    const now = deps.now();
+    const b = buckets.get(id) ?? { tokens: RATE.burst, at: now };
+    b.tokens = Math.min(RATE.burst, b.tokens + ((now - b.at) * RATE.burst) / RATE.windowMs);
+    b.at = now;
+    if (b.tokens < 1) return false;
+    b.tokens -= 1;
+    if (!buckets.has(id) && buckets.size >= 1000) buckets.clear();
+    buckets.set(id, b);
+    return true;
+  }
   const ok = () => new Response('ok', { status: 200 });
 
   async function post(req: Request, env: Env, ctx: Ctx, owner: string, repo: string): Promise<string | null> {
@@ -66,6 +83,7 @@ export function createRelay(deps: Deps) {
     if ('drop' in d) return `drop ${d.drop}`;
     const allowed = (env.ALLOWED_OWNERS ?? '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
     if (allowed.length && !allowed.includes(owner.toLowerCase())) return 'drop owner';
+    if (!take(`${owner}/${repo}`.toLowerCase())) return 'drop rate';
     const appId = env.GITHUB_APP_ID ?? '';
     const pem = env.GITHUB_APP_PRIVATE_KEY_PKCS8 ?? '';
     ctx.waitUntil(
@@ -83,10 +101,18 @@ export function createRelay(deps: Deps) {
 
   return {
     async fetch(req: Request, env: Env, ctx: Ctx): Promise<Response> {
-      const m = PATH.exec(new URL(req.url).pathname);
-      if (!m || /^\.\.?$/.test(m[2]!) || (req.method !== 'HEAD' && req.method !== 'POST')) {
-        deps.log('notfound');
+      const notFound = (line: string) => {
+        deps.log(line);
         return new Response('not found', { status: 404 });
+      };
+      const m = PATH.exec(new URL(req.url).pathname);
+      if (!m || !validRepo(m[1]!, m[2]!) || (req.method !== 'HEAD' && req.method !== 'POST')) return notFound('notfound');
+      const secret = env.RELAY_PATH_SECRET ?? '';
+      if (secret.length < MIN_SECRET) return notFound('fail secret');
+      try {
+        if (!sameSig(m[3] ?? '', await hookSig(secret, m[1]!, m[2]!))) return notFound('drop sig');
+      } catch {
+        return notFound('fail secret');
       }
       if (req.method === 'HEAD') {
         deps.log('head');

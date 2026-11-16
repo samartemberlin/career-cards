@@ -62,8 +62,11 @@ export function githubApp(deps: { fetch: Fetch; now: () => number }) {
 
   async function appJwt(appId: string, pem: string): Promise<string> {
     const nowS = Math.floor(deps.now() / 1000);
-    if (jwt && jwt.appId === appId && nowS < jwt.refreshAt) return jwt.value;
-    if (!key || key.pem !== pem) key = { pem, key: importKey(pem) };
+    if (jwt && jwt.appId === appId && key?.pem === pem && nowS < jwt.refreshAt) return jwt.value;
+    if (!key || key.pem !== pem) {
+      key = { pem, key: importKey(pem) };
+      jwt = undefined;
+    }
     let k: CryptoKey;
     try {
       k = await key.key;

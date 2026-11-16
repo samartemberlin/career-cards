@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRelay, type Env } from '../relay/src/index.ts';
 import { buildLabel, inSubnet } from '../relay/src/gate.ts';
+import { hookSig, sameSig } from '../relay/src/sig.ts';
 import { commentWebhook } from './support/webhook.ts';
 
 const SENTINEL = 'zq-sentinel-7781';
@@ -16,6 +17,10 @@ const keys = (await crypto.subtle.generateKey(
 )) as CryptoKeyPair;
 const pkcs8 = Buffer.from(await crypto.subtle.exportKey('pkcs8', keys.privateKey)).toString('base64');
 const PEM = `-----BEGIN PRIVATE KEY-----\n${pkcs8.match(/.{1,64}/g)!.join('\n')}\n-----END PRIVATE KEY-----\n`;
+
+const SECRET = 'test-path-secret-0123456789abcdef';
+const SIG = await hookSig(SECRET, 'user-a', 'career-cards-a');
+const HOOK = `/hook/user-a/career-cards-a/${SIG}`;
 
 type Call = { method: string; url: string; headers: Headers; body: string };
 
@@ -39,7 +44,7 @@ function harness(o: { routes?: Record<string, () => Response>; env?: Env; now?: 
     return route ? route() : new Response('nope', { status: 599 });
   };
   const relay = createRelay({ fetch, now: o.now ?? (() => NOW), log: (s) => logs.push(s) });
-  const env: Env = { GITHUB_APP_ID: '12345', GITHUB_APP_PRIVATE_KEY_PKCS8: PEM, ...o.env };
+  const env: Env = { GITHUB_APP_ID: '12345', GITHUB_APP_PRIVATE_KEY_PKCS8: PEM, RELAY_PATH_SECRET: SECRET, ...o.env };
   const send = async (req: Request) => {
     const pending: Promise<unknown>[] = [];
     const res = await relay.fetch(req, env, { waitUntil: (p) => void pending.push(p) });
@@ -50,7 +55,7 @@ function harness(o: { routes?: Record<string, () => Response>; env?: Env; now?: 
 }
 
 const hook = (body: BodyInit | null, o: { ip?: string; path?: string; method?: string } = {}) =>
-  new Request(`https://relay.example${o.path ?? '/hook/user-a/career-cards-a'}`, {
+  new Request(`https://relay.example${o.path ?? HOOK}`, {
     method: o.method ?? 'POST',
     headers: { 'cf-connecting-ip': o.ip ?? '104.192.142.245', 'content-type': 'application/json' },
     body,
@@ -71,11 +76,62 @@ test('HEAD on a hook path answers 200', async () => {
 
 test('bad paths answer 404', async () => {
   const h = harness();
-  for (const path of ['/', '/hook/user-a', '/hook/user_a/repo', '/hook/user-a/re%2Fpo', '/hook/user-a/repo/x', `/hook/${'a'.repeat(40)}/r`]) {
+  for (const path of ['/', '/hook/user-a', '/hook/user_a/repo/x', '/hook/user-a/re%2Fpo/x', `${HOOK}/x`, `/hook/${'a'.repeat(40)}/r/x`]) {
     assert.equal((await h.send(hook(comment('/bot run'), { path }))).status, 404, path);
   }
   assert.equal((await h.send(hook(null, { method: 'GET' }))).status, 404);
+  assert.ok(h.logs.every((l) => l === 'notfound'));
   assert.equal(h.calls.length, 0);
+});
+
+test('a wrong or missing path signature answers 404 for HEAD and POST, before reading the body', async () => {
+  const other = await hookSig(SECRET, 'user-b', 'career-cards-a');
+  for (const path of ['/hook/user-a/career-cards-a', '/hook/user-a/career-cards-a/', `/hook/user-a/career-cards-a/${other}`,
+    `/hook/user-a/career-cards-a/${SIG.slice(0, -1)}`, `/hook/user-a/career-cards-a/${SIG}A`]) {
+    for (const method of ['HEAD', 'POST']) {
+      const h = harness();
+      const req = hook(method === 'POST' ? comment('/bot run') : null, { path, method });
+      if (method === 'POST') Object.defineProperty(req, 'body', { get: () => assert.fail('body read') });
+      assert.equal((await h.send(req)).status, 404, `${method} ${path}`);
+      assert.deepEqual(h.logs, ['drop sig']);
+      assert.equal(h.calls.length, 0);
+    }
+  }
+  const h = harness();
+  assert.equal((await h.send(hook(null, { method: 'HEAD', path: `/hook/User-A/Career-Cards-A/${SIG}` }))).status, 200);
+});
+
+test('a missing or short RELAY_PATH_SECRET fails closed', async () => {
+  for (const RELAY_PATH_SECRET of [undefined, '', 'short']) {
+    const h = harness({ env: { RELAY_PATH_SECRET } });
+    assert.equal((await h.send(hook(comment('/bot run')))).status, 404);
+    assert.deepEqual(h.logs, ['fail secret']);
+  }
+});
+
+test('signatures: 22 base64url chars, keyed, compared exactly', async () => {
+  assert.match(SIG, /^[A-Za-z0-9_-]{22}$/);
+  assert.notEqual(await hookSig(`${SECRET}x`, 'user-a', 'career-cards-a'), SIG);
+  assert.equal(await hookSig(SECRET, 'USER-A', 'Career-Cards-A'), SIG);
+  assert.ok(sameSig(SIG, SIG));
+  assert.ok(!sameSig(SIG, `${SIG.slice(0, -1)}${SIG.endsWith('A') ? 'B' : 'A'}`));
+  assert.ok(!sameSig(SIG, ''));
+});
+
+test('each owner/repo gets at most 20 dispatches per 10 minutes', async () => {
+  let now = NOW;
+  const h = harness({ now: () => now });
+  for (let i = 0; i < 20; i++) await h.send(hook(comment('/bot run')));
+  const before = h.calls.length;
+  await h.send(hook(comment('/bot run')));
+  assert.equal(h.logs.at(-1), 'drop rate');
+  assert.equal(h.calls.length, before);
+  assert.equal(h.logs.filter((l) => l === 'dispatch 204').length, 20);
+  now += 30_000; // refills one per 30 s
+  await h.send(hook(comment('/bot run')));
+  assert.equal(h.logs.at(-1), 'dispatch 204');
+  await h.send(hook(comment('/bot run')));
+  assert.equal(h.logs.at(-1), 'drop rate');
 });
 
 test('a POST from outside the Trello subnet is dropped without any fetch', async () => {
@@ -140,7 +196,7 @@ test('a streamed oversized body is dropped', async () => {
       else c.close();
     },
   });
-  const req = new Request('https://relay.example/hook/user-a/career-cards-a', {
+  const req = new Request(`https://relay.example${HOOK}`, {
     method: 'POST',
     headers: { 'cf-connecting-ip': '104.192.142.245' },
     body,
@@ -290,7 +346,7 @@ test('logs never contain comment text, ids or tokens', async () => {
   await h.send(hook(`{"broken": "${SENTINEL}`));
   const all = h.logs.join('\n');
   assert.equal(h.logs.length, 4);
-  for (const secret of [SENTINEL, IDS.card, IDS.action, IDS.board, 'ghs_test', 'user-a']) assert.ok(!all.includes(secret), secret);
+  for (const secret of [SENTINEL, IDS.card, IDS.action, IDS.board, 'ghs_test', 'user-a', SIG]) assert.ok(!all.includes(secret), secret);
 });
 
 test('an unexpected error inside the handler still answers 200', async () => {
@@ -322,4 +378,25 @@ test('concurrent requests for one repo share one token request', async () => {
   await Promise.all([h.send(hook(comment('/bot run'))), h.send(hook(comment('/bot why')))]);
   assert.deepEqual(h.logs, ['dispatch 204', 'dispatch 204']);
   assert.equal(h.calls.filter((c) => c.url.endsWith('/access_tokens')).length, 1);
+});
+
+test('one JWT serves cold repos within 8 minutes; a new one after', async () => {
+  let now = NOW;
+  const routes: Record<string, () => Response> = {};
+  for (const r of ['b', 'c']) {
+    routes[`GET /repos/user-a/career-cards-${r}/installation`] = () => Response.json({ id: 777 });
+    routes[`GET /repos/user-a/career-cards-${r}`] = () => Response.json({ default_branch: 'main' });
+    routes[`POST /repos/user-a/career-cards-${r}/actions/workflows/bot.yml/dispatches`] = () => new Response(null, { status: 204 });
+  }
+  const h = harness({ now: () => now, routes });
+  const path = async (repo: string) => `/hook/user-a/${repo}/${await hookSig(SECRET, 'user-a', repo)}`;
+  await h.send(hook(comment('/bot run'), { path: await path('career-cards-a') }));
+  now += 7 * 60_000;
+  await h.send(hook(comment('/bot run'), { path: await path('career-cards-b') }));
+  now += 2 * 60_000;
+  await h.send(hook(comment('/bot run'), { path: await path('career-cards-c') }));
+  assert.deepEqual(h.logs, ['dispatch 204', 'dispatch 204', 'dispatch 204']);
+  const jwt = (repo: string) => h.calls.find((c) => c.url === `/repos/user-a/${repo}/installation`)!.headers.get('authorization');
+  assert.equal(jwt('career-cards-a'), jwt('career-cards-b'));
+  assert.notEqual(jwt('career-cards-b'), jwt('career-cards-c'));
 });
