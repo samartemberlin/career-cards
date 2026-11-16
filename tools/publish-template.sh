@@ -53,13 +53,15 @@ fi
 # Create the template repo if it doesn't exist
 if ! gh repo view "$REPO" &>/dev/null; then
   echo "creating $REPO..."
-  gh repo create "$REPO" --public --template=false
+  gh repo create "$REPO" --public
   gh api -X PATCH "repos/$REPO" -f is_template=true
 fi
 
 # Build a single commit and force-push to main
 cd "$tmpdir"
 git init -q
+git config user.name "publish-template"
+git config user.email "noreply@github.com"
 git checkout -q -b main
 git add .
 git commit -q -m "template: pin career-cards to $sha"
