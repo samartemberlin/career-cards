@@ -202,6 +202,9 @@ export function scopeClient(api: TrelloApi, scope: Scope): TrelloApi {
     addBoardMember: async (boardId, memberId) => { assertBoard(boardId); return api.addBoardMember(boardId, memberId); },
 
     createWebhook: async (idModel, callbackURL, description) => { assertBoard(idModel); return api.createWebhook(idModel, callbackURL, description); },
+
+    // action is not board-scoped: the caller re-checks the board after fetching
+    action: (id) => api.action(id),
   };
 }
 
@@ -241,6 +244,8 @@ export function scopeBotClient(api: TrelloApi, scope: Scope): BotApi {
 
     cardComments: (cardId, o) => inner.cardComments(cardId, o),
     boardComments: (boardId, o) => inner.boardComments(boardId, o),
+
+    action: (id) => inner.action(id),
   };
 }
 

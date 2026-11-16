@@ -10,7 +10,7 @@ const NOT_FOUND_BODY = 'The requested resource was not found.';
 
 type FailEntry = { method: string; path: RegExp; status: number; remaining: number };
 
-type CommentEntry = { id: string; idMemberCreator: string; username: string; date: string; text: string };
+export type CommentEntry = { id: string; idMemberCreator: string; username: string; date: string; text: string };
 
 export class FakeTrello {
   // ── state ─────────────────────────────────────────────────────────────────
@@ -28,6 +28,7 @@ export class FakeTrello {
   private _orgMembers = new Map<string, TMember[]>();         // orgId → members
   private _comments = new Map<string, CommentEntry[]>();      // cardId → comment entries
   private _attachments = new Map<string, string[]>();         // cardId → names
+  private _actionIndex = new Map<string, { cardId: string; boardId: string; entry: CommentEntry }>();
   private _now: Date = new Date('2026-01-01T00:00:00.000Z');
 
   // ── id / position generators ──────────────────────────────────────────────
@@ -306,6 +307,7 @@ export class FakeTrello {
         };
         if (!this._comments.has(card.id)) this._comments.set(card.id, []);
         this._comments.get(card.id)!.push(entry);
+        this._actionIndex.set(id, { cardId: card.id, boardId: card.idBoard, entry });
         return ok({ id, idMemberCreator: this._me.id, data: {}, agenticIdentity: null, appCreator: null, type: 'commentCard', date: entry.date, limits: {} });
       }
       // POST /cards/{id}/attachments
@@ -519,7 +521,19 @@ export class FakeTrello {
       return ok(comments.slice(0, limit).map((c) => this._toAction(c, cardId, card.idBoard)));
     }
 
+    // /actions/{id}
+    if ((m = /^\/actions\/([^/]+)$/.exec(path))) {
+      const item = this._actionIndex.get(m[1]!);
+      if (!item) return notFound();
+      return ok(this._toAction(item.entry, item.cardId, item.boardId));
+    }
+
     return notFound();
+  }
+
+  /** Seed an action directly (for testing byId without posting a comment first). */
+  seedAction(boardId: string, cardId: string, entry: CommentEntry): void {
+    this._actionIndex.set(entry.id, { cardId, boardId, entry });
   }
 
   private _toAction(c: CommentEntry & { cardId?: string }, cardId: string, boardId: string): object {

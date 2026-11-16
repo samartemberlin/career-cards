@@ -4,7 +4,7 @@ import type { Env } from './pipeline/llm.ts';
 import { main as runMain } from './run.ts';
 import { createRunLog, secretsFromEnv } from './run/log.ts';
 
-const USAGE = 'Usage: main.ts serve | run [flags] | check';
+const USAGE = 'Usage: main.ts serve | run [flags] | bot --action <id> | check';
 
 /** Appends `--trigger <RUN_TRIGGER>` when argv has no `--trigger` and `RUN_TRIGGER` is set. */
 export function withTrigger(argv: string[], env: Env): string[] {
@@ -18,6 +18,7 @@ export async function dispatch(
   o?: {
     run?: typeof runMain;
     serve?: (argv: string[], env: Env) => Promise<void>;
+    bot?: (argv: string[], env: Env) => Promise<number>;
     check?: () => Promise<string>;
     out?: (s: string) => void;
   },
@@ -41,6 +42,13 @@ export async function dispatch(
     // Block until the server closes; process.exit is never called while it runs.
     await new Promise<void>((resolve) => server.once('close', resolve));
     return 0;
+  }
+
+  if (cmd === 'bot') {
+    if (o?.bot) return o.bot(rest, env);
+    // Dynamic import keeps bot path out of the run-command load path.
+    const { main: botMain } = await import('./bot/by-id.ts');
+    return botMain(rest, env);
   }
 
   if (cmd === 'check') {

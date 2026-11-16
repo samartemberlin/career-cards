@@ -5,8 +5,8 @@ import { join, relative } from 'node:path';
 
 const SRC = join(import.meta.dirname, '..', '..', 'src');
 
-// The two entry points build the one raw client and scope it with scopeUserBoards (run.ts through runOnce).
-const RAW_CLIENT_ALLOWED = new Set(['run.ts', 'serve.ts']);
+// Entry points that build the one raw client and scope it with scopeUserBoards.
+const RAW_CLIENT_ALLOWED = new Set(['run.ts', 'serve.ts', 'bot/by-id.ts']);
 
 test('outside src/trello/, nothing imports scopeClient, and only the entry points import createTrelloClient', () => {
   const offenders: string[] = [];
