@@ -54,7 +54,7 @@ fi
 if ! gh repo view "$REPO" &>/dev/null; then
   echo "creating $REPO..."
   gh repo create "$REPO" --public
-  gh api -X PATCH "repos/$REPO" -f is_template=true
+  gh api -X PATCH "repos/$REPO" -F is_template=true
 fi
 
 # Build a single commit and force-push to main
