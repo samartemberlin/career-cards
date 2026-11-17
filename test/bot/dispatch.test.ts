@@ -237,14 +237,28 @@ test('a yes over the cap says the proposal is closed and runs nothing', async ()
   assert.equal(markerOf(posted[0]!).cls, 'refusal');
 });
 
-test('a Personal details card missing → the constant config reply, nothing else', async () => {
+test('a Personal details card missing → the fix list, uncounted, nothing else', async () => {
   const s = await ready(setup());
   await s.raw.setCardClosed(s.detailsCard, true);
   const { posted } = await say(s, '@samplebot run');
   assert.deepEqual(s.starts, []);
   assert.equal(posted.length, 1);
-  assert.equal(body(posted[0]!), "@usera I can't answer until the config cards are fixed. The next run's status card names the problem.");
+  assert.equal(body(posted[0]!), '@usera These cards need a fix before a run can start:\n- Profiles › About me: missing the "Personal details" card in column "About me"');
   assert.equal(markerOf(posted[0]!).cls, 'refusal');
+});
+
+test('an incomplete board: every verb gets the fix list, with no card links', async () => {
+  const s = await ready(setup());
+  const about = (await s.raw.card(s.detailsCard)).idList;
+  await s.raw.createCard({ idList: about, name: 'Personal details', desc: 'x', pos: 'bottom' });
+  for (const verb of ['help', 'check', 'what is this?']) {
+    const { posted } = await say(s, `@samplebot ${verb}`);
+    assert.equal(posted.length, 1, verb);
+    const text = body(posted[0]!);
+    assert.match(text, /^@usera These cards need a fix before a run can start:\n- Profiles › About me › Personal details: 2 cards titled "Personal details" in column "About me", keep one$/, verb);
+    assert.ok(!/https?:|link/.test(text), text);
+    assert.equal(markerOf(posted[0]!).cls, 'refusal');
+  }
 });
 
 test('yes with a pending start_run proposal starts one run and marks it resolved', async () => {
