@@ -190,3 +190,33 @@ test('messages: profiles under "## Profile: <name>", cards as "### <display name
   assert.match(user!.content, /^### Content editor › My dream job$/m);
   assert.match(user!.content, /^### Never these companies or words$/m);
 });
+
+const THIN = { ...GOOD, profiles: [{ ...GOOD.profiles[0]!, examples: GOOD.profiles[0]!.examples.slice(0, 2) }] };
+
+test('a code-detected unusable reply is a failed attempt: retried, logged with its cards', async () => {
+  const { p, f, logs } = await run([JSON.stringify(THIN), JSON.stringify(GOOD)]);
+  assert.deepEqual((await p).compiled, GOOD);
+  assert.equal(f.bodies.length, 2);
+  assert.ok(logs.includes('compile: attempt 1 failed: unusable: Content editor › My dream job'), logs.join('\n'));
+});
+
+test('unusable on every attempt: CompileFailed with those problems after the last one', async () => {
+  const { p, f } = await run([JSON.stringify(THIN)]);
+  await assert.rejects(p, (e: unknown) => e instanceof CompileFailed
+    && e.problems.length === 1 && e.problems[0]!.card === 'Content editor › My dream job' && e.problems[0]!.reason === 'fewer than 3 examples');
+  assert.equal(f.bodies.length, 3);
+});
+
+test('a profile name with spaces around it is matched', async () => {
+  const reply = { ...GOOD, profiles: [{ ...GOOD.profiles[0]!, name: '  Content editor ' }] };
+  const { p } = await run([JSON.stringify(reply)]);
+  assert.deepEqual((await p).compiled.profiles.map((x) => x.name), ['Content editor']);
+});
+
+test('prompt: bare work-mode tags go in keep, ruled-out remote regions in drop', () => {
+  const system = buildCompileMessages(INPUT, masker)[0]!.content;
+  for (const tag of ['"Remote"', '"Homeoffice"', '"Home office"', '"Work from home"', '"Anywhere"', '"United States"', '"US only"']) {
+    assert.ok(system.includes(tag), `prompt lacks ${tag}`);
+  }
+  assert.match(system, /accepts remote work/);
+});

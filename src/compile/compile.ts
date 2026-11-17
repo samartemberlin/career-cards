@@ -70,6 +70,8 @@ export async function compileCards(input: CompileInput, o: {
   const opts: CallOpts = { ...o.call };
   if (o.signal) opts.signal = o.signal;
   let last = '';
+  // Set when the last attempt's result was unusable by code checks alone: thrown as CompileFailed if no attempt is left.
+  let lastUnusable: { card: string; reason: string }[] | null = null;
   for (let n = 1; n <= attempts; n++) {
     o.signal?.throwIfAborted();
     if (n > 1) {
@@ -84,15 +86,22 @@ export async function compileCards(input: CompileInput, o: {
       if (!parsed.success) throw new StageOutputInvalid(`schema: ${parsed.error.issues.map((i) => i.path.join('.') || '(root)').join(', ')}`);
       const compiled = matchProfiles(parsed.data, input);
       const problems = unusable(compiled, input.profiles.map((p) => p.name));
-      if (problems.length) throw new CompileFailed(problems);
+      if (problems.length && compiled.problems.length) throw new CompileFailed(problems);
+      if (problems.length) {
+        lastUnusable = problems;
+        o.log(`compile: attempt ${n} failed: unusable: ${[...new Set(problems.map((p) => p.card))].join(', ')}`);
+        continue;
+      }
       const u = r.usage;
       return { compiled, model: `${r.provider}:${r.model}`, tokens: u.total_tokens ?? (u.prompt_tokens ?? 0) + (u.completion_tokens ?? 0) };
     } catch (e) {
       if (o.signal?.aborted) throw o.signal.reason;
       if (!(e instanceof QuotaExhausted || e instanceof StageOutputInvalid)) throw e;
+      lastUnusable = null;
       last = firstLine(e.message);
       o.log(`compile: attempt ${n} failed: ${last}`);
     }
   }
+  if (lastUnusable) throw new CompileFailed(lastUnusable);
   throw new CompileUnavailable(`could not read the Profiles cards: ${last}`);
 }
