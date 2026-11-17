@@ -12,8 +12,8 @@ const MARKER: ReplyMarker = { actionId: ID, cls: 'model' };
 const JOB = 'https://jobs.example.test/acme/123';
 const masker = buildMasker(['Theo Example', 'theo.example@mail.test', 'link: social.example.test/in/theo-example']);
 
-const finish = (text: string, o: { allowedLinks?: string[]; author?: string; marker?: ReplyMarker } = {}) =>
-  finishReply({ text, author: o.author ?? 'usera', marker: o.marker ?? MARKER, masker, allowedLinks: o.allowedLinks ?? [JOB] });
+const finish = (text: string, o: { allowedLinks?: string[]; marker?: ReplyMarker } = {}) =>
+  finishReply({ text, marker: o.marker ?? MARKER, masker, allowedLinks: o.allowedLinks ?? [JOB] });
 
 // Every ASCII punctuation character with a meaning in CommonMark, GFM or HTML. The reply checks must escape all of
 // them; `read` fails on any that is not.
@@ -24,7 +24,7 @@ const LINK_LINE = /^link (\d+): <(https?:\/\/[A-Za-z0-9\-._~:/?#@!$&'()*+,;=%]+)
 
 /** What a CommonMark renderer shows for the parts: the plain text, and the links the code listed. Throws on any
  * active character left unescaped, any indented line, and any `<` outside a listed link. */
-function read(parts: string[], author = 'usera'): { text: string; links: string[] } {
+function read(parts: string[]): { text: string; links: string[] } {
   const links: string[] = [];
   const out: string[] = [];
   parts.forEach((part, p) => {
@@ -39,8 +39,6 @@ function read(parts: string[], author = 'usera'): { text: string; links: string[
       assert.ok(/^career-cards-reply: /.test(lines.at(-1)!), 'part 1 ends in the marker');
       assert.equal(lines.at(-2), '');
       lines = lines.slice(0, -2);
-      assert.ok(lines[0] === `@${author}` || lines[0]!.startsWith(`@${author} `), lines[0]);
-      lines[0] = lines[0]!.slice(author.length + 2);
     } else {
       assert.equal(parseMarker(part), null);
     }
@@ -81,9 +79,9 @@ test('linksIn finds http(s) links and trims trailing punctuation', () => {
   assert.deepEqual(linksIn('no links, www.example.com, ftp://x.test'), []);
 });
 
-test('a short reply is one part: mention, escaped body, blank line, marker', () => {
-  assert.deepEqual(finish('  Fine.  '), [`@usera Fine\\.\n\n${formatMarker(MARKER)}`]);
-  assert.deepEqual(finish(''), [`@usera\n\n${formatMarker(MARKER)}`]);
+test('a short reply is one part: escaped body, blank line, marker', () => {
+  assert.deepEqual(finish('  Fine.  '), [`Fine\\.\n\n${formatMarker(MARKER)}`]);
+  assert.deepEqual(finish(''), [`\n\n${formatMarker(MARKER)}`]);
 });
 
 test('every Markdown and HTML character is escaped, so formatting shows as typed', () => {
@@ -185,14 +183,14 @@ test('images and HTML show as text, and their links are gone', () => {
   assert.ok(r.text.startsWith('a ![x]([link removed]) b <img src="[link removed]"> c <IMG SRC=x onerror=alert(1)'), r.text);
 });
 
-test('finishReply masks a personal detail in the body but keeps the @author mention', () => {
+test('finishReply masks a personal detail in the body', () => {
   const m = buildMasker(['theoex', 'Theo Example']);
   const parts = finishReply({
     text: 'Hi Theo Example (theoex), mail theo.example@mail.test',
-    author: 'theoex', marker: MARKER, masker: m, allowedLinks: [],
+    marker: MARKER, masker: m, allowedLinks: [],
   });
-  assert.ok(parts[0]!.startsWith('@theoex Hi \\[USER\\] \\(\\[USER\\]\\), mail \\[EMAIL\\]'), parts[0]);
-  assert.equal(read(parts, 'theoex').text, 'Hi [USER] ([USER]), mail [EMAIL]');
+  assert.ok(parts[0]!.startsWith('Hi \\[USER\\] \\(\\[USER\\]\\), mail \\[EMAIL\\]'), parts[0]);
+  assert.equal(read(parts).text, 'Hi [USER] ([USER]), mail [EMAIL]');
 });
 
 test('an allowed link that holds a personal detail is not listed', () => {
@@ -203,15 +201,9 @@ test('an allowed link that holds a personal detail is not listed', () => {
   assert.deepEqual(r.links, [JOB]);
 });
 
-test('finishReply refuses an author that is not a Trello username', () => {
-  for (const author of ['', 'a b', 'x\ncareer-cards-reply: y', '@x', '[x](y)']) {
-    assert.throws(() => finish('hi', { author }), author);
-  }
-});
-
 test('finishReply fails closed when masking cannot be trusted', () => {
   const m = buildMasker(['[USER]']);
-  assert.throws(() => finishReply({ text: '[US\u200BER]', author: 'usera', marker: MARKER, masker: m, allowedLinks: [] }), PrivacyError);
+  assert.throws(() => finishReply({ text: '[US\u200BER]', marker: MARKER, masker: m, allowedLinks: [] }), PrivacyError);
 });
 
 test('finishReply splits 9,000 characters into 3 parts ≤ 4,000, marker on part 1', () => {
@@ -221,7 +213,7 @@ test('finishReply splits 9,000 characters into 3 parts ≤ 4,000, marker on part
   for (const p of parts) assert.ok(p.length <= REPLY_MAX, String(p.length));
   assert.deepEqual(parseMarker(parts[0]!), MARKER);
   assert.ok(parts[0]!.endsWith(`\n\n${formatMarker(MARKER)}`));
-  assert.ok(parts[0]!.startsWith('@usera 00 '));
+  assert.ok(parts[0]!.startsWith('00 '));
   assert.equal(read(parts).text, lines.join('\n'), 'split only at line boundaries');
 });
 
@@ -242,7 +234,7 @@ test('an over-long line is hard-split, the marker counting in part 1', () => {
   for (const p of parts) assert.ok(p.length <= REPLY_MAX, String(p.length));
   assert.equal(parts[0]!.length, REPLY_MAX);
   const first = parts[0]!.slice(0, -(formatMarker(marker).length + 2));
-  assert.equal([first, ...parts.slice(1).map(body)].join(''), `@usera ${'z'.repeat(9000)}`);
+  assert.equal([first, ...parts.slice(1).map(body)].join(''), 'z'.repeat(9000));
 });
 
 test('a hard split never separates a backslash from the character it escapes', () => {

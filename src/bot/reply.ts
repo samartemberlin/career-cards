@@ -226,23 +226,19 @@ function cutLast(part: string, max: number): string {
   return `${lines.join('\n')}\n${CUT}`;
 }
 
-const USERNAME = /^[a-z0-9_]{1,100}$/i;
-
 export function finishReply(r: {
   text: string;
-  author: string;
   marker: ReplyMarker;
   masker: Masker;
   allowedLinks: Iterable<string>;
 }): string[] {
-  if (!USERNAME.test(r.author)) throw new Error('reply: author is not a Trello username');
   const marker = formatMarker(r.marker);
   const firstMax = REPLY_MAX - 2 - marker.length;
   if (firstMax < 100) throw new Error('reply: marker leaves no room for the reply');
 
   const plain = plainText(r);
   const [first, ...rest] = plain.text ? plain.text.split('\n').map(escapeText) : [];
-  const lines: Line[] = [{ text: first ? `@${r.author} ${first}` : `@${r.author}`, atomic: false }];
+  const lines: Line[] = [{ text: first ?? '', atomic: false }];
   for (const text of rest) lines.push({ text, atomic: false });
   if (plain.links.length) {
     lines.push({ text: '', atomic: false }, { text: 'Links:', atomic: false });

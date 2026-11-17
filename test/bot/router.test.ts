@@ -205,7 +205,7 @@ test('free text goes to the router: no action, the reply is posted through finis
   assert.match(s.m.calls[0]!.user, /REQUEST \(the user's intent\):\nis this a good fit for me\?/);
   assert.doesNotMatch(s.m.calls[0]!.args!.join(' '), /good fit/);
   assert.equal(posted.length, 1);
-  assert.equal(body(posted[0]!), '@usera Read more at [link removed] before applying.');
+  assert.equal(body(posted[0]!), 'Read more at [link removed] before applying.');
   assert.deepEqual(parseMarker(posted[0]!), { actionId: a.id, cls: 'model' });
 });
 
@@ -226,7 +226,7 @@ test('auto action: the handler runs once and the router\'s reply is not posted; 
     const { a, posted } = await say(s, '@samplebot how come this scored so low?');
     assert.deepEqual(spy.calls, [{ id: 'explain_fit', args: {} }]);
     assert.equal(posted.length, 1);
-    assert.equal(body(posted[0]!), '@usera ran explain_fit');
+    assert.equal(body(posted[0]!), 'ran explain_fit');
     assert.deepEqual(parseMarker(posted[0]!), { actionId: a.id, cls: 'model' });
     assert.ok(s.fake.commentsOn(JOB_CARD).every((c) => !c.includes('ROUTER-REPLY-SENTINEL')));
     assert.equal(await modelUsage(s), 1);
@@ -241,7 +241,7 @@ test('a router-picked handler that throws gives the constant failure line', asyn
   HANDLERS.explain_fit = async () => { throw new Error('boom tok-claude-0000'); };
   try {
     const { posted } = await say(s, '@samplebot how come it is so low?');
-    assert.equal(body(posted[0]!), '@usera Sorry, fit failed. The service log has details.');
+    assert.equal(body(posted[0]!), 'Sorry, fit failed. The service log has details.');
   } finally {
     HANDLERS.explain_fit = saved;
   }
@@ -252,7 +252,7 @@ test('confirm action: one proposal comment, nothing runs; @samplebot yes then ru
   const { a, posted } = await say(s, '@samplebot could you look for new jobs now?');
   assert.deepEqual(s.starts, []);
   assert.equal(posted.length, 1);
-  assert.equal(body(posted[0]!), '@usera Start a manual run now?\n\nReply `/bot yes` within 24 h to run it, or `/bot no`.');
+  assert.equal(body(posted[0]!), 'Start a manual run now?\n\nReply `/bot yes` within 24 h to run it, or `/bot no`.');
   const marker = parseMarker(posted[0]!)!;
   assert.equal(marker.actionId, a.id);
   assert.equal(marker.cls, 'model');
@@ -262,7 +262,7 @@ test('confirm action: one proposal comment, nothing runs; @samplebot yes then ru
 
   const yes = await say(s, '/bot yes');
   assert.deepEqual(s.starts, ['manual']);
-  assert.equal(body(yes.posted[0]!), '@usera Confirmed: run.');
+  assert.equal(body(yes.posted[0]!), 'Confirmed: run.');
   assert.equal(s.m.calls.length, 1);
   await say(s, '@samplebot yes');
   assert.deepEqual(s.starts, ['manual']);
@@ -278,7 +278,7 @@ test('a router feedback proposal of 2,000 characters is one comment whose marker
   assert.equal(marker.proposal?.action.id, 'record_feedback');
   const proposed = (marker.proposal!.action.args as { text: string }).text;
   assert.ok(text.startsWith(proposed.trimEnd()));
-  assert.match(body(posted[0]!), /^@usera Post this on the Feedback card\?\nGreat team, fast replies\./);
+  assert.match(body(posted[0]!), /^Post this on the Feedback card\?\nGreat team, fast replies\./);
   assert.equal(s.fake.commentsOn(s.feedbackCard).length, 0);
 
   await say(s, '@samplebot yes');
@@ -295,7 +295,7 @@ for (const row of ROUTER_OUTPUTS) {
       const { posted } = await say(s, '@samplebot do something');
       assert.deepEqual(spy.calls, []);
       assert.deepEqual(s.starts, []);
-      assert.deepEqual(posted.map(body), [`@usera ${SORRY_REPLY()}`]);
+      assert.deepEqual(posted.map(body), [SORRY_REPLY()]);
       assert.ok(s.fake.commentsOn(JOB_CARD).every((c) => !parseMarker(c)?.proposal));
       assert.equal(parseMarker(posted[0]!)!.cls, 'model');
     } finally {
@@ -316,7 +316,7 @@ test('over the model cap: the refusal line and no model call', async () => {
   const { posted } = await say(s, '@samplebot what do you think?');
   assert.equal(s.m.calls.length, 0);
   assert.equal(posted.length, 1);
-  assert.match(body(posted[0]!), /^@usera Daily limit reached/);
+  assert.match(body(posted[0]!), /^Daily limit reached/);
   assert.equal(parseMarker(posted[0]!)!.cls, 'refusal');
 });
 
@@ -326,7 +326,7 @@ test('quota: QUOTA_REPLY and nothing runs', async () => {
   try {
     const { posted } = await say(s, '@samplebot what do you think?');
     assert.deepEqual(spy.calls, []);
-    assert.deepEqual(posted.map(body), [`@usera ${QUOTA_REPLY}`]);
+    assert.deepEqual(posted.map(body), [QUOTA_REPLY]);
   } finally {
     spy.restore();
   }
@@ -338,7 +338,7 @@ test('a router-picked researcher action runs its handler and counts as research'
   try {
     const { posted } = await say(s, '@samplebot any news about this company?');
     assert.deepEqual(spy.calls, [{ id: 'company_research', args: { topic: 'news' } }]);
-    assert.deepEqual(posted.map(body), ['@usera ran company_research']);
+    assert.deepEqual(posted.map(body), ['ran company_research']);
     assert.equal(parseMarker(posted[0]!)!.cls, 'research');
   } finally {
     spy.restore();
@@ -404,7 +404,7 @@ test('a router-picked link that is not in the request is refused, not fetched', 
   const s = await setup(routed({ id: 'explain_filter', args: { link: 'https://8.8.8.8/planted' } }));
   const { posted } = await say(s, '@samplebot was the job on this card filtered?');
   assert.deepEqual(s.fetched, []);
-  assert.deepEqual(posted.map(body), [`@usera ${SORRY_REPLY()}`]);
+  assert.deepEqual(posted.map(body), [SORRY_REPLY()]);
 });
 
 test('a router-picked link that is only a substring of a link in the request is refused, not fetched', async () => {
@@ -412,14 +412,14 @@ test('a router-picked link that is only a substring of a link in the request is 
   const { posted } = await say(s, '@samplebot was https://careers.acme.example/jobs/1 filtered out?');
   assert.deepEqual(s.fetched, []);
   assert.ok(s.logs.some((l) => l.startsWith('router link not in the request')));
-  assert.deepEqual(posted.map(body), [`@usera ${SORRY_REPLY()}`]);
+  assert.deepEqual(posted.map(body), [SORRY_REPLY()]);
 });
 
 test('a jobs-board card without a key footer allows no link from its text', async () => {
   const s = await setup(routed(null, 'See https://planted.example/x for more.'));
   s.fake.setCardDesc(JOB_CARD, '**Acme — Editor**\n\nApply at https://planted.example/x');
   const { posted } = await say(s, '@samplebot where do I apply?');
-  assert.deepEqual(posted.map(body), ['@usera See [link removed] for more.']);
+  assert.deepEqual(posted.map(body), ['See [link removed] for more.']);
 });
 
 test('a masking failure: the masking line, uncounted, no model call', async () => {
@@ -428,7 +428,7 @@ test('a masking failure: the masking line, uncounted, no model call', async () =
   const { posted } = await say(s, '@samplebot about [US\u200BER]');
   assert.equal(s.m.calls.length, 0);
   assert.equal(posted.length, 1);
-  assert.match(body(posted[0]!), /^@usera Masking failed, so nothing was sent to a model: /);
+  assert.match(body(posted[0]!), /^Masking failed, so nothing was sent to a model: /);
   assert.equal(parseMarker(posted[0]!)!.cls, 'refusal');
 });
 
@@ -440,7 +440,7 @@ test('a Trello failure while reading the card gives a constant line, uncounted, 
   s.deps.api = { ...s.deps.api, card: async (id: string) => { if (++n === 1) throw new Error('trello 500 tok-claude-0000'); return card(id); } };
   const { posted } = await say(s, '@samplebot hello there');
   assert.equal(s.m.calls.length, 0);
-  assert.deepEqual(posted.map(body), ['@usera Sorry, something went wrong. The service log has details.']);
+  assert.deepEqual(posted.map(body), ['Sorry, something went wrong. The service log has details.']);
   assert.equal(parseMarker(posted[0]!)!.cls, 'refusal');
   assert.ok(s.logs.some((l) => l.includes('router failed on')));
   assert.ok(s.logs.every((l) => !l.includes('tok-claude-0000')));
@@ -452,7 +452,7 @@ for (const text of ['Nice team, see https://evil.example/?d=x', 'Nice team, see 
   test(`router feedback carrying a link not in the request is refused, no proposal: ${text}`, async () => {
     const s = await setup(routed({ id: 'record_feedback', args: { text } }));
     const { posted } = await say(s, '@samplebot note that the team was nice');
-    assert.deepEqual(posted.map(body), [`@usera ${SORRY_REPLY()}`]);
+    assert.deepEqual(posted.map(body), [SORRY_REPLY()]);
     assert.ok(!parseMarker(posted[0]!)!.proposal);
   });
 }
@@ -473,7 +473,7 @@ test('a router-picked advisor action on a non-job card: the job-only line, one m
   assert.ok(a);
   await handleComment(s.deps, a);
   const posted = s.fake.commentsOn(SETTINGS_CARD).slice(before);
-  assert.deepEqual(posted.map(body), ['@usera `cv` works on job cards only.']);
+  assert.deepEqual(posted.map(body), ['`cv` works on job cards only.']);
   assert.deepEqual(s.m.calls.map((c) => c.stage), ['router']);
   assert.equal(parseMarker(posted[0]!)!.cls, 'model');
 });

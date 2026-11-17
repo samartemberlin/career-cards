@@ -56,7 +56,6 @@ const ELLIPSIS = '…';
 export function finishProposal(r: {
   text: string;
   keyword: string;
-  author: string;
   marker: ReplyMarker & { proposal: Proposal };
   masker: Masker;
   allowedLinks: Iterable<string>;

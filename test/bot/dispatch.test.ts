@@ -99,12 +99,11 @@ function withHandler(id: string, h: Handler) {
   return () => { HANDLERS[id] = old; };
 }
 
-test('@samplebot help → one comment mentioning @usera, listing last and run with the keyword, marker class static', async () => {
+test('@samplebot help → one comment listing last and run with the keyword, marker class static', async () => {
   const s = await ready(setup());
   const { a, posted } = await say(s, '@samplebot help');
   assert.equal(posted.length, 1);
   const text = body(posted[0]!);
-  assert.match(text, /^@usera /);
   assert.match(text, /\/bot last — /);
   assert.match(text, /\/bot run — /);
   assert.match(text, /\/bot yes \/ \/bot no — /);
@@ -130,14 +129,14 @@ test('@samplebot last with no Runs list → No runs yet.', async () => {
   const s = await ready(setup());
   s.fake.renameList(RUNS_LIST, 'Old runs');
   const { posted } = await say(s, '@samplebot last');
-  assert.equal(body(posted[0]!), '@usera No runs yet.');
+  assert.equal(body(posted[0]!), 'No runs yet.');
 });
 
 test('@samplebot run → started, starter.start(manual) called once', async () => {
   const s = await ready(setup());
   const { posted } = await say(s, '@samplebot run');
   assert.deepEqual(s.starts, ['manual']);
-  assert.equal(body(posted[0]!), '@usera Run started. Its status card will appear on top of System › Runs.');
+  assert.equal(body(posted[0]!), 'Run started. Its status card will appear on top of System › Runs.');
 });
 
 test('@samplebot run while a run is in progress → busy, no start', async () => {
@@ -145,7 +144,7 @@ test('@samplebot run while a run is in progress → busy, no start', async () =>
   s.starter.running = true;
   const { posted } = await say(s, '@samplebot run');
   assert.deepEqual(s.starts, []);
-  assert.equal(body(posted[0]!), '@usera A run is already in progress. Its status card will appear when it ends.');
+  assert.equal(body(posted[0]!), 'A run is already in progress. Its status card will appear when it ends.');
 });
 
 test('a catalogued verb with no handler → `<verb>` isn\'t available yet.', async () => {
@@ -154,7 +153,7 @@ test('a catalogued verb with no handler → `<verb>` isn\'t available yet.', asy
   delete HANDLERS.job_deep_dive;
   try {
     const { posted } = await say(s, '@samplebot deep');
-    assert.equal(body(posted[0]!), "@usera `deep` isn't available yet.");
+    assert.equal(body(posted[0]!), "`deep` isn't available yet.");
     assert.equal(markerOf(posted[0]!).cls, 'research');
   } finally {
     HANDLERS.job_deep_dive = saved;
@@ -171,7 +170,7 @@ test('free text goes to the router: one model call, its reply posted with class 
   try {
     const { a, posted } = await say(s, '@samplebot what about this?');
     assert.deepEqual(m.calls.map((c) => c.stage), ['router']);
-    assert.equal(body(posted[0]!), '@usera It looks like a good match.');
+    assert.equal(body(posted[0]!), 'It looks like a good match.');
     assert.deepEqual(markerOf(posted[0]!), { actionId: a.id, cls: 'model' });
   } finally {
     restore();
@@ -179,7 +178,7 @@ test('free text goes to the router: one model call, its reply posted with class 
   assert.equal(called, 0);
 });
 
-const NOT_PRIVATE = "@usera I can't work while the boards aren't private. The next run's status card names the problem.";
+const NOT_PRIVATE = "I can't work while the boards aren't private. The next run's status card names the problem.";
 
 test('a public board → privacy refusal naming no board, no handler called', async () => {
   const s = await ready(setup());
@@ -205,7 +204,7 @@ test('2,001 characters → length refusal', async () => {
   const text = `@samplebot run ${'x'.repeat(2001 - '@samplebot run '.length)}`;
   assert.equal(text.length, 2001);
   const { posted } = await say(s, text);
-  assert.equal(body(posted[0]!), '@usera That comment is over 2,000 characters. Please shorten it.');
+  assert.equal(body(posted[0]!), 'That comment is over 2,000 characters. Please shorten it.');
   assert.equal(markerOf(posted[0]!).cls, 'refusal');
 });
 
@@ -217,7 +216,7 @@ test('101st static command in 24 h → cap refusal; the refusal does not count',
   for (const n of [101, 102]) {
     const { posted } = await say(s, '@samplebot help');
     assert.equal(posted.length, 1, `command ${n}`);
-    assert.match(body(posted[0]!), /^@usera Daily limit reached: 100 commands a day/);
+    assert.match(body(posted[0]!), /^Daily limit reached: 100 commands a day/);
     assert.equal(markerOf(posted[0]!).cls, 'refusal');
   }
   assert.equal((await loadUsage(s.api, BOARDS, { botId: s.deps.me.id, now: NOW })).static, 100);
@@ -232,7 +231,7 @@ test('a yes over the cap says the proposal is closed and runs nothing', async ()
   const { posted } = await say(s, '@samplebot yes');
   assert.deepEqual(s.starts, []);
   assert.deepEqual(posted.map(body), [
-    '@usera Daily limit reached: 100 commands a day (raise `static_per_day` under caps on the Settings card). That proposal is closed now; ask for it again tomorrow.',
+    'Daily limit reached: 100 commands a day (raise `static_per_day` under caps on the Settings card). That proposal is closed now; ask for it again tomorrow.',
   ]);
   assert.equal(markerOf(posted[0]!).cls, 'refusal');
 });
@@ -243,7 +242,7 @@ test('a Personal details card missing → the fix list, uncounted, nothing else'
   const { posted } = await say(s, '@samplebot run');
   assert.deepEqual(s.starts, []);
   assert.equal(posted.length, 1);
-  assert.equal(body(posted[0]!), '@usera These cards need a fix before a run can start:\n- Profiles › About me: missing the "Personal details" card in column "About me"');
+  assert.equal(body(posted[0]!), 'These cards need a fix before a run can start:\n- Profiles › About me: missing the "Personal details" card in column "About me"');
   assert.equal(markerOf(posted[0]!).cls, 'refusal');
 });
 
@@ -255,7 +254,7 @@ test('an incomplete board: every verb gets the fix list, with no card links', as
     const { posted } = await say(s, `@samplebot ${verb}`);
     assert.equal(posted.length, 1, verb);
     const text = body(posted[0]!);
-    assert.match(text, /^@usera These cards need a fix before a run can start:\n- Profiles › About me › Personal details: 2 cards titled "Personal details" in column "About me", keep one$/, verb);
+    assert.match(text, /^These cards need a fix before a run can start:\n- Profiles › About me › Personal details: 2 cards titled "Personal details" in column "About me", keep one$/, verb);
     assert.ok(!/https?:|link/.test(text), text);
     assert.equal(markerOf(posted[0]!).cls, 'refusal');
   }
@@ -269,9 +268,9 @@ test('yes with a pending start_run proposal starts one run and marks it resolved
   assert.deepEqual(s.starts, ['manual']);
   assert.equal(posted.length, 2);
   assert.deepEqual(markerOf(posted[0]!), { actionId: a.id, cls: 'static', resolves: ask });
-  assert.equal(body(posted[0]!), '@usera Confirmed: run.');
+  assert.equal(body(posted[0]!), 'Confirmed: run.');
   assert.deepEqual(markerOf(posted[1]!), { actionId: a.id, cls: 'refusal' });
-  assert.equal(body(posted[1]!), '@usera Run started. Its status card will appear on top of System › Runs.');
+  assert.equal(body(posted[1]!), 'Run started. Its status card will appear on top of System › Runs.');
 });
 
 test('/bot yes confirms like @samplebot yes; a custom keyword from Settings replaces /bot', async () => {
@@ -280,7 +279,7 @@ test('/bot yes confirms like @samplebot yes; a custom keyword from Settings repl
   propose(s, ask);
   const { posted } = await say(s, '/bot yes');
   assert.deepEqual(s.starts, ['manual']);
-  assert.equal(body(posted[0]!), '@usera Confirmed: run.');
+  assert.equal(body(posted[0]!), 'Confirmed: run.');
 
   const c = await ready(setup());
   c.fake.setCardDesc(SETTINGS_CARD, '```yaml\nproviders: [claude]\nallowed_members: [usera]\nbot_keyword: /jobs\n```');
@@ -312,7 +311,7 @@ test('yes on a record_feedback proposal posts it once', async () => {
   const { a, posted } = await say(s, '@samplebot yes');
   assert.equal(posted.length, 2);
   assert.deepEqual(markerOf(posted[0]!), { actionId: a.id, cls: 'static', resolves: ask });
-  assert.equal(body(posted[0]!), '@usera Confirmed: feedback.');
+  assert.equal(body(posted[0]!), 'Confirmed: feedback.');
   assert.deepEqual(markerOf(posted[1]!), { actionId: a.id, cls: 'refusal' });
   assert.match(body(posted[1]!), /Recorded on/);
   assert.equal(s.fake.commentsOn(s.feedbackCard).length, 1);
@@ -324,7 +323,7 @@ test('two yes comments queued back to back start one run', async () => {
   await say(s, '@samplebot yes');
   const { posted } = await say(s, '@samplebot yes');
   assert.deepEqual(s.starts, ['manual']);
-  assert.equal(body(posted[0]!), '@usera Nothing to confirm on this card.');
+  assert.equal(body(posted[0]!), 'Nothing to confirm on this card.');
 });
 
 test('two concurrent yes comments start one run', async () => {
@@ -332,7 +331,7 @@ test('two concurrent yes comments start one run', async () => {
   propose(s, newId());
   await Promise.all([handleComment(s.deps, action('@samplebot yes')), handleComment(s.deps, action('@samplebot yes'))]);
   assert.deepEqual(s.starts, ['manual']);
-  assert.equal(s.fake.commentsOn(JOB_CARD).filter((c) => body(c) === '@usera Nothing to confirm on this card.').length, 1);
+  assert.equal(s.fake.commentsOn(JOB_CARD).filter((c) => body(c) === 'Nothing to confirm on this card.').length, 1);
 });
 
 test('when the resolution reply cannot be posted, the run does not start', async () => {
@@ -349,10 +348,10 @@ test('no → Cancelled., then yes → nothing to confirm', async () => {
   const ask = newId();
   propose(s, ask);
   const no = await say(s, '@samplebot no');
-  assert.equal(body(no.posted[0]!), '@usera Cancelled.');
+  assert.equal(body(no.posted[0]!), 'Cancelled.');
   assert.equal(markerOf(no.posted[0]!).resolves, ask);
   const yes = await say(s, '@samplebot yes');
-  assert.equal(body(yes.posted[0]!), '@usera Nothing to confirm on this card.');
+  assert.equal(body(yes.posted[0]!), 'Nothing to confirm on this card.');
   assert.deepEqual(s.starts, []);
 });
 
@@ -362,7 +361,7 @@ test('an expired proposal → asks again', async () => {
   s.fake.addComment(JOB_CARD, s.deps.me, `Start?\n\n${formatMarker({ actionId: newId(), cls: 'static', proposal: p })}`,
     new Date(NOW.getTime() - 25 * 3_600_000));
   const { posted } = await say(s, '@samplebot yes');
-  assert.equal(body(posted[0]!), '@usera That proposal expired (24 h). Ask again.');
+  assert.equal(body(posted[0]!), 'That proposal expired (24 h). Ask again.');
 });
 
 test('a handler that throws with a secret in its message → the constant failure reply; the log has *** not the secret', async () => {
@@ -370,7 +369,7 @@ test('a handler that throws with a secret in its message → the constant failur
   const restore = withHandler('show_last_run', async () => { throw new Error(`token ${SECRET} rejected`); });
   try {
     const { posted } = await say(s, '@samplebot last');
-    assert.equal(body(posted[0]!), '@usera Sorry, last failed. The service log has details.');
+    assert.equal(body(posted[0]!), 'Sorry, last failed. The service log has details.');
   } finally {
     restore();
   }
@@ -408,7 +407,7 @@ test('the gate drops silently: a comment without a mention gets no reply', async
 });
 
 const FAST = { commentTimeoutMs: 50, commentGraceMs: 50 };
-const TOO_LONG = '@usera Sorry, that took too long.';
+const TOO_LONG = 'Sorry, that took too long.';
 const aborted = (signal: AbortSignal) => new Promise<void>((r) => signal.addEventListener('abort', () => r(), { once: true }));
 
 function gate<T = void>() {
@@ -501,7 +500,7 @@ test('a timed-out handler cannot write after the timeout; its reply within the g
     const { posted } = await say(s, '@samplebot last');
     assert.deepEqual(refused, ['comment', 'createList', 'isRunning']);
     assert.deepEqual(s.starts, []);
-    assert.deepEqual(posted.map(body), ['@usera late answer']);
+    assert.deepEqual(posted.map(body), ['late answer']);
   } finally {
     restore();
   }
@@ -547,7 +546,7 @@ test('the next comment on the card waits for the timed-out one until the grace e
     await first;
     assert.deepEqual(events, ['first settled', 'second started']);
     assert.ok(Date.now() - t0 < 2_000, 'the chain moved on when the work settled, not at the end of the grace');
-    assert.deepEqual(s.fake.commentsOn(JOB_CARD).map(body), ['@usera first', '@usera second']);
+    assert.deepEqual(s.fake.commentsOn(JOB_CARD).map(body), ['first', 'second']);
   } finally {
     r2();
     r1();
@@ -567,7 +566,7 @@ test('two queued yes comments around a timeout run the action once: hung in the 
   hold.open();
   await until(() => s.logs.some((l) => l.startsWith(`comment ${first.id} failed: AbortError`)), 'the late reply was refused');
   assert.deepEqual(s.starts, ['manual']);
-  assert.deepEqual(s.fake.commentsOn(JOB_CARD).slice(1).map(body), ['@usera Confirmed: run.', '@usera Nothing to confirm on this card.']);
+  assert.deepEqual(s.fake.commentsOn(JOB_CARD).slice(1).map(body), ['Confirmed: run.', 'Nothing to confirm on this card.']);
 });
 
 test('two queued yes comments around a timeout run the action once: hung before the confirmation', async () => {
@@ -591,7 +590,7 @@ test('two queued yes comments around a timeout run the action once: hung before 
   await until(() => s.logs.some((l) => l.startsWith(`comment ${first.id} failed: AbortError`)), 'the stale yes was refused');
   assert.deepEqual(s.starts, ['manual']);
   assert.deepEqual(s.fake.commentsOn(JOB_CARD).slice(1).map(body),
-    ['@usera Confirmed: run.', '@usera Run started. Its status card will appear on top of System › Runs.']);
+    ['Confirmed: run.', 'Run started. Its status card will appear on top of System › Runs.']);
 });
 
 test('a run check refused at the timeout does not jam the serial starter', async () => {
@@ -613,7 +612,7 @@ test('a run check refused at the timeout does not jam the serial starter', async
   await until(() => s.logs.some((l) => l.startsWith('run state unknown: ')), 'the stale check was refused');
   const { posted } = await say(s, '@samplebot run');
   assert.deepEqual(s.starts, ['manual']);
-  assert.deepEqual(posted.map(body), ['@usera Run started. Its status card will appear on top of System › Runs.']);
+  assert.deepEqual(posted.map(body), ['Run started. Its status card will appear on top of System › Runs.']);
 });
 
 test('an uncounted result is posted as refusal and does not count', async () => {
@@ -634,7 +633,7 @@ test('a reply that fails masking posts the constant line, counted', async () => 
   const restore = withHandler('explain_fit', async () => ({ text: 'about [US\u200BER]' }));
   try {
     const { posted } = await say(s, '@samplebot fit');
-    assert.deepEqual(posted.map(body), ["@usera I couldn't post my answer: masking failed on it. Check the Personal details card."]);
+    assert.deepEqual(posted.map(body), ["I couldn't post my answer: masking failed on it. Check the Personal details card."]);
     assert.equal(markerOf(posted[0]!).cls, 'model');
   } finally {
     restore();
@@ -656,7 +655,7 @@ test('@samplebot legit on a job card posts one model-class reply', async () => {
   assert.equal(m.calls[0]!.stage, 'reader/legit');
   assert.equal(posted.length, 1);
   const lines = body(posted[0]!).split('\n');
-  assert.equal(lines[0], '@usera Mixed signals: proceed with caution');
+  assert.equal(lines[0], 'Mixed signals: proceed with caution');
   assert.equal(lines[1], '- ✅ Freshness: Posted ten days ago.');
   assert.equal(lines.at(-1), 'A common role.');
   assert.deepEqual(markerOf(posted[0]!), { actionId: a.id, cls: 'model' });
@@ -672,7 +671,7 @@ test('@samplebot fit on a job card posts one model-class reply with the card sco
   assert.equal(m.calls.length, 1);
   assert.equal(m.calls[0]!.stage, 'advisor/fit');
   assert.equal(posted.length, 1);
-  assert.deepEqual(body(posted[0]!).split('\n').slice(0, 4), ['@usera Scored 9/10. A close match.', '', 'Strong points:', '- Editing.']);
+  assert.deepEqual(body(posted[0]!).split('\n').slice(0, 4), ['Scored 9/10. A close match.', '', 'Strong points:', '- Editing.']);
   assert.deepEqual(markerOf(posted[0]!), { actionId: a.id, cls: 'model' });
   assert.equal((await loadUsage(s.api, BOARDS, { botId: s.deps.me.id, now: NOW })).model, 1);
 });

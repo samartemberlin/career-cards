@@ -147,7 +147,7 @@ test('a maximal research answer keeps the unverified label and footer once poste
     try {
       const text = (await say(s, '@samplebot company news')).map(body).join('\n');
       const lines = text.split('\n\nLinks:\n')[0]!.trim().split('\n');
-      assert.match(lines[0]!, /^@usera Research \(from the web, unverified\):$/, `${urlLength}`);
+      assert.match(lines[0]!, /^Research \(from the web, unverified\):$/, `${urlLength}`);
       assert.match(lines.at(-1)!, /^from the web, unverified, sources: (\[link \d\](, )?){1,8}$/, `${urlLength}`);
       assert.doesNotMatch(text, /\[link removed\]|\(cut\)/, `${urlLength}`);
     } finally { s.cleanup(); }
@@ -161,7 +161,7 @@ test('company openings resolves in code and calls no model', async () => {
     assert.equal(s.m.calls.length, 0);
     assert.equal(posted.length, 1);
     const text = posted[0]!;
-    assert.match(body(text), /^@usera Open roles at Acme Robotics \(from its careers board, read just now\):\n- Role 12: \[link 1\]\n- Role 11 · Berlin: \[link 2\]/);
+    assert.match(body(text), /^Open roles at Acme Robotics \(from its careers board, read just now\):\n- Role 12: \[link 1\]\n- Role 11 · Berlin: \[link 2\]/);
     assert.ok(!/Role 5\b/.test(text), 'this card\'s own job is left out');
     assert.ok(!text.includes('[link removed]'));
     assert.ok((text.match(/^link \d+: /gm) ?? []).length <= 10);
@@ -249,7 +249,7 @@ test('the research cap reached → its refusal line and no researcher call', asy
     seed(s, 'research', 10);
     const posted = await say(s, '@samplebot company news');
     assert.equal(s.m.calls.length, 0);
-    assert.match(body(posted[0]!), /^@usera Daily limit reached: 10 research requests a day/);
+    assert.match(body(posted[0]!), /^Daily limit reached: 10 research requests a day/);
     assert.equal(parseMarker(posted[0]!)!.cls, 'refusal');
   } finally { s.cleanup(); }
 });
@@ -260,7 +260,7 @@ test('no claude provider → RESEARCH_UNAVAILABLE and no cap taken', async () =>
     const before = (await usage(s)).research;
     const posted = await say(s, '@samplebot company news');
     assert.equal(s.m.calls.length, 0);
-    assert.deepEqual(posted.map(body), [`@usera ${RESEARCH_UNAVAILABLE}`]);
+    assert.deepEqual(posted.map(body), [RESEARCH_UNAVAILABLE]);
     assert.equal((await usage(s)).research, before);
   } finally { s.cleanup(); }
 });
@@ -269,7 +269,7 @@ test('company on a Profiles CV card → JOB_ONLY_REPLY, no cap, no child process
   const s = await setup();
   try {
     const posted = await say(s, '@samplebot company openings', { cardId: CV_CARD, boardId: BOARDS.profiles, listName: 'Shared' });
-    assert.deepEqual(posted.map(body), [`@usera ${JOB_ONLY_REPLY('company')}`]);
+    assert.deepEqual(posted.map(body), [JOB_ONLY_REPLY('company')]);
     assert.equal(parseMarker(posted[0]!)!.cls, 'refusal');
     assert.equal(s.m.calls.length, 0);
     assert.equal(s.record(), null);
@@ -305,7 +305,7 @@ test('a router-picked company over the research cap → the cap line, no researc
     seed(s, 'research', 10);
     const posted = await say(s, '@samplebot any news about them?');
     assert.deepEqual(s.m.calls.map((c) => c.stage), ['router']);
-    assert.match(body(posted[0]!), /^@usera Daily limit reached: 10 research requests a day/);
+    assert.match(body(posted[0]!), /^Daily limit reached: 10 research requests a day/);
     assert.equal(parseMarker(posted[0]!)!.cls, 'model');
   } finally { s.cleanup(); }
 });
@@ -315,7 +315,7 @@ test('a router-picked company that is uncounted (no provider) still counts the r
   try {
     const posted = await say(s, '@samplebot any news about them?');
     assert.deepEqual(s.m.calls.map((c) => [c.stage, c.via]), [['router', 'http']]);
-    assert.deepEqual(posted.map(body), [`@usera ${RESEARCH_UNAVAILABLE}`]);
+    assert.deepEqual(posted.map(body), [RESEARCH_UNAVAILABLE]);
     assert.equal(parseMarker(posted[0]!)!.cls, 'model');
   } finally { s.cleanup(); }
 });
@@ -325,7 +325,7 @@ test('an unknown topic from text replies the usage', async () => {
   try {
     const posted = await say(s, '@samplebot company salary');
     const spec = CATALOGUE.find((x) => x.id === 'company_research')!;
-    assert.deepEqual(posted.map(body), [`@usera Use: ${spec.usage}`]);
+    assert.deepEqual(posted.map(body), [`Use: ${spec.usage}`]);
     assert.equal(s.m.calls.length, 0);
   } finally { s.cleanup(); }
 });
