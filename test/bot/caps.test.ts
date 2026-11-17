@@ -126,6 +126,7 @@ test('capClassOf maps every catalogue row', () => {
     company_research: 'research',
     explain_filter:   'model',
     record_feedback:  'static',
+    check_card:       'model',
     show_last_run:    'static',
     start_run:        'static',
   });

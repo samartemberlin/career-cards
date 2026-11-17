@@ -38,7 +38,7 @@ export function decide(body: unknown, now: Date): Decision {
 
 // Copy of STATIC_VERBS in src/bot/catalogue.ts (the relay bundles nothing from src/); a test keeps them equal.
 export const VERBS = new Set(['help', 'hilfe', 'yes', 'ja', 'no', 'nein', 'open', 'offen', 'legit', 'echt', 'needs', 'fit', 'cv',
-  'lebenslauf', 'deep', 'company', 'firma', 'why', 'warum', 'feedback', 'last', 'run']);
+  'lebenslauf', 'deep', 'company', 'firma', 'why', 'warum', 'feedback', 'check', 'prüfen', 'last', 'run']);
 
 /** `<verb>-<shortLink>-<MMDD>-<HHMM>z` (UTC). The verb is a command word after a leading `/…` or `@…`, else `ask`. */
 export function buildLabel(text: string, card: { shortLink?: unknown; id?: unknown }, now: Date): string {

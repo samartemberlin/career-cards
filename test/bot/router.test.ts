@@ -305,7 +305,7 @@ for (const row of ROUTER_OUTPUTS) {
 }
 
 test('SORRY_REPLY lists the registered verbs', () => {
-  assert.match(SORRY_REPLY(), /^Sorry, I couldn't work that out\. Try again, or use one of: open, legit, needs, fit, cv, deep, company, why, feedback, last, run\.$/);
+  assert.match(SORRY_REPLY(), /^Sorry, I couldn't work that out\. Try again, or use one of: open, legit, needs, fit, cv, deep, company, why, feedback, check, last, run\.$/);
 });
 
 test('over the model cap: the refusal line and no model call', async () => {
