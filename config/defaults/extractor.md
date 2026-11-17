@@ -6,6 +6,7 @@ Reply with ONE JSON object and nothing else:
 {"key": string, "posting_lang": "de"|"en"|"other", "title_en": string,
  "german": {"level": "none"|"a2"|"b1"|"b2"|"c1"|"native"|null, "spoken_heavy": boolean|null, "evidence": string|null},
  "english_working_language": boolean|null,
+ "other_languages": [{"name": string, "level": string|null, "evidence": string}],
  "years": {"min": number|null, "max": number|null, "evidence": string|null},
  "degree_field": string|null, "function": string|null, "sector": string|null, "seniority": string|null,
  "driving_licence": boolean|null, "unpaid_internship": boolean|null,
@@ -19,6 +20,9 @@ Rules:
   "sehr gute" / "hervorragende" / "exzellente"; "native" / "Muttersprache".
   When German is only "von Vorteil" / "nice to have" / "a plus", set level "none".
 - german.spoken_heavy is true when the role is mostly calls, customers, meetings or presentations in German.
+- other_languages: languages required other than German and English (e.g. French, Spanish). Include only when
+  explicitly required, not "nice to have". Each entry: name (English name, e.g. "French"), level (CEFR or
+  "native" if stated, else null), evidence (verbatim snippet). Empty array when none required.
 - title_en: the title in English, keep gender marks like (m/f/d), no company name; copy it if already English.
 - years: years of professional experience the posting asks for (min, max of a range).
 - degree_field: the field of study it requires (e.g. "engineering", "business"); null if open or "any".

@@ -33,8 +33,8 @@ const job = (o: Record<string, unknown> = {}) => ({
 });
 
 // helpers for jobLabels
-const fakeGerman = (level: string | null) =>
-  ({ german: { level } } as unknown as Facts);
+const fakeGerman = (level: string | null, other_languages: Facts['other_languages'] = []) =>
+  ({ german: { level }, other_languages } as unknown as Facts);
 
 test('TITLE_MAX is 90, DESC_LIMIT is 16384', () => {
   assert.equal(TITLE_MAX, 90);
@@ -189,6 +189,34 @@ test('jobLabels: location and German level become labels; unknown German level g
   assert.deepEqual(names('', 'native'), ['German C1+']);
   assert.deepEqual(names('', null), []);
   assert.equal(jobLabels({ key: 'k', url: 'u', company: 'Co', title: 'T', location: '', facts: fakeGerman('c1') })[0].color, 'red');
+});
+
+test('jobLabels: other_languages add red labels; "English OK" is suppressed when other_languages non-empty', () => {
+  const withFrench = fakeGerman('none', [{ name: 'French', level: 'B2', evidence: 'French required' }]);
+  const labels = jobLabels({ key: 'k', url: 'u', company: 'Co', title: 'T', location: 'Berlin', facts: withFrench });
+  const names = labels.map((l) => l.name);
+  // 'English OK' is suppressed because other languages are required
+  assert.ok(!names.includes('English OK'), 'English OK should be suppressed');
+  assert.ok(names.includes('French required'), 'French required label should be present');
+  assert.equal(labels.find((l) => l.name === 'French required')?.color, 'red');
+});
+
+test('jobLabels: "English OK" shows when german=none and no other_languages', () => {
+  const noOther = fakeGerman('none', []);
+  const names = jobLabels({ key: 'k', url: 'u', company: 'Co', title: 'T', location: '', facts: noOther }).map((l) => l.name);
+  assert.ok(names.includes('English OK'));
+});
+
+test('jobLabels: multiple other_languages each get a red label', () => {
+  const twoLangs = fakeGerman('b1', [
+    { name: 'French', level: 'B2', evidence: 'French required' },
+    { name: 'Spanish', level: null, evidence: 'Spanish required' },
+  ]);
+  const labels = jobLabels({ key: 'k', url: 'u', company: 'Co', title: 'T', location: '', facts: twoLangs });
+  const names = labels.map((l) => l.name);
+  assert.ok(names.includes('German B1'));
+  assert.ok(names.includes('French required'));
+  assert.ok(names.includes('Spanish required'));
 });
 
 test('shortLocation: "Global Remote" and bare "global" are classified as Worldwide', () => {

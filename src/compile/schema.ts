@@ -64,12 +64,16 @@ export function unusable(c: Compiled, activeProfiles: string[]): { card: string;
 export const DEFAULT_PENALTIES: NonNullable<Preferences['penalties']> = {
   german_c1_or_native: { points: 3 },
   german_b2_or_spoken_heavy: { points: 2 },
+  other_language_required: { points: 2 },
   years_over: { points: 1, tolerance: 1, max: 3 },
 };
 
 export function preferencesOf(c: Compiled): Preferences {
   const out: Preferences = { penalties: DEFAULT_PENALTIES };
   if (c.languages.de) out.languages = { de: c.languages.de };
+  // spoken_languages: all language codes except 'de' (handled separately) and 'en' (always assumed).
+  const spoken = Object.keys(c.languages).filter((k) => k !== 'de' && k !== 'en');
+  if (spoken.length) out.spoken_languages = spoken;
   if (c.years_experience !== null) out.years_experience = c.years_experience;
   return out;
 }

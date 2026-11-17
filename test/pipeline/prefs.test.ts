@@ -12,7 +12,7 @@ const alex: Preferences = { languages: { de: { read: 'B2', write: 'B1', speak: '
 
 type FactsIn = Parameters<typeof applyPenalties>[0];
 const f = (o: Partial<Facts> = {}): FactsIn => ({ german: { level: null, spoken_heavy: null, evidence: null }, english_working_language: null,
-  years: { min: null, max: null, evidence: null }, degree_field: null, driving_licence: null, unpaid_internship: null, methodology: [], ...o });
+  other_languages: [], years: { min: null, max: null, evidence: null }, degree_field: null, driving_licence: null, unpaid_internship: null, methodology: [], ...o });
 const de = (level: string | null, spoken_heavy: boolean | null = null): Facts['german'] => ({ level, spoken_heavy, evidence: 'quote' });
 const yrs = (min: number): Facts['years'] => ({ min, max: null, evidence: 'quote' });
 
@@ -54,4 +54,28 @@ test('better speaking: B2 required and speak B2 → 0', () => {
 test('unknown speaking ability costs nothing', () => {
   const p: Preferences = { ...alex, languages: { de: { read: 'B2', write: 'B2' } } };
   assert.equal(applyPenalties(f({ german: de('b2', true) }), p).total, 0);
+});
+
+test('other_language_required: penalty when job requires a language the person does not speak', () => {
+  const withPenalty: Preferences = { ...alex, penalties: { ...alex.penalties, other_language_required: { points: 2 } } };
+  const french = f({ other_languages: [{ name: 'French', level: 'B2', evidence: 'French required' }] });
+  assert.equal(applyPenalties(french, withPenalty).total, 2);
+  assert.equal(applyPenalties(french, withPenalty).parts.other_language_required, 2);
+});
+
+test('other_language_required: no penalty when person speaks the language', () => {
+  const withFrench: Preferences = { ...alex, spoken_languages: ['fr'], penalties: { ...alex.penalties, other_language_required: { points: 2 } } };
+  const french = f({ other_languages: [{ name: 'French', level: 'B2', evidence: 'French required' }] });
+  assert.equal(applyPenalties(french, withFrench).total, 0);
+});
+
+test('other_language_required: no penalty when other_languages is empty', () => {
+  const withPenalty: Preferences = { ...alex, penalties: { ...alex.penalties, other_language_required: { points: 2 } } };
+  assert.equal(applyPenalties(f({ other_languages: [] }), withPenalty).total, 0);
+});
+
+test('other_language_required: unmapped language name counts as not spoken', () => {
+  const withPenalty: Preferences = { ...alex, spoken_languages: ['fr'], penalties: { ...alex.penalties, other_language_required: { points: 2 } } };
+  const klingon = f({ other_languages: [{ name: 'Klingon', level: null, evidence: 'Klingon preferred' }] });
+  assert.equal(applyPenalties(klingon, withPenalty).total, 2);
 });

@@ -9,11 +9,14 @@ export type Penalty = { points: number; cap?: number };
 /** A person's preferences (preferences.yml). The config schema is typed against this. */
 export type Preferences = {
   languages?: { de?: { read?: LanguageLevel; write?: LanguageLevel; speak?: LanguageLevel } };
+  /** ISO 639-1 codes for languages the person speaks (other than German and English). */
+  spoken_languages?: string[];
   years_experience?: number;
   penalties?: {
     german_c1_or_native?: Penalty;
     german_b2_or_spoken_heavy?: Penalty;
     german_working_language_with_english?: Penalty;
+    other_language_required?: Penalty;
     years_over?: Penalty & { tolerance?: number; max?: number };
     degree_field_mismatch?: Penalty & { fields_ok?: string[] };
     driving_licence?: Penalty;
@@ -22,11 +25,20 @@ export type Preferences = {
   };
 };
 
-export type PenaltyFacts = Pick<Facts, 'german' | 'english_working_language' | 'years' | 'degree_field' | 'driving_licence' | 'unpaid_internship' | 'methodology'>;
+export type PenaltyFacts = Pick<Facts, 'german' | 'english_working_language' | 'other_languages' | 'years' | 'degree_field' | 'driving_licence' | 'unpaid_internship' | 'methodology'>;
 export type Penalties = { total: number; cap: number | null; parts: Record<string, number>; flags: string[] };
 
 const RANK: Record<string, number> = { none: 0, a1: 1, a2: 2, b1: 3, b2: 4, c1: 5, c2: 6, native: 6 };
 const rank = (l: string | null | undefined): number | null => (l == null ? null : RANK[String(l).toLowerCase()] ?? null);
+
+/** Maps common language names (lowercase) to ISO 639-1 codes, for `spoken_languages` lookup. */
+const LANG_NAME_TO_CODE: Record<string, string> = {
+  french: 'fr', spanish: 'es', italian: 'it', portuguese: 'pt', dutch: 'nl',
+  polish: 'pl', russian: 'ru', arabic: 'ar', chinese: 'zh', japanese: 'ja',
+  korean: 'ko', swedish: 'sv', norwegian: 'no', danish: 'da', finnish: 'fi',
+  turkish: 'tr', greek: 'el', czech: 'cs', romanian: 'ro', hungarian: 'hu',
+  ukrainian: 'uk', hebrew: 'he', hindi: 'hi',
+};
 
 export function applyPenalties(facts: PenaltyFacts | null | undefined, prefs: Preferences | null | undefined): Penalties {
   const out: Penalties = { total: 0, cap: null, parts: {}, flags: [] };
@@ -65,5 +77,13 @@ export function applyPenalties(facts: PenaltyFacts | null | undefined, prefs: Pr
   if (rules.driving_licence && facts.driving_licence === true) hit('driving_licence', rules.driving_licence.points, 'driving licence');
   if (rules.unpaid_internship && facts.unpaid_internship === true) hit('unpaid_internship', rules.unpaid_internship.points, 'unpaid internship');
   if (rules.named_methodology_required && facts.methodology?.length) hit('named_methodology_required', rules.named_methodology_required.points, null);
+  if (rules.other_language_required && facts.other_languages?.length) {
+    const spoken = new Set((prefs?.spoken_languages ?? []).map((c) => c.toLowerCase()));
+    const missing = facts.other_languages.some((lang) => {
+      const code = LANG_NAME_TO_CODE[lang.name.toLowerCase()];
+      return !code || !spoken.has(code);
+    });
+    if (missing) hit('other_language_required', rules.other_language_required.points, null);
+  }
   return out;
 }
