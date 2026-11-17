@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { load as loadYaml } from 'js-yaml';
-import { mergeLinkedin, mergePortals, compileInclude, unionInclude } from '../../src/pipeline/search.ts';
+import { mergeLinkedin, mergePortals } from '../../src/pipeline/search.ts';
 
 // loadSearch / loadSearches are file-loading helpers dropped in this port (PR 2 builds searches
 // from Trello cards). Tests that depended on a personal search.yml are also dropped.
@@ -10,8 +10,6 @@ import { mergeLinkedin, mergePortals, compileInclude, unionInclude } from '../..
 type AnyObject = Record<string, unknown>;
 const read = (rel: string): AnyObject =>
   loadYaml(readFileSync(new URL(`../../config/defaults/${rel}`, import.meta.url), 'utf8')) as AnyObject;
-
-const person = (include: string[]) => ({ name: 'p', include });
 
 test('shared LinkedIn settings survive the merge', () => {
   const merged = mergeLinkedin({ delay_seconds: 4, enabled: true }, []);
@@ -85,57 +83,4 @@ test('mergePortals does not change the base it was given', () => {
     job_boards: [{ provider: 'arbeitsagentur', arbeitsagentur: {} }],
     tracked_companies: [],
   });
-});
-
-test('unionInclude keeps a title matched by either person', () => {
-  const { keep, problems } = unionInclude([person(['projekt']), person(['\\bcrm\\b'])]);
-  assert.equal(keep('Projektkoordinator:in'), true);
-  assert.equal(keep('CRM Manager'), true);
-  assert.equal(keep('Lagerarbeiter'), false);
-  assert.deepEqual(problems, []);
-});
-
-test('an empty include must not widen the scan to everything', () => {
-  const { keep, problems } = unionInclude([
-    { name: 'amy', include: [] },
-    { name: 'bob' },
-    person(['crm']),
-  ]);
-  assert.equal(keep('Lagerarbeiter'), false);
-  assert.equal(keep('CRM'), true);
-  assert.equal(problems.length, 2);
-  assert.match(problems[0]!, /^amy: /);
-});
-
-test('an invalid regex costs that person a problem, not the run', () => {
-  const { keep, problems } = unionInclude([{ name: 'amy', include: ['(unclosed', 'crm'] }, person(['event'])]);
-  assert.equal(keep('Event Manager'), true);
-  assert.equal(keep('CRM Manager'), true);
-  assert.match(problems[0]!, /^amy: /);
-});
-
-test('an include written as a plain string is a problem, not a list of single letters', () => {
-  const { keep, problems } = unionInclude([{ name: 'amy', include: 'manager' as unknown as string[] }, person(['crm'])]);
-  assert.equal(keep('Zahnarzt'), false);
-  assert.match(problems[0]!, /^amy: /);
-});
-
-for (const pattern of ['', '.*', 'x*']) {
-  test(`an include pattern that matches everything (${JSON.stringify(pattern)}) must not widen the scan`, () => {
-    const { keep, problems } = unionInclude([{ name: 'amy', include: [pattern] }, person(['crm'])]);
-    assert.equal(keep('Zahnarzt'), false);
-    assert.match(problems[0]!, /^amy: /);
-  });
-}
-
-test('compileInclude returns problems for a non-list', () => {
-  const { res, problems } = compileInclude(null);
-  assert.deepEqual(res, []);
-  assert.ok(problems.length > 0);
-});
-
-test('compileInclude returns problems for an invalid regex', () => {
-  const { res, problems } = compileInclude(['(unclosed', 'valid']);
-  assert.equal(res.length, 1); // 'valid' compiles
-  assert.ok(problems.length > 0);
 });

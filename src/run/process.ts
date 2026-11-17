@@ -12,7 +12,7 @@ import { applyPenalties } from '../pipeline/prefs.ts';
 import type { Penalties, Preferences } from '../pipeline/prefs.ts';
 import type { MaskedContext } from '../privacy.ts';
 import type { ScoredJob } from '../trello/writer.ts';
-import { ruleId } from './stats.ts';
+import { evidenceOf, ruleId } from './stats.ts';
 import type { RunStats } from './stats.ts';
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -60,6 +60,9 @@ export type ProcessOpts = {
 
 const isLinkedin = (j: Job): boolean => j.key.startsWith('linkedin:');
 
+const MAX_EXAMPLES = 200;
+const MORE_EXAMPLES = '…';
+
 async function pool<T>(items: T[], concurrency: number, fn: (item: T) => Promise<void>): Promise<void> {
   let next = 0;
   const worker = async () => { while (next < items.length) await fn(items[next++]!); };
@@ -84,7 +87,13 @@ export async function processJobs(
   const { ctx, log } = deps;
   // Every rejection is logged with its evidence: a wrong one is otherwise invisible, since rejected jobs are never scored.
   const reject = (job: Job, why: string) => {
-    stats.rules[ruleId(why)] = (stats.rules[ruleId(why)] ?? 0) + 1;
+    const id = ruleId(why);
+    stats.rules[id] = (stats.rules[id] ?? 0) + 1;
+    // Evidence is job text: a null-prototype map keeps a title such as "__proto__" an ordinary key.
+    const examples = (stats.ruleExamples[id] ??= Object.create(null) as Record<string, number>);
+    const ev = evidenceOf(why);
+    const key = ev in examples || Object.keys(examples).length < MAX_EXAMPLES ? ev : MORE_EXAMPLES;
+    examples[key] = (examples[key] ?? 0) + 1;
     log(`rejected ${job.key} (${job.company} — ${job.title}): ${why}`);
   };
 

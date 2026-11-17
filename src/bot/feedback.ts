@@ -1,8 +1,7 @@
 import type { BotApi, TCard } from '../trello/api.ts';
-import type { Profile } from '../config/schema.ts';
 import type { JobFields } from './context.ts';
 import { loadCardContext } from './context.ts';
-import { activeProfiles } from '../run/profiles.ts';
+import { activeProfileNames } from '../run/profiles.ts';
 import { isGuardError } from '../trello/scoped.ts';
 import { JOB_ONLY_REPLY } from './stages/call.ts';
 import { escapeText } from './reply.ts';
@@ -12,19 +11,19 @@ import type { CommandCtx, Handler, HandlerResult } from './handlers.ts';
 export async function findFeedbackCards(
   api: BotApi,
   profilesBoard: string,
-  profiles: Profile[],
+  profiles: string[],
 ): Promise<{ profile: string; card: TCard | null }[]> {
   const [lists, cards] = await Promise.all([
     api.lists(profilesBoard, 'open'),
     api.cards(profilesBoard, { filter: 'open' }),
   ]);
-  return profiles.map((p) => {
-    const name = p.name.trim().toLowerCase();
+  return profiles.map((profile) => {
+    const name = profile.trim().toLowerCase();
     const list = lists.find((l) => l.name.trim().toLowerCase() === name);
     const card = list
       ? (cards.find((c) => c.idList === list.id && c.name.trim().toLowerCase() === 'feedback') ?? null)
       : null;
-    return { profile: p.name, card };
+    return { profile, card };
   });
 }
 
@@ -45,8 +44,7 @@ export const recordFeedback: Handler = async (ctx: CommandCtx, args: unknown): P
   const job = cc.job;
 
   const cfg = await ctx.config();
-  const profiles = activeProfiles(cfg);
-  const feedbackCards = await findFeedbackCards(ctx.api, ctx.boards.profiles, profiles);
+  const feedbackCards = await findFeedbackCards(ctx.api, ctx.boards.profiles, activeProfileNames(cfg));
 
   const links: string[] = [];
   const noCardProfiles: string[] = [];

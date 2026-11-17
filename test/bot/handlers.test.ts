@@ -11,6 +11,7 @@ import { CATALOGUE } from '../../src/bot/catalogue.ts';
 import type { RunStarter } from '../../src/serve/runs.ts';
 import { FakeTrello } from '../support/fake-trello.ts';
 import type { Recording } from '../../tools/sample/scrub.ts';
+import { useSampleConfig } from '../support/seed-layout.ts';
 
 const DIR = join(import.meta.dirname, '..', 'fixtures', 'trello');
 const load = (name: string): Recording =>
@@ -21,6 +22,7 @@ const RUNS_LIST = 'fa4e0000000000000000047f';
 
 function setup(starter: RunStarter = { isRunning: async () => false, start: async () => {} }) {
   const fake = FakeTrello.fromRecordings(load('jobs'), load('profiles'), load('system'));
+  useSampleConfig(fake, BOARDS);
   const raw = createTrelloClient({ key: 'k', token: 't', fetchImpl: fake.fetch, sleep: async () => {} });
   const logs: string[] = [];
   const ctx = {

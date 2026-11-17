@@ -2,7 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { describedRejection, isoDateIn, processJobs } from '../../src/run/process.ts';
 import type { ProcessDeps, ProcessOpts } from '../../src/run/process.ts';
-import { combinedFilter } from '../../src/run/profiles.ts';
+import { compiledFilter } from '../../src/compile/filter.ts';
+import type { Compiled } from '../../src/compile/schema.ts';
 import { emptyStats } from '../../src/run/stats.ts';
 import type { RunStats } from '../../src/run/stats.ts';
 import { buildScoreContext } from '../../src/privacy.ts';
@@ -11,23 +12,18 @@ import type { FetchJdResult } from '../../src/pipeline/jd.ts';
 import type { ParsedFacts } from '../../src/pipeline/facts.ts';
 import type { Preferences } from '../../src/pipeline/prefs.ts';
 import type { Job } from '../../src/pipeline/keys.ts';
-import type { Profile, Settings } from '../../src/config/schema.ts';
 import { fakeLlm, fakeLlmEnv } from '../support/fake-llm.ts';
 
-const settings: Settings = {
-  timezone: 'Europe/Berlin', providers: ['gemini'], scoring_cap: 150, locations: ['berlin'], linkedin_locations: [],
-  linkedin: false, allowed_members: [], bot_keyword: '/bot',
-  caps: { model_per_day: 30, model_per_card_per_day: 8, research_per_day: 10, static_per_day: 100 },
+const compiled: Compiled = {
+  places: { anywhere: true, keep: [], drop: [] },
+  employment: { keep: [], remote_only: [] },
+  linkedin_locations: [],
+  company_exclude: [], text_exclude: ['night shifts'], languages: {}, years_experience: null,
+  profiles: [{ name: 'Events', search_terms: ['event manager'], title_include: [], title_exclude: ['senior'], examples: [] }],
+  unused: [], problems: [],
 };
-
-const profile: Profile = {
-  name: 'Events', active: true, rubric: 'Robin Testperson wants event work.', searchKeywords: [],
-  filters: {
-    includeTitles: [], excludeTitles: [{ pattern: 'senior' }], excludeCompanies: [],
-    excludeText: [{ pattern: 'night shifts' }], excludeLocations: [],
-  },
-};
-const filter = combinedFilter([profile], settings);
+const filter = compiledFilter(compiled, ['Events']);
+const profile = { rubric: 'Robin Testperson wants event work.' };
 
 const job = (n: number, o: Partial<Job> = {}): Job =>
   ({ key: `url:job${n}`, url: `https://jobs.example/${n}`, company: `Company ${n}`, title: `Event Manager ${n}`, location: 'Berlin', ...o });
@@ -79,9 +75,34 @@ describe('processJobs', () => {
   it('pre-filter rejections are counted by rule', async () => {
     const { result, stats, fetched } = await run(jobs(4, (i) => (i < 2 ? { title: `Senior Planner ${i}` } : {})));
     assert.equal(stats.rejectedPre, 2);
-    assert.equal(stats.rules.EXCLUDE_TITLE, 2);
+    assert.equal(stats.rules.TITLE_EXCLUDED, 2);
+    assert.deepEqual(stats.ruleExamples.TITLE_EXCLUDED, Object.assign(Object.create(null), { Senior: 2 }));
     assert.deepEqual(fetched, ['url:job2', 'url:job3']);
     assert.equal(result.length, 2);
+  });
+
+  it('rule examples: 200 distinct ones per rule, the rest counted under …', async () => {
+    const only: Compiled = { ...compiled, places: { anywhere: false, keep: ['Berlin'], drop: [] } };
+    const input = jobs(203, (i) => ({ location: `Town ${i}` }));
+    const stats: RunStats = emptyStats();
+    await processJobs(input, new Set(), compiledFilter(only, ['Events']), {
+      fetchJd: async () => null, ctx: null, extractor: '', log: () => {},
+    }, { cap: 150, deadline: Infinity, today: '2026-11-10', dryRun: true }, stats);
+    const ex = stats.ruleExamples.PLACE_NOT_KEPT!;
+    assert.equal(Object.keys(ex).length, 201);
+    assert.equal(ex['Town 0'], 1);
+    assert.equal(ex['…'], 3);
+  });
+
+  it('rule examples: a title like __proto__ is an ordinary key', async () => {
+    const { stats } = await run([job(0, { title: 'Senior __proto__' }), job(1, { title: '__proto__' })]);
+    assert.equal(stats.ruleExamples.TITLE_EXCLUDED!['Senior'], 1);
+    const only: Compiled = { ...compiled, profiles: [{ ...compiled.profiles[0]!, title_include: ['planner'] }] };
+    const s2: RunStats = emptyStats();
+    await processJobs([job(2, { title: '__proto__' })], new Set(), compiledFilter(only, ['Events']), {
+      fetchJd: async () => null, ctx: null, extractor: '', log: () => {},
+    }, { cap: 150, deadline: Infinity, today: '2026-11-10', dryRun: true }, s2);
+    assert.equal(s2.ruleExamples.TITLE_NOT_INCLUDED!['__proto__'], 1);
   });
 
   it('a missing JD is neither carded nor rejected', async () => {
@@ -103,7 +124,7 @@ describe('processJobs', () => {
       jd: (k) => ({ jd: k === 'url:job0' ? `${JD} Includes night shifts.` : JD, meta: {} }),
     });
     assert.equal(stats.rejectedPost, 1);
-    assert.equal(stats.rules.EXCLUDE_TEXT, 1);
+    assert.equal(stats.rules.TEXT_EXCLUDED, 1);
     assert.deepEqual(result.map((r) => r.key), ['url:job1']);
   });
 

@@ -29,6 +29,7 @@ import { gullible, gullibleWeb } from '../support/gullible.ts';
 import { readInjectionFixtures } from '../support/injection-fixtures.ts';
 import type { InjectionFixture } from '../support/injection-fixtures.ts';
 import type { Recording } from '../../tools/sample/scrub.ts';
+import { useSampleConfig } from '../support/seed-layout.ts';
 
 const FIX = join(import.meta.dirname, '..', 'fixtures');
 const load = (name: string) => JSON.parse(readFileSync(join(FIX, 'trello', `${name}.recording.json`), 'utf8')) as Recording;
@@ -38,9 +39,6 @@ const page = (name: string): InjectionFixture => PAGES.find((p) => p.name === na
 const BOARDS: UserBoards = { jobs: 'fa4e00000000000000000005', profiles: 'fa4e0000000000000000000c', system: 'fa4e0000000000000000000d' };
 const JOB_CARD = 'fa4e00000000000000000012';
 const SETTINGS_CARD = 'fa4e00000000000000000476';
-const FEEDBACK_CARD = 'fa4e00000000000000000461';
-const CV_CARD = 'fa4e00000000000000000441';
-const RUBRIC_CARD = 'fa4e00000000000000000450';
 const USER_A: TMember = { id: 'fa4e0000000000000000a001', username: 'usera' };
 const NOW = new Date('2026-11-12T12:00:00.000Z');
 const APPLY = 'https://acme.example/apply';
@@ -74,8 +72,13 @@ const newId = () => `fa4e${(nextId++).toString(16).padStart(20, '0')}`;
 
 async function setup(o: { page?: InjectionFixture; web?: (c: { stage: string; user: string }) => WebAnswer | Promise<WebAnswer>; title?: string } = {}) {
   const fake = FakeTrello.fromRecordings(load('jobs'), load('profiles'), load('system'));
+  useSampleConfig(fake, BOARDS);
+  const FEEDBACK_CARD = fake.openCardId(BOARDS.profiles, 'Feedback', 'Content editor');
+  const CV_CARD = fake.openCardId(BOARDS.profiles, 'CV', 'About me');
+  // The rubric the bot sends is built from the dream-job text.
+  const RUBRIC_CARD = fake.openCardId(BOARDS.profiles, 'My dream job', 'Content editor');
   fake.setNow(NOW);
-  fake.setCardDesc(SETTINGS_CARD, '```yaml\nproviders: [claude]\nlocations: [berlin]\nallowed_members: [usera]\n```');
+  fake.setCardDesc(SETTINGS_CARD, '```yaml\nproviders: [claude]\nallowed_members: [usera]\n```');
   const raw = createTrelloClient({ key: 'k', token: 't', fetchImpl: fake.fetch, sleep: async () => {} });
   fake.setCardDesc(CV_CARD, `${CV_SENTINEL} ${(await raw.card(CV_CARD)).desc}`);
   fake.setCardDesc(RUBRIC_CARD, `${RUBRIC_SENTINEL} ${(await raw.card(RUBRIC_CARD)).desc}`);
@@ -99,7 +102,7 @@ async function setup(o: { page?: InjectionFixture; web?: (c: { stage: string; us
     env: ENV,
     call: m.call,
   };
-  return { fake, api, deps, logs, starts, calls: m.calls };
+  return { fake, api, deps, logs, starts, calls: m.calls, feedbackCard: FEEDBACK_CARD };
 }
 type S = Awaited<ReturnType<typeof setup>>;
 
@@ -119,7 +122,7 @@ async function say(s: S, text: string) {
 
 const unescape = (t: string) => t.replace(/\\(.)/g, '$1');
 const body = (c: string) => unescape(c.split('\n').filter((l) => !l.startsWith('career-cards-reply:')).join('\n').trim());
-const allComments = (s: S) => [JOB_CARD, FEEDBACK_CARD, SETTINGS_CARD].flatMap((c) => s.fake.commentsOn(c));
+const allComments = (s: S) => [JOB_CARD, s.feedbackCard, SETTINGS_CARD].flatMap((c) => s.fake.commentsOn(c));
 const pending = async (s: S) => findPending(await s.api.cardComments(JOB_CARD), { botId: s.deps.me.id, now: NOW });
 /** The listed links but the card's own posting link, which the gullible advisor mentions. */
 const linksOf = (text: string) => [...text.matchAll(/^link \d+: <([^>]+)>$/gm)].map((m) => m[1]!).filter((l) => l !== APPLY);
@@ -136,7 +139,7 @@ const routed = (way: string) => way.includes('use action');
 
 function assertNothingRan(s: S, way: string) {
   assert.deepEqual(s.starts, [], way);
-  assert.deepEqual(s.fake.commentsOn(FEEDBACK_CARD), [], way);
+  assert.deepEqual(s.fake.commentsOn(s.feedbackCard), [], way);
 }
 
 // --- what the researcher sees ---

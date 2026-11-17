@@ -124,7 +124,7 @@ test('capClassOf maps every catalogue row', () => {
     cv_tips:          'model',
     job_deep_dive:    'research',
     company_research: 'research',
-    explain_filter:   'static',
+    explain_filter:   'model',
     record_feedback:  'static',
     show_last_run:    'static',
     start_run:        'static',

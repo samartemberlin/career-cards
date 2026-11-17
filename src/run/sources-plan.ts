@@ -4,8 +4,9 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { load as loadYaml } from 'js-yaml';
 import { mergePortals, mergeLinkedin } from '../pipeline/search.ts';
-import { searchFromProfile } from '../config/person.ts';
-import type { Sources, Settings, Profile } from '../config/schema.ts';
+import type { Compiled } from '../compile/schema.ts';
+import { specOf } from '../config/cards.ts';
+import type { Sources, Settings } from '../config/schema.ts';
 import type { LinkedInConfig } from '../pipeline/sources/linkedin.ts';
 import type { RssSource } from '../pipeline/sources/rss.ts';
 import type { PageSource } from '../pipeline/sources/pages.ts';
@@ -86,17 +87,18 @@ function applyDrop(
 /**
  * Builds the complete scan plan for one run.
  * - Applies Sources Drop (removes named defaults) and Add (appends or replaces tracked_companies).
- * - Merges active profiles' keywords into portals (arbeitsagentur board) and LinkedIn.
- * - Returns linkedin: null when linkedin is off, or when it is on but no linkedin_locations are configured.
+ * - Merges active profiles' search terms into portals (arbeitsagentur board) and LinkedIn (each compiled location).
+ * - Returns linkedin: null when linkedin is off, or when it is on but the cards name no place to search.
  * Never mutates `defaults`.
  */
 export function buildScanPlan(o: {
   defaults: Defaults;
   sources: Sources;
-  profiles: Profile[];
   settings: Settings;
+  compiled: Compiled;
+  activeProfiles: string[];
 }): ScanPlan {
-  const { defaults, sources, profiles, settings } = o;
+  const { defaults, sources, settings, compiled } = o;
 
   const { portals: droppedPortals, rss, pages, warnings } = applyDrop(defaults, sources.drop);
 
@@ -112,16 +114,20 @@ export function buildScanPlan(o: {
     droppedPortals.tracked_companies = companies;
   }
 
-  const searches = profiles.map((p) => searchFromProfile(p, settings));
-  const portals = mergePortals(droppedPortals, searches as Parameters<typeof mergePortals>[1]);
+  const active = new Set(o.activeProfiles.map((n) => n.toLowerCase()));
+  const searches = compiled.profiles.filter((p) => active.has(p.name.toLowerCase())).map((p) => ({
+    board_keywords: [...p.search_terms],
+    linkedin: compiled.linkedin_locations.map((l) => ({ ...l, queries: [...p.search_terms] })),
+  }));
+  const portals = mergePortals(droppedPortals, searches);
 
   let linkedin: LinkedInConfig | null = null;
   if (settings.linkedin) {
-    if (!settings.linkedin_locations.length) {
-      warnings.push('LinkedIn is on but Settings has no linkedin_locations');
+    if (!compiled.linkedin_locations.length) {
+      warnings.push(`LinkedIn is on but "${specOf('where').name}" names no place to search`);
     } else {
       const liBase = defaults.extra.linkedin ?? {};
-      linkedin = mergeLinkedin(liBase, searches as Parameters<typeof mergeLinkedin>[1]) as LinkedInConfig;
+      linkedin = mergeLinkedin(liBase, searches) as LinkedInConfig;
     }
   }
 

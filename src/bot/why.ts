@@ -1,12 +1,20 @@
 import { jobKey } from '../pipeline/keys.ts';
 import { assertPublicUrl, BlockedUrlError } from '../net/safe-fetch.ts';
 import { loadJobIndex } from '../trello/job-index.ts';
-import { activeProfiles, combinedFilter } from '../run/profiles.ts';
+import { CompileFailed, CompileUnavailable } from '../compile/compile.ts';
+import { RULE_TEXT } from '../compile/filter.ts';
+import { PrivacyError } from '../privacy.ts';
+import { compileUser } from '../run/profiles.ts';
 import { describedRejection, isoDateIn } from '../run/process.ts';
-import { ruleId } from '../run/stats.ts';
+import { evidenceOf, ruleId } from '../run/stats.ts';
 import type { Job } from '../pipeline/keys.ts';
 import type { CommandCtx, HandlerResult } from './handlers.ts';
+import { MASKING_REPLY } from './stages/call.ts';
+import { stageOpts } from './stages/handler.ts';
 
+const RULE_WORDS: Record<string, string> = { ...RULE_TEXT, EXPIRED: 'the application deadline has passed' };
+
+/** Replies made before the compile call are `uncounted`: only the compile is a model call. */
 export async function explainFilter(ctx: CommandCtx, args: { link: string }): Promise<HandlerResult> {
   const { link } = args;
   const key = jobKey(link);
@@ -18,6 +26,7 @@ export async function explainFilter(ctx: CommandCtx, args: { link: string }): Pr
     return {
       text: `This job already has a card: ${existing.shortUrl}${archived}`,
       links: [existing.shortUrl],
+      uncounted: true,
     };
   }
 
@@ -26,19 +35,19 @@ export async function explainFilter(ctx: CommandCtx, args: { link: string }): Pr
     await assertPublicUrl(link, ctx.net.urlGuard);
   } catch (e) {
     if (e instanceof BlockedUrlError) {
-      return { text: "I can't check that link: it doesn't point to a public web address." };
+      return { text: "I can't check that link: it doesn't point to a public web address.", uncounted: true };
     }
     throw e;
   }
 
   const result = await ctx.net.fetchJd({ key, url: link });
   if (!result) {
-    return { text: "I couldn't read the posting, so I can't tell which rule would apply." };
+    return { text: "I couldn't read the posting, so I can't tell which rule would apply.", uncounted: true };
   }
 
   const metaTitle = result.meta.title;
   if (!metaTitle) {
-    return { text: "I couldn't find the job title on the page, so I can't tell." };
+    return { text: "I couldn't find the job title on the page, so I can't tell.", uncounted: true };
   }
 
   // company defaults to '' when the page doesn't name it; the full JD lets text rules fire.
@@ -54,12 +63,23 @@ export async function explainFilter(ctx: CommandCtx, args: { link: string }): Pr
   };
 
   const cfg = await ctx.config();
-  const filter = combinedFilter(activeProfiles(cfg), cfg.settings);
+  let filter: (job: Job) => string | null;
+  try {
+    // One attempt: a reply comment should not wait out the run's retry pauses; asking again retries.
+    ({ filter } = await compileUser(cfg, { ...stageOpts(ctx), attempts: 1 }));
+  } catch (e) {
+    if (e instanceof PrivacyError) return { text: MASKING_REPLY(e.message), uncounted: true };
+    if (e instanceof CompileFailed) return { text: `I couldn't read your Profiles cards just now: ${e.problems[0]!.card}: ${e.problems[0]!.reason}` };
+    // Its message is "could not read the Profiles cards: <reason>".
+    if (e instanceof CompileUnavailable) return { text: `I couldn't read your Profiles cards just now: ${e.message.slice(e.message.indexOf(': ') + 2)}` };
+    throw e;
+  }
   const today = isoDateIn(ctx.now, cfg.settings.timezone);
 
   const reason = describedRejection(job, filter, today);
   if (reason) {
-    return { text: `Rejected by rule \`${ruleId(reason)}\`: ${reason}` };
+    const id = ruleId(reason);
+    return { text: `Rejected: ${RULE_WORDS[id] ?? id} (\`${id}\`): "${evidenceOf(reason)}"` };
   }
   return {
     text: 'No filter rejects it: it would be scored. It may not be in any scanned source yet, or it waited for the scoring cap.',

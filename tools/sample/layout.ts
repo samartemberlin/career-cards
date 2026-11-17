@@ -1,5 +1,6 @@
 import { jobCardDesc, jobCardTitle, RUN_SUMMARY_PREFIX } from '../../src/trello/cards.ts';
 import type { SampleBoard } from './guard.ts';
+import { SAMPLE_PROFILES } from './profiles.ts';
 
 export type ChecklistSpec = { name: string; items: string[] };
 export type CardSpec = {
@@ -59,50 +60,23 @@ function fillerCard(n: number): CardSpec {
 
 const range = (from: number, to: number): number[] => Array.from({ length: to - from + 1 }, (_, i) => from + i);
 
-export const CV = `# Alex Example
-
-Content editor in Berlin.
-
-## Experience
-- 2023–now: Editor at a small publishing house (about 20 employees)
-- 2021–2023: Editorial intern at a regional newspaper
-
-## Education
-- BA in German studies, Example University
-
-## Languages
-English (C1), German (B2)
-`;
-
 const yaml = (body: string, note = ''): string => `${note ? `${note}\n\n` : ''}\`\`\`yaml\n${body}\`\`\``;
 
-function profileColumn(name: string, active: boolean | undefined, keywords: string[]): ListSpec {
-  return {
-    name,
-    cards: [
-      { name: 'Profile', desc: yaml(active === undefined ? '{}\n' : `active: ${active}\n`, `Sample profile: ${name.toLowerCase()} roles.`) },
-      { name: 'Rubric', desc: `Score 0-10 how well a job fits a ${name.toLowerCase()} with about three years of experience.\n\n| Role | Score |\n|---|---|\n| ${name}, Berlin | 8 |\n| Senior ${name}, Munich | 3 |\n` },
-      { name: 'Search keywords', desc: '', checklists: [{ name: 'Search keywords', items: keywords }] },
-      {
-        name: 'Filters',
-        desc: '',
-        checklists: [
-          { name: 'Include titles', items: ['editor|redakteur — core role'] },
-          { name: 'Exclude titles', items: ['senior|lead — too senior for now'] },
-          { name: 'Exclude companies', items: ['Example Staffing GmbH — agency'] },
-          { name: 'Exclude text', items: ['unpaid — no unpaid work'] },
-          { name: 'Exclude locations', items: ['munich|münchen — not moving'] },
-        ],
-      },
-    ],
-  };
-}
-
-const contentEditor = profileColumn('Content editor', true, ['content editor', 'redakteur', 'content manager']);
-contentEditor.cards.push(
-  { name: 'Feedback', desc: 'Job feedback for this profile arrives here as comments.' },
-  { name: 'My notes', desc: 'A note card: the bot ignores cards with other titles.' },
-);
+// The active profile's list also holds a Feedback card (the bot posts there) and a note card the reader ignores.
+const profiles: BoardLayout = {
+  labels: [],
+  lists: [
+    ...SAMPLE_PROFILES.lists.map((l) => (l.name !== 'Content editor' ? l : {
+      ...l,
+      cards: [
+        ...l.cards,
+        { name: 'Feedback', desc: 'Job feedback for this profile arrives here as comments.' },
+        { name: 'My notes', desc: 'A note card: the bot ignores cards with other titles.' },
+      ],
+    })),
+    { name: 'Old profile', closed: true, cards: [{ name: 'Active', desc: 'yes' }] },
+  ],
+};
 
 export const LAYOUT: Record<SampleBoard, BoardLayout> = {
   jobs: {
@@ -131,38 +105,7 @@ export const LAYOUT: Record<SampleBoard, BoardLayout> = {
       { name: OLD_RUN_COLUMN, cards: range(1, FILLER_COUNT).map(fillerCard), closed: true },
     ],
   },
-  profiles: {
-    labels: [],
-    lists: [
-      { name: 'Originals', cards: [{ name: 'CV (original)', desc: CV }] },
-      {
-        name: 'Shared',
-        cards: [
-          { name: 'CV', desc: CV },
-          {
-            name: 'Personal details',
-            desc: 'Strings masked before any prompt.',
-            checklists: [{
-              name: 'Personal details',
-              items: ['Alex Example', 'alex.example@example.com', '+49 30 0000000', 'address: Examplestraße 1, 10115 Berlin', 'https://example.com/alex'],
-            }],
-          },
-          { name: 'Rubric basics', desc: 'Prefer Berlin or remote roles. English is fine, German B2 at most.' },
-          {
-            name: 'Preferences',
-            desc: yaml('languages:\n  de: { read: B2, write: B1, speak: B1 }\nyears_experience: 3\npenalties:\n  german_c1_or_native: { points: 3 }\n', 'Scoring preferences.'),
-          },
-        ],
-      },
-      contentEditor,
-      profileColumn('Copywriter', undefined, ['copywriter', 'texter']),
-      {
-        name: 'Old profile',
-        closed: true,
-        cards: [{ name: 'Profile', desc: yaml('active: true\n', 'An archived profile column: ignored.') }],
-      },
-    ],
-  },
+  profiles,
   system: {
     labels: [],
     lists: [
@@ -172,7 +115,7 @@ export const LAYOUT: Record<SampleBoard, BoardLayout> = {
           {
             name: 'Settings',
             desc: yaml(
-              'timezone: Europe/Berlin\nproviders: [claude, gemini]\nlocations: [berlin, remote-de]\nallowed_members: [samplebot]\nbot_keyword: /bot\n',
+              'timezone: Europe/Berlin\nproviders: [claude, gemini]\nallowed_members: [samplebot]\nbot_keyword: /bot\n',
               'Settings for the sample user. Only the YAML block is read.',
             ) + '\n\nNotes: providers are tried in order.',
           },

@@ -3,7 +3,7 @@ import { llmConfig } from '../../pipeline/llm.ts';
 import type { CallOpts, LlmConfig } from '../../pipeline/llm.ts';
 import { PrivacyError, buildBotMasking, buildMasker } from '../../privacy.ts';
 import type { BotMasking } from '../../privacy.ts';
-import { scoringProfile } from '../../run/profiles.ts';
+import { botRubric } from '../../run/profiles.ts';
 import { loadCardContext } from '../context.ts';
 import type { CardContext, JobFields } from '../context.ts';
 import type { CommandCtx, HandlerResult } from '../handlers.ts';
@@ -29,7 +29,7 @@ export async function loadJob(ctx: CommandCtx, verb: string): Promise<{ cc: Card
 export async function withMasking<T>(ctx: CommandCtx, build: (m: BotMasking) => T): Promise<T | HandlerResult> {
   try {
     const cfg = await ctx.config();
-    return build(buildBotMasking({ user: cfg, profile: scoringProfile(cfg) }));
+    return build(buildBotMasking({ user: cfg, profile: { rubric: botRubric(cfg) } }));
   } catch (e) {
     if (e instanceof PrivacyError) return { text: MASKING_REPLY(e.message), uncounted: true };
     throw e;

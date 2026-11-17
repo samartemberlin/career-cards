@@ -1,6 +1,7 @@
 // What the onboarding tool would do to a user's three boards. It creates what is missing and never edits.
 import type { BotApi, TCard, TList } from '../../src/trello/api.ts';
 import { TrelloError } from '../../src/trello/client.ts';
+import { LISTS, answerOf, specOf } from '../../src/config/cards.ts';
 import { ConfigInvalid, readSettings, readUserConfig } from '../../src/trello/config.ts';
 import type { ConfigProblem } from '../../src/trello/config.ts';
 import type { CardSpec } from '../sample/layout.ts';
@@ -25,7 +26,7 @@ export type Observed = {
   boards: Record<Role, ObservedBoard>;
   /** From the Settings card; undefined when the card is missing or unreadable. */
   allowedMembers?: string[];
-  /** Items on Shared › Personal details; undefined when the card is missing. */
+  /** Answer lines on About me › Personal details; undefined when the card is missing. */
   personalDetails?: number;
   /** readUserConfig's problems ([] when it passes), or only the Settings card's without a Profiles board; undefined without a System board. */
   config?: { problems: ConfigProblem[] };
@@ -183,9 +184,10 @@ export async function readBoards(owner: BoardReader, bot: BoardReader, ids: Part
     boards: { jobs: read.jobs.board, profiles: read.profiles.board, system: read.system.board },
   };
 
-  const shared = read.profiles.lists.find((l) => norm(l.name) === 'shared');
-  const details = read.profiles.cards.find((c) => !c.closed && c.idList === shared?.id && norm(c.name) === 'personal details');
-  if (details) observed.personalDetails = (details.checklists ?? []).reduce((n, cl) => n + cl.checkItems.length, 0);
+  const spec = specOf('details');
+  const aboutMe = read.profiles.lists.find((l) => norm(l.name) === norm(LISTS.aboutMe));
+  const details = read.profiles.cards.find((c) => !c.closed && c.idList === aboutMe?.id && norm(c.name) === norm(spec.name));
+  if (details) observed.personalDetails = answerOf(spec, details.desc).split('\n').filter((l) => l.trim()).length;
 
   const p = read.profiles.reader;
   const s = read.system.reader;

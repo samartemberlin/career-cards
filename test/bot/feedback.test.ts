@@ -12,6 +12,7 @@ import { feedbackComment, findFeedbackCards, recordFeedback } from '../../src/bo
 import type { JobFields } from '../../src/bot/context.ts';
 import type { UserConfig } from '../../src/config/schema.ts';
 import type { Recording } from '../../tools/sample/scrub.ts';
+import { testConfig } from '../support/user-config.ts';
 
 const DIR = join(import.meta.dirname, '..', 'fixtures', 'trello');
 const load = (name: string): Recording =>
@@ -35,32 +36,22 @@ const SETTINGS = {
   timezone: 'UTC',
   providers: ['gemini'] as ['gemini'],
   scoring_cap: 150,
-  locations: [],
-  linkedin_locations: [],
   linkedin: false,
   allowed_members: [], bot_keyword: '/bot',
   caps: { model_per_day: 30, model_per_card_per_day: 8, research_per_day: 10, static_per_day: 100 },
 };
 
+type Profiles = { name: string; active: boolean }[];
+
 /** Config with one active profile named "Content editor" (matches the fixture's list). */
-function makeConfig(overrides: { profiles?: UserConfig['profiles'] } = {}): UserConfig {
-  return {
-    settings: SETTINGS,
-    profiles: overrides.profiles ?? [{
-      name: 'Content editor',
-      active: true,
-      rubric: 'Looking for editing work.',
-      searchKeywords: [],
-      filters: { includeTitles: [], excludeTitles: [], excludeCompanies: [], excludeText: [], excludeLocations: [] },
-    }],
-    sharedCv: 'CV of Alex Testperson',
-    personalDetails: ['Alex Testperson'],
-    preferences: undefined,
-    sources: { add: [], drop: [] },
-  };
+function makeConfig(overrides: { profiles?: Profiles } = {}): UserConfig {
+  return testConfig({
+    settings: SETTINGS, dream: 'Looking for editing work.', cv: 'CV of Alex Testperson', personalDetails: ['Alex Testperson'],
+    profiles: overrides.profiles ?? [{ name: 'Content editor', active: true }],
+  });
 }
 
-function setup(cfgOverrides: { profiles?: UserConfig['profiles'] } = {}) {
+function setup(cfgOverrides: { profiles?: Profiles } = {}) {
   const fake = FakeTrello.fromRecordings(load('jobs'), load('profiles'), load('system'));
   const raw = createTrelloClient({ key: 'k', token: 't', fetchImpl: fake.fetch, sleep: async () => {} });
   const cfg = makeConfig(cfgOverrides);
@@ -164,8 +155,7 @@ test('feedbackComment: score null prints –', () => {
 
 test('findFeedbackCards: finds the Feedback card in the matching list', async () => {
   const { ctx } = setup();
-  const profiles = [{ name: 'Content editor', active: true, rubric: '', searchKeywords: [],
-    filters: { includeTitles: [], excludeTitles: [], excludeCompanies: [], excludeText: [], excludeLocations: [] } }];
+  const profiles = ['Content editor'];
   const result = await findFeedbackCards(ctx.api, BOARDS.profiles, profiles);
   assert.equal(result.length, 1);
   assert.equal(result[0]!.profile, 'Content editor');
@@ -174,16 +164,14 @@ test('findFeedbackCards: finds the Feedback card in the matching list', async ()
 
 test('findFeedbackCards: case-insensitive and trims whitespace', async () => {
   const { ctx } = setup();
-  const profiles = [{ name: ' CONTENT EDITOR ', active: true, rubric: '', searchKeywords: [],
-    filters: { includeTitles: [], excludeTitles: [], excludeCompanies: [], excludeText: [], excludeLocations: [] } }];
+  const profiles = [' CONTENT EDITOR '];
   const result = await findFeedbackCards(ctx.api, BOARDS.profiles, profiles);
   assert.equal(result[0]!.card?.id, FEEDBACK_CARD);
 });
 
 test('findFeedbackCards: null when list not found', async () => {
   const { ctx } = setup();
-  const profiles = [{ name: 'No such list', active: true, rubric: '', searchKeywords: [],
-    filters: { includeTitles: [], excludeTitles: [], excludeCompanies: [], excludeText: [], excludeLocations: [] } }];
+  const profiles = ['No such list'];
   const result = await findFeedbackCards(ctx.api, BOARDS.profiles, profiles);
   assert.equal(result[0]!.card, null);
 });
@@ -191,8 +179,7 @@ test('findFeedbackCards: null when list not found', async () => {
 test('findFeedbackCards: null when list exists but has no Feedback card', async () => {
   const { ctx } = setup();
   // "Copywriter" list exists in the fixture but has no Feedback card
-  const profiles = [{ name: 'Copywriter', active: true, rubric: '', searchKeywords: [],
-    filters: { includeTitles: [], excludeTitles: [], excludeCompanies: [], excludeText: [], excludeLocations: [] } }];
+  const profiles = ['Copywriter'];
   const result = await findFeedbackCards(ctx.api, BOARDS.profiles, profiles);
   assert.equal(result[0]!.card, null);
 });
@@ -219,8 +206,7 @@ test('feedback posts the words verbatim on the active profile\'s Feedback card',
 test('an inactive profile\'s Feedback card gets nothing', async () => {
   const { fake, ctx } = setup({
     profiles: [
-      { name: 'Content editor', active: false, rubric: '', searchKeywords: [],
-        filters: { includeTitles: [], excludeTitles: [], excludeCompanies: [], excludeText: [], excludeLocations: [] } },
+      { name: 'Content editor', active: false },
     ],
   });
   await recordFeedback(ctx, { text: 'hi' });
@@ -230,8 +216,7 @@ test('an inactive profile\'s Feedback card gets nothing', async () => {
 test('a missing Feedback card is named in the reply, and nothing is created', async () => {
   const { fake, ctx } = setup({
     profiles: [
-      { name: 'Copywriter', active: true, rubric: '', searchKeywords: [],
-        filters: { includeTitles: [], excludeTitles: [], excludeCompanies: [], excludeText: [], excludeLocations: [] } },
+      { name: 'Copywriter', active: true },
     ],
   });
   const result = await recordFeedback(ctx, { text: 'hi' });
@@ -266,8 +251,7 @@ test('feedback on an Originals card is refused by the guard', async () => {
   const { fake, ctx } = setup({
     profiles: [
       // A profile named "Originals" bypasses the config schema in this test to exercise the guard
-      { name: 'Originals', active: true, rubric: '', searchKeywords: [],
-        filters: { includeTitles: [], excludeTitles: [], excludeCompanies: [], excludeText: [], excludeLocations: [] } },
+      { name: 'Originals', active: true },
     ],
   });
   // Add a Feedback card to the Originals list (the guard blocks writes there)

@@ -14,6 +14,7 @@ import { FakeTrello } from './support/fake-trello.ts';
 import { commentWebhook } from './support/webhook.ts';
 import type { Recording } from '../tools/sample/scrub.ts';
 import type { RunTrigger } from '../src/run/stats.ts';
+import { useSampleConfig } from './support/seed-layout.ts';
 
 const DIR = join(import.meta.dirname, 'fixtures', 'trello');
 const load = (name: string): Recording =>
@@ -31,11 +32,12 @@ let nextId = 0xb100;
 const newId = () => `fa4e${(nextId++).toString(16).padStart(20, '0')}`;
 
 const settingsDesc = (allowed: string[]) =>
-  `\`\`\`yaml\nproviders: [claude]\nlocations: [berlin]\nallowed_members: [${allowed.join(', ')}]\n\`\`\``;
+  `\`\`\`yaml\nproviders: [claude]\nallowed_members: [${allowed.join(', ')}]\n\`\`\``;
 
 /** Full setup using recorded fixture data. */
 function fullSetup() {
   const fake = FakeTrello.fromRecordings(load('jobs'), load('profiles'), load('system'));
+  useSampleConfig(fake, BOARDS);
   fake.setNow(NOW);
   fake.setCardDesc(SETTINGS_CARD, settingsDesc(['usera']));
   const raw = createTrelloClient({ key: 'k', token: 't', fetchImpl: fake.fetch, sleep: async () => {} });

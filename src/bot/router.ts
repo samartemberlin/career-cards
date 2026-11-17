@@ -15,7 +15,7 @@ import { MASKING_REPLY, StageOutputInvalid, TIMEOUT_REPLY, callStage, stageError
 import { llmConfig } from '../pipeline/llm.ts';
 import type { CallOpts, LlmConfig } from '../pipeline/llm.ts';
 import { PrivacyError, buildBotMasking } from '../privacy.ts';
-import { scoringProfile } from '../run/profiles.ts';
+import { botRubric } from '../run/profiles.ts';
 import { commandText } from './command.ts';
 import type { Trigger } from './command.ts';
 
@@ -42,7 +42,7 @@ export async function handleFreeText(ctx: CommandCtx, t: Trigger): Promise<Handl
   const cfg = await ctx.config();
   let out: RouterOutput;
   try {
-    const input = { request, ctx: cc, masking: buildBotMasking({ user: cfg, profile: scoringProfile(cfg) }) };
+    const input = { request, ctx: cc, masking: buildBotMasking({ user: cfg, profile: { rubric: botRubric(cfg) } }) };
     out = await route(input, { llm: llmConfig(ctx.env, ctx.settings), signal: ctx.signal, log: ctx.log, ...(ctx.call ? { call: ctx.call } : {}) });
   } catch (e) {
     // Masking runs before the model call, and the call itself never throws a PrivacyError.

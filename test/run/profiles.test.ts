@@ -1,78 +1,78 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { activeProfiles, combinedFilter, scoringProfile } from '../../src/run/profiles.ts';
-import type { Profile, Settings, UserConfig } from '../../src/config/schema.ts';
-import type { Job } from '../../src/pipeline/keys.ts';
+import { activeProfileNames, botRubric, compileInputOf, compileUser, scoringTextOf } from '../../src/run/profiles.ts';
+import { CompileFailed } from '../../src/compile/compile.ts';
+import { DEFAULT_PENALTIES } from '../../src/compile/schema.ts';
+import type { UserConfig } from '../../src/config/schema.ts';
+import { llmConfig } from '../../src/pipeline/llm.ts';
+import { createTrelloClient } from '../../src/trello/client.ts';
+import { readUserConfig } from '../../src/trello/config.ts';
+import { FakeTrello } from '../support/fake-trello.ts';
+import { SAMPLE_COMPILED, fakeLlm, fakeLlmEnv } from '../support/fake-llm.ts';
+import type { CompileReply } from '../support/fake-llm.ts';
+import { seedLayout } from '../support/seed-layout.ts';
+import { LAYOUT } from '../../tools/sample/layout.ts';
 
-const settings: Settings = {
-  timezone: 'Europe/Berlin', providers: ['gemini'], scoring_cap: 150, locations: ['berlin'], linkedin_locations: [],
-  linkedin: false, allowed_members: [], bot_keyword: '/bot',
-  caps: { model_per_day: 30, model_per_card_per_day: 8, research_per_day: 10, static_per_day: 100 },
-};
-
-function profile(name: string, o: Partial<Profile> = {}, f: Partial<Profile['filters']> = {}): Profile {
-  return {
-    name, active: true, rubric: `rubric of ${name}`, searchKeywords: [],
-    filters: { includeTitles: [], excludeTitles: [], excludeCompanies: [], excludeText: [], excludeLocations: [], ...f },
-    ...o,
-  };
+async function sampleConfig(): Promise<UserConfig> {
+  const fake = new FakeTrello();
+  const profiles = await seedLayout(fake, LAYOUT.profiles);
+  const system = await seedLayout(fake, LAYOUT.system);
+  const api = createTrelloClient({ key: 'k', token: 't', fetchImpl: fake.fetch, sleep: async () => {} });
+  return readUserConfig(api, { jobs: 'none', profiles, system });
 }
 
-const config = (profiles: Profile[]): UserConfig => ({
-  settings, profiles, sharedCv: 'shared cv', personalDetails: ['Robin Testperson'], sources: { add: [], drop: [] },
-});
+const dreamOf = (cfg: UserConfig) => cfg.board.profiles[0]!.cards.find((c) => c.key === 'dream')!.text;
 
-const job = (title: string): Job => ({ key: `url:${title}`, url: 'https://jobs.example/1', company: 'Acme', title, location: 'Berlin' });
-
-describe('activeProfiles', () => {
-  it('keeps only active profiles', () => {
-    const cfg = config([profile('Events'), profile('Office', { active: false })]);
-    assert.deepEqual(activeProfiles(cfg).map((p) => p.name), ['Events']);
+async function compile(cfg: UserConfig, reply: () => CompileReply = () => SAMPLE_COMPILED) {
+  const llm = fakeLlm({ score: () => 5, compile: reply });
+  const out = await compileUser(cfg, {
+    llm: llmConfig(fakeLlmEnv, { providers: [] }), call: { fetchImpl: llm.fetchImpl, retries: 0 }, log: () => {}, pauseMs: 0,
   });
-});
+  return { out, requests: llm.requests };
+}
 
-describe('combinedFilter', () => {
-  const events = profile('Events', {}, { includeTitles: [{ pattern: 'event' }] });
-  const office = profile('Office', {}, { includeTitles: [{ pattern: 'office' }] });
-
-  it('keeps a job one of two profiles accepts', () => {
-    const f = combinedFilter([events, office], settings);
-    assert.equal(f(job('Office Manager')), null);
-    assert.equal(f(job('Event Manager')), null);
+describe('the sample board as the run sees it', () => {
+  it('only the active profile counts', async () => {
+    const cfg = await sampleConfig();
+    assert.deepEqual(activeProfileNames(cfg), ['Content editor']);
+    const input = compileInputOf(cfg);
+    assert.deepEqual(input.dealBreakers.map((c) => c.key), ['where', 'contract', 'languages', 'never']);
+    assert.deepEqual(input.profiles.map((p) => [p.name, p.cards.map((c) => c.key)]), [['Content editor', ['roles', 'words', 'dream', 'examples']]]);
   });
 
-  it("returns the first profile's reason when all reject", () => {
-    const f = combinedFilter([events, office], settings);
-    assert.equal(f(job('Accountant')), 'NOT_INCLUDED: "Accountant"');
-    const g = combinedFilter([profile('A', {}, { excludeTitles: [{ pattern: 'senior' }] }), office], settings);
-    assert.match(g(job('Senior Accountant'))!, /^EXCLUDE_TITLE:/);
-  });
-});
-
-describe('scoringProfile', () => {
-  it('one profile → its rubric and CV', () => {
-    assert.deepEqual(scoringProfile(config([profile('Events', { cv: 'events cv' })])), { rubric: 'rubric of Events', cv: 'events cv' });
-    assert.deepEqual(scoringProfile(config([profile('Events')])), { rubric: 'rubric of Events', cv: undefined });
+  it('an optional card left empty is not sent to the model', async () => {
+    const cfg = await sampleConfig();
+    const examples = cfg.board.profiles[0]!.cards.find((c) => c.key === 'examples')!;
+    examples.text = '';
+    assert.ok(!compileInputOf(cfg).profiles[0]!.cards.some((c) => c.key === 'examples'));
+    assert.equal(scoringTextOf(cfg).profiles[0]!.examples, '');
   });
 
-  it('two profiles → both headed rubrics', () => {
-    const r = scoringProfile(config([profile('Events'), profile('Office'), profile('Off', { active: false })]));
-    assert.equal(r.rubric, '## Events\n\nrubric of Events\n\n## Office\n\nrubric of Office');
-    assert.equal(r.cv, undefined);
-    assert.equal(r.warning, undefined);
+  it("the bot's rubric: the cards' own words, no example table, no model", async () => {
+    const cfg = await sampleConfig();
+    const rubric = botRubric(cfg);
+    assert.match(rubric, /^## Profile: Content editor$/m);
+    assert.ok(rubric.includes(dreamOf(cfg)));
+    assert.ok(!rubric.includes('### Example roles'));
+    assert.match(rubric, /\*\*Company size:\*\* Small or mid-size/);
   });
 
-  it('two profiles with the same CV card → that CV', () => {
-    const r = scoringProfile(config([profile('Events', { cv: 'one cv' }), profile('Office', { cv: 'one cv' })]));
-    assert.equal(r.cv, 'one cv');
-    assert.equal(r.warning, undefined);
+  it('compileUser: filter, rubric with the example table, preferences and the reading', async () => {
+    const cfg = await sampleConfig();
+    const { out, requests } = await compile(cfg);
+    assert.equal(requests.length, 1);
+    assert.ok(!JSON.stringify(requests).includes('Alex Example'));
+    assert.match(out.rubric, /### Example roles\n\| Role \| Score \|/);
+    assert.ok(out.rubric.includes(dreamOf(cfg)));
+    const job = { key: 'k', url: 'https://jobs.example/1', company: 'Acme', title: 'Content Editor', location: 'Zürich' };
+    assert.equal(out.filter(job), 'PLACE_NOT_KEPT: "Zürich"');
+    assert.equal(out.filter({ ...job, location: 'Berlin' }), null);
+    assert.deepEqual(out.preferences, { penalties: DEFAULT_PENALTIES, languages: { de: { read: 'B2', write: 'B1', speak: 'B1' } }, years_experience: 3 });
+    assert.equal(out.reading[0]!.card, 'Where & how I work');
   });
 
-  it('different CV cards → shared CV and the warning', () => {
-    for (const cvs of [['a', 'b'], ['a', undefined]]) {
-      const r = scoringProfile(config([profile('Events', { cv: cvs[0] }), profile('Office', { cv: cvs[1] })]));
-      assert.equal(r.cv, undefined);
-      assert.equal(r.warning, 'active profiles have different CV cards; scoring uses the Shared CV');
-    }
+  it('compileUser: a problem from the model is CompileFailed', async () => {
+    const cfg = await sampleConfig();
+    await assert.rejects(compile(cfg, () => ({ ...SAMPLE_COMPILED, problems: [{ card: 'Languages', reason: 'unclear' }] })), CompileFailed);
   });
 });

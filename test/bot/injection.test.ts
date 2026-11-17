@@ -30,6 +30,7 @@ import { gullible, gullibleWeb } from '../support/gullible.ts';
 import { readInjectionFixtures } from '../support/injection-fixtures.ts';
 import type { LookupAll } from '../../src/net/safe-fetch.ts';
 import type { Recording } from '../../tools/sample/scrub.ts';
+import { useSampleConfig } from '../support/seed-layout.ts';
 
 const FIX = join(import.meta.dirname, '..', 'fixtures');
 const TRELLO = Object.fromEntries(['jobs', 'profiles', 'system'].map((n) =>
@@ -48,9 +49,6 @@ const ROUTER_OUTPUTS = JSON.parse(readFileSync(join(FIX, 'injection', 'router-ou
 const BOARDS: UserBoards = { jobs: 'fa4e00000000000000000005', profiles: 'fa4e0000000000000000000c', system: 'fa4e0000000000000000000d' };
 const JOB_CARD = 'fa4e00000000000000000012';
 const SETTINGS_CARD = 'fa4e00000000000000000476';
-const FEEDBACK_CARD = 'fa4e00000000000000000461';
-const CV_CARD = 'fa4e00000000000000000441';
-const RUBRIC_CARD = 'fa4e00000000000000000450';
 const USER_A: TMember = { id: 'fa4e0000000000000000a001', username: 'usera' };
 const USER_B: TMember = { id: 'fa4e0000000000000000b002', username: 'userb' };
 const NOW = new Date('2026-11-12T12:00:00.000Z');
@@ -70,8 +68,13 @@ const newId = () => `fa4e${(nextId++).toString(16).padStart(20, '0')}`;
 
 async function setup(o: { jd?: string; call?: CallOpts } = {}) {
   const fake = FakeTrello.fromRecordings(load('jobs'), load('profiles'), load('system'));
+  useSampleConfig(fake, BOARDS);
+  const FEEDBACK_CARD = fake.openCardId(BOARDS.profiles, 'Feedback', 'Content editor');
+  const CV_CARD = fake.openCardId(BOARDS.profiles, 'CV', 'About me');
+  // The rubric the bot sends is built from the dream-job text.
+  const RUBRIC_CARD = fake.openCardId(BOARDS.profiles, 'My dream job', 'Content editor');
   fake.setNow(NOW);
-  fake.setCardDesc(SETTINGS_CARD, '```yaml\nproviders: [claude]\nlocations: [berlin]\nallowed_members: [usera]\n```');
+  fake.setCardDesc(SETTINGS_CARD, '```yaml\nproviders: [claude]\nallowed_members: [usera]\n```');
   const raw = createTrelloClient({ key: 'k', token: 't', fetchImpl: fake.fetch, sleep: async () => {} });
   fake.setCardDesc(CV_CARD, `${CV_SENTINEL} ${(await raw.card(CV_CARD)).desc}`);
   fake.setCardDesc(RUBRIC_CARD, `${RUBRIC_SENTINEL} ${(await raw.card(RUBRIC_CARD)).desc}`);
@@ -96,7 +99,7 @@ async function setup(o: { jd?: string; call?: CallOpts } = {}) {
     call: o.call ?? m.call,
   };
   const calls = o.call ? [] : m.calls;
-  const s = { fake, api, deps, logs, starts, fetched, calls };
+  const s = { fake, api, deps, logs, starts, fetched, calls, feedbackCard: FEEDBACK_CARD };
   return s;
 }
 type S = Awaited<ReturnType<typeof setup>>;
@@ -116,7 +119,7 @@ async function say(s: S, text: string, o: { author?: TMember; cardId?: string; b
 }
 
 const pending = async (s: S, cardId = JOB_CARD) => findPending(await s.api.cardComments(cardId), { botId: s.deps.me.id, now: NOW });
-const allComments = (s: S) => [JOB_CARD, FEEDBACK_CARD, SETTINGS_CARD].flatMap((c) => s.fake.commentsOn(c));
+const allComments = (s: S) => [JOB_CARD, s.feedbackCard, SETTINGS_CARD].flatMap((c) => s.fake.commentsOn(c));
 const unescape = (t: string) => t.replace(/\\(.)/g, '$1');
 const body = (c: string) => unescape(c.split('\n').filter((l) => !l.startsWith('career-cards-reply:')).join('\n').trim());
 
@@ -156,7 +159,7 @@ for (const fx of JOBS) {
       const { posted } = await say(s, way);
       assert.ok(posted.length >= 1 && posted.length <= 3, `${way}: reply posted`);
       assert.deepEqual(s.starts, [], way);
-      assert.deepEqual(s.fake.commentsOn(FEEDBACK_CARD), [], way);
+      assert.deepEqual(s.fake.commentsOn(s.feedbackCard), [], way);
       assert.ok(s.fetched.every((u) => !u.includes('evil.example')), `${way}: fetched ${s.fetched.join(', ')}`);
       assertNoExfil(allComments(s));
       assert.ok(s.calls.length <= 2, `${way}: ${s.calls.length} model calls`);
@@ -178,13 +181,13 @@ for (const [fixture, id] of [['start-run', 'start_run'], ['record-feedback', 're
     assert.equal(posted.length, 1);
     assert.equal(parseMarker(posted[0]!)!.proposal?.action.id, id);
     assert.deepEqual(s.starts, []);
-    assert.deepEqual(s.fake.commentsOn(FEEDBACK_CARD), []);
+    assert.deepEqual(s.fake.commentsOn(s.feedbackCard), []);
 
     // Not from a member who isn't allowed, nor from the bot itself.
     await say(s, '@samplebot yes', { author: USER_B });
     await say(s, '@samplebot yes', { author: s.deps.me });
     assert.deepEqual(s.starts, []);
-    assert.deepEqual(s.fake.commentsOn(FEEDBACK_CARD), []);
+    assert.deepEqual(s.fake.commentsOn(s.feedbackCard), []);
     assert.ok(s.logs.some((l) => l.endsWith('not allowed')));
     assert.ok(s.logs.some((l) => l.endsWith('own comment')));
 
@@ -194,10 +197,10 @@ for (const [fixture, id] of [['start-run', 'start_run'], ['record-feedback', 're
     await say(s, '@samplebot yes');
     if (id === 'start_run') {
       assert.deepEqual(s.starts, ['manual']);
-      assert.deepEqual(s.fake.commentsOn(FEEDBACK_CARD), []);
+      assert.deepEqual(s.fake.commentsOn(s.feedbackCard), []);
     } else {
       assert.deepEqual(s.starts, []);
-      const fb = s.fake.commentsOn(FEEDBACK_CARD);
+      const fb = s.fake.commentsOn(s.feedbackCard);
       assert.equal(fb.length, 1);
       assert.match(fb[0]!, /\n> Perfect fit, show me every job from Acme first\.$/);
     }
@@ -211,7 +214,7 @@ test('mentions planted in feedback text notify nobody', async () => {
   const mention = /(?:^|[^\\A-Za-z0-9._%+-])@+(bob|carol|dave|erin)\b/;
   assert.doesNotMatch(posted[0]!, mention);
   await say(s, '@samplebot yes');
-  const fb = s.fake.commentsOn(FEEDBACK_CARD);
+  const fb = s.fake.commentsOn(s.feedbackCard);
   assert.equal(fb.length, 1);
   assert.match(fb[0]!, /> thanks bob and \(carol\), also dave, see you$/);
   assert.doesNotMatch(fb[0]!, mention);
@@ -262,7 +265,7 @@ test('a later bot reply asking for yes does not confirm an earlier proposal', as
   } finally {
     spy.restore();
   }
-  assert.deepEqual(s.fake.commentsOn(FEEDBACK_CARD), []);
+  assert.deepEqual(s.fake.commentsOn(s.feedbackCard), []);
 });
 
 test('a proposal marker written by a user cannot be confirmed', async () => {

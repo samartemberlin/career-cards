@@ -15,6 +15,8 @@ import { parseMarker } from '../../src/bot/marker.ts';
 import { FakeTrello } from '../support/fake-trello.ts';
 import { commentWebhook, signedRequest } from '../support/webhook.ts';
 import type { Recording } from '../../tools/sample/scrub.ts';
+import { useSampleConfig } from '../support/seed-layout.ts';
+import { fakeLlm, serveFakeLlm } from '../support/fake-llm.ts';
 
 const DIR = join(import.meta.dirname, '..', 'fixtures', 'trello');
 const load = (name: string): Recording =>
@@ -102,8 +104,9 @@ test('the error text holds no value', () => {
 
 function setup() {
   const fake = FakeTrello.fromRecordings(load('jobs'), load('profiles'), load('system'));
+  useSampleConfig(fake, BOARDS);
   fake.setNow(new Date());
-  fake.setCardDesc(SETTINGS_CARD, '```yaml\nproviders: [claude]\nlocations: [berlin]\nallowed_members: [usera]\n```');
+  fake.setCardDesc(SETTINGS_CARD, '```yaml\nproviders: [claude]\nallowed_members: [usera]\n```');
   const trello = createTrelloClient({ key: 'k', token: 't', fetchImpl: fake.fetch, sleep: async () => {} });
   const starts: RunTrigger[] = [];
   const starter = { isRunning: async () => false, start: async (t: RunTrigger) => { starts.push(t); } };
@@ -114,8 +117,8 @@ function setup() {
 const closers: (() => Promise<void>)[] = [];
 after(async () => { for (const c of closers) await c(); });
 
-async function start(s: ReturnType<typeof setup>, o: Parameters<typeof main>[1] = {}) {
-  const svc = await main(ENV, { trello: s.trello, starter: s.starter, listen: true, out: (l) => s.logs.push(l), ...o });
+async function start(s: ReturnType<typeof setup>, o: Parameters<typeof main>[1] = {}, env: typeof ENV = ENV) {
+  const svc = await main(env, { trello: s.trello, starter: s.starter, listen: true, out: (l) => s.logs.push(l), ...o });
   closers.push(svc.close);
   const base = `http://127.0.0.1:${(svc.server.address() as AddressInfo).port}`;
   const say = async (text: string, id?: string) => {
@@ -187,6 +190,10 @@ test('why through the real wiring: ATS and LinkedIn links are read with the guar
   closers.push(() => new Promise((r) => jobs.close(() => r())));
   const port = (jobs.address() as AddressInfo).port;
 
+  // `why` compiles the Profiles cards: the model stand-in answers that call over HTTP.
+  const model = await serveFakeLlm(fakeLlm({ score: () => 5 }));
+  closers.push(model.close);
+
   const s = setup();
   const lookups: string[] = [];
   const { say } = await start(s, {
@@ -194,7 +201,7 @@ test('why through the real wiring: ATS and LinkedIn links are read with the guar
       lookup: async (host) => { lookups.push(host); return [{ address: '127.0.0.1', family: 4 }]; },
       allow: (ip) => ip === '127.0.0.1',
     },
-  });
+  }, { ...ENV, ...model.env });
 
   const spawned: unknown[] = [];
   const onSpawn = (m: unknown) => spawned.push(m);
@@ -205,7 +212,7 @@ test('why through the real wiring: ATS and LinkedIn links are read with the guar
       assert.match(jobKey(link), /^(greenhouse|linkedin):/);
       await say(`@samplebot why ${link}`);
       const reply = s.fake.commentsOn(JOB_CARD).at(-1)!;
-      assert.match(reply, /Rejected by rule|No filter rejects it/, reply);
+      assert.match(reply, /Rejected\\?: |No filter rejects it/, reply);
     }
   } finally {
     unsubscribe('child_process', onSpawn);

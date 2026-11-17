@@ -1,11 +1,13 @@
-// One run for one user: config cards, private-board check, masking, scan, scoring, the run column, archiving, all
-// reported on a status card in System › Runs. Ties together the modules in src/run and src/trello.
+// One run for one user: config cards, private-board check, masking, compiling the cards, scan, scoring, the run
+// column, archiving, all reported on a status card in System › Runs. Ties together the modules in src/run and src/trello.
 import { parseYamlBlock } from '../config/schema.ts';
 import type { UserConfig } from '../config/schema.ts';
 import { loadExtractor } from '../pipeline/facts.ts';
 import { llmConfig, providerProblems } from '../pipeline/llm.ts';
 import type { CallOpts, Env } from '../pipeline/llm.ts';
-import { buildScoreContext, PrivacyError } from '../privacy.ts';
+import { CompileFailed, CompileUnavailable } from '../compile/compile.ts';
+import { readingText } from '../compile/reading.ts';
+import { buildMasker, buildScoreContext, PrivacyError } from '../privacy.ts';
 import type { MaskedContext } from '../privacy.ts';
 import type { BotApi, TCard, TrelloApi } from '../trello/api.ts';
 import { runColumnName } from '../trello/cards.ts';
@@ -19,7 +21,7 @@ import { archiveRunCards, writeRunColumn } from './column.ts';
 import { createRunLog, secretsFromEnv } from './log.ts';
 import { isoDateIn, processJobs } from './process.ts';
 import type { ProcessDeps } from './process.ts';
-import { activeProfiles, combinedFilter, scoringProfile } from './profiles.ts';
+import { activeProfileNames, compileUser } from './profiles.ts';
 import type { ScanOutput } from './scan.ts';
 import { buildScanPlan, loadDefaults } from './sources-plan.ts';
 import type { Defaults, ScanPlan } from './sources-plan.ts';
@@ -44,6 +46,8 @@ export type RunDeps = {
   extractor?: string;
   now: () => Date;
   sink: (line: string) => void;
+  /** Tests only: the compile step's retries. */
+  compile?: { attempts?: number; pauseMs?: number };
 };
 
 export type RunOpts = {
@@ -256,31 +260,38 @@ export async function runOnce(deps: RunDeps, opts: RunOpts): Promise<RunOutcome>
     const llmSettings = { providers: settings.providers, ...(settings.models ? { models: settings.models } : {}) };
     stats.warnings.push(...providerProblems(deps.env, llmSettings));
     const llm = llmConfig(deps.env, llmSettings);
-    if (!llm.apiKey && !opts.dryRun) throw new RunStop('no scoring provider');
-    const profile = scoringProfile(cfg);
-    if (profile.warning) stats.warnings.push(profile.warning);
+    if (!llm.apiKey) throw new RunStop('no scoring provider');
+    // One deadline for the compile, scan, description fetches, facts and scoring: what is not reached waits for the next run.
+    const deadline = t0 + budgetMs - SCORING_MARGIN_MS;
+    let rules: Awaited<ReturnType<typeof compileUser>>;
     let ctx: MaskedContext;
     try {
-      ctx = buildScoreContext({ user: cfg, profile: { rubric: profile.rubric, cv: profile.cv }, llm, translateTitle: true });
+      // The CV is masked first, so a masking failure stops the run before any model call, the compile's too.
+      buildMasker(cfg.personalDetails).mask(cfg.sharedCv);
+      rules = await compileUser(cfg, { llm, log, deadline, ...(deps.call ? { call: deps.call } : {}), ...deps.compile });
+      ctx = buildScoreContext({ user: cfg, profile: { rubric: rules.rubric, cv: cfg.sharedCv }, llm, translateTitle: true });
     } catch (e) {
       if (e instanceof PrivacyError) throw new RunStop('masking failed', [`masking: ${e.message}`]);
+      if (e instanceof CompileFailed) throw new RunStop('cards not usable', e.problems.map((p) => `${p.card}: ${p.reason}`));
+      if (e instanceof CompileUnavailable) throw new RunStop('could not read your cards', [e.message]);
       throw e;
     }
+    stats.reading = rules.reading;
+    for (const line of readingText(rules.reading).split('\n')) if (line) log(`reading: ${line}`);
 
     const index = await loadJobIndex(api, deps.boards.jobs);
-    const active = activeProfiles(cfg);
-    const plan = buildScanPlan({ defaults: deps.defaults ?? loadDefaults(), sources: cfg.sources, profiles: active, settings });
+    const plan = buildScanPlan({
+      defaults: deps.defaults ?? loadDefaults(), sources: cfg.sources, settings, compiled: rules.compiled, activeProfiles: activeProfileNames(cfg),
+    });
     stats.warnings.push(...plan.warnings);
-    // One deadline for the scan, the description fetches, facts and scoring: whatever is not reached waits for the next run.
-    const deadline = t0 + budgetMs - SCORING_MARGIN_MS;
     const scanned = await deps.scan(plan, { log, deadline });
     recordScan(scanned, index.keys, stats, log, runLog.redact);
     const cap = Math.min(settings.scoring_cap, opts.cap ?? Infinity);
     const jobs = await processJobs(
-      scanned.jobs, index.keys, combinedFilter(active, settings),
+      scanned.jobs, index.keys, rules.filter,
       {
         fetchJd: deps.fetchJd, ctx, extractor: deps.extractor ?? loadExtractor(), log,
-        ...(deps.call ? { call: deps.call } : {}), ...(cfg.preferences ? { preferences: cfg.preferences } : {}),
+        ...(deps.call ? { call: deps.call } : {}), preferences: rules.preferences,
       },
       { cap, deadline, today: isoDateIn(start, tz), dryRun: opts.dryRun },
       stats,
@@ -289,7 +300,7 @@ export async function runOnce(deps: RunDeps, opts: RunOpts): Promise<RunOutcome>
     if (opts.dryRun) {
       const passed = stats.fresh - stats.rejectedPre;
       dryLines = [
-        'Dry run: nothing written, no description fetched, no model called.',
+        'Dry run: nothing written, no description fetched, nothing scored (the cards were compiled).',
         `Would describe and score: up to ${Math.min(passed, cap)} of the ${passed} jobs that passed the filters (cap ${cap})`,
         `Would archive: ${index.toArchive.length} cards`,
       ];

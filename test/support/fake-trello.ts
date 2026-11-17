@@ -642,6 +642,36 @@ export class FakeTrello {
     }
   }
 
+  /** Archive the board's open lists, then add `lists` after them in order (the user rebuilding a board). */
+  replaceLists(boardId: string, lists: { name: string; closed?: boolean; cards: { name: string; desc: string; closed?: boolean }[] }[]): void {
+    for (const id of this._boardListIds.get(boardId) ?? []) {
+      const l = this._lists.get(id)!;
+      this._lists.set(id, { ...l, closed: true });
+    }
+    for (const spec of lists) {
+      const listId = this._genId();
+      this._lists.set(listId, { id: listId, name: spec.name, closed: spec.closed ?? false, pos: this._genPos(), idBoard: boardId });
+      this._addToBoard('list', boardId, listId);
+      for (const c of spec.cards) {
+        const id = this._genId();
+        this._cards.set(id, { id, name: c.name, desc: c.desc, idList: listId, idBoard: boardId, closed: c.closed ?? false, pos: this._genPos(), shortUrl: this._genShortUrl() });
+        this._addToBoard('card', boardId, id);
+      }
+    }
+  }
+
+  /** The id of the open card titled `name` in an open list of `boardId` (in `listName` when given). */
+  openCardId(boardId: string, name: string, listName?: string): string {
+    const lists = (this._boardListIds.get(boardId) ?? []).map((id) => this._lists.get(id)!)
+      .filter((l) => !l.closed && (listName === undefined || l.name === listName));
+    const ids = new Set(lists.map((l) => l.id));
+    const card = (this._boardCardIds.get(boardId) ?? []).map((id) => this._cards.get(id)!)
+      .filter((c) => !c.closed && ids.has(c.idList) && c.name === name)
+      .sort((a, b) => a.pos - b.pos)[0];
+    if (!card) throw new Error(`FakeTrello.openCardId: no open card "${name}" on ${boardId}`);
+    return card.id;
+  }
+
   /** Update a card's description (the user editing a card, no scope check). */
   setCardDesc(cardId: string, desc: string): void {
     const card = this._cards.get(cardId);

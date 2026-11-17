@@ -127,8 +127,8 @@ function setupCtx(cardDesc: string, cardName: string, checkOpenFn?: (url: string
     boards: BOARDS,
     me: { id: 'bot1', username: 'samplebot' },
     settings: {
-      timezone: 'UTC', providers: ['gemini'], scoring_cap: 150, locations: [],
-      linkedin_locations: [], linkedin: false, allowed_members: [],
+      timezone: 'UTC', providers: ['gemini'], scoring_cap: 150,
+      linkedin: false, allowed_members: [],
       caps: { model_per_day: 30, model_per_card_per_day: 8, research_per_day: 10, static_per_day: 100 },
     },
     action: { id: 'act1', idMemberCreator: 'u1', text: '', cardId: 'placeholder', boardId: JOBS_BOARD, date: new Date().toISOString() },

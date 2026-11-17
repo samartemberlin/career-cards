@@ -12,6 +12,7 @@ import { formatMarker } from '../../src/bot/marker.ts';
 import { FakeTrello } from '../support/fake-trello.ts';
 import { commentWebhook } from '../support/webhook.ts';
 import type { Recording } from '../../tools/sample/scrub.ts';
+import { useSampleConfig } from '../support/seed-layout.ts';
 
 const DIR = join(import.meta.dirname, '..', 'fixtures', 'trello');
 const load = (name: string): Recording =>
@@ -29,10 +30,11 @@ const NOW = new Date('2026-11-12T12:00:00.000Z');
 const ACTION_ID = 'fa4e0000000000000000b001';
 
 const settingsDesc = (allowed: string[], extra = '') =>
-  `\`\`\`yaml\nproviders: [claude]\nlocations: [berlin]\nallowed_members: [${allowed.join(', ')}]\n${extra}\`\`\``;
+  `\`\`\`yaml\nproviders: [claude]\nallowed_members: [${allowed.join(', ')}]\n${extra}\`\`\``;
 
 function setup(allowed: string[] = ['usera'], extra = '') {
   const fake = FakeTrello.fromRecordings(load('jobs'), load('profiles'), load('system'));
+  useSampleConfig(fake, BOARDS);
   fake.setCardDesc(SETTINGS_CARD, settingsDesc(allowed, extra));
   const api = scopeUserBoards(createTrelloClient({ key: 'k', token: 't', fetchImpl: fake.fetch, sleep: async () => {} }), BOARDS);
   const logs: string[] = [];

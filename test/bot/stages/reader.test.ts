@@ -19,24 +19,20 @@ import {
 import { JOB_ONLY_REPLY } from '../../../src/bot/stages/call.ts';
 import { fakeModel } from '../../support/fake-model.ts';
 import { FakeTrello } from '../../support/fake-trello.ts';
+import { testConfig } from '../../support/user-config.ts';
 
 const BOARDS: UserBoards = { jobs: 'fa4e00000000000000000005', profiles: 'fa4e0000000000000000000c', system: 'fa4e0000000000000000000d' };
 const NOW = new Date('2026-11-12T12:00:00Z');
 
-const cfg: UserConfig = {
+const cfg: UserConfig = testConfig({
   settings: {
-    timezone: 'Europe/Berlin', providers: ['claude'], scoring_cap: 150, locations: ['berlin'],
-    linkedin_locations: [], linkedin: false, allowed_members: [], bot_keyword: '/bot',
+    timezone: 'Europe/Berlin', providers: ['claude'], scoring_cap: 150,
+    linkedin: false, allowed_members: [], bot_keyword: '/bot',
     caps: { model_per_day: 30, model_per_card_per_day: 8, research_per_day: 10, static_per_day: 100 },
   },
-  profiles: [{
-    name: 'Default', active: true, rubric: 'Wants editing work. RUBRIC-SENTINEL-7c1', searchKeywords: [],
-    filters: { includeTitles: [], excludeTitles: [], excludeCompanies: [], excludeText: [], excludeLocations: [] },
-  }],
-  sharedCv: 'Jane Roe, editor. CV-SENTINEL-7c1', personalDetails: ['Jane Roe'],
-  preferences: undefined,
-  sources: { add: [], drop: [] },
-};
+  dream: 'Wants editing work. RUBRIC-SENTINEL-7c1',
+  cv: 'Jane Roe, editor. CV-SENTINEL-7c1', personalDetails: ['Jane Roe'],
+});
 
 const JD = 'We are looking for a Marketing Manager to plan campaigns.\nReferred by Jane Roe.\nApply at jobs@acme.example.';
 const LEGIT_OK = JSON.stringify({
