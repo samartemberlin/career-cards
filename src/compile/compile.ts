@@ -24,9 +24,13 @@ export class CompileFailed extends Error {
 }
 
 export class CompileUnavailable extends Error {
-  constructor(message: string) {
+  kind: 'quota' | 'invalid';
+  reason: string;
+  constructor(message: string, kind: 'quota' | 'invalid', reason: string) {
     super(message);
     this.name = 'CompileUnavailable';
+    this.kind = kind;
+    this.reason = reason;
   }
 }
 
@@ -70,6 +74,7 @@ export async function compileCards(input: CompileInput, o: {
   const opts: CallOpts = { ...o.call };
   if (o.signal) opts.signal = o.signal;
   let last = '';
+  let lastWasQuota = false;
   // Set when the last attempt's result was unusable by code checks alone: thrown as CompileFailed if no attempt is left.
   let lastUnusable: { card: string; reason: string }[] | null = null;
   for (let n = 1; n <= attempts; n++) {
@@ -97,11 +102,12 @@ export async function compileCards(input: CompileInput, o: {
     } catch (e) {
       if (o.signal?.aborted) throw o.signal.reason;
       if (!(e instanceof QuotaExhausted || e instanceof StageOutputInvalid)) throw e;
+      lastWasQuota = e instanceof QuotaExhausted;
       lastUnusable = null;
       last = firstLine(e.message);
       o.log(`compile: attempt ${n} failed: ${last}`);
     }
   }
   if (lastUnusable) throw new CompileFailed(lastUnusable);
-  throw new CompileUnavailable(`could not read the Profiles cards: ${last}`);
+  throw new CompileUnavailable(`could not read the Profiles cards: ${last}`, lastWasQuota ? 'quota' : 'invalid', last);
 }

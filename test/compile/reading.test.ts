@@ -138,3 +138,12 @@ test('readingText: max clips with "…"', () => {
   assert.ok(out.endsWith('…'));
   assert.equal(out, readingText(TWO).slice(0, 29) + '…');
 });
+
+test('readingOf: languages shows a line per language with known code names', () => {
+  const c = { ...SAMPLE, languages: { en: { read: 'C1', write: 'C1', speak: 'C1' }, de: { read: 'B2', write: 'B1', speak: 'B1' } } } as unknown as typeof SAMPLE;
+  const input = { dealBreakers: [{ key: 'languages' as const, name: 'Languages', text: 'English C1, German B2' }], profiles: [] };
+  const r = readingOf(c, input, []);
+  const scoring = r[0]!.scoring;
+  assert.ok(scoring.includes('English: read C1, write C1, speak C1'), `expected English line in ${JSON.stringify(scoring)}`);
+  assert.ok(scoring.includes('German: read B2, write B1, speak B1'), `expected German line in ${JSON.stringify(scoring)}`);
+});

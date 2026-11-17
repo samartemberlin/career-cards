@@ -9,7 +9,7 @@ import { describedRejection, isoDateIn } from '../run/process.ts';
 import { evidenceOf, ruleId } from '../run/stats.ts';
 import type { Job } from '../pipeline/keys.ts';
 import type { CommandCtx, HandlerResult } from './handlers.ts';
-import { MASKING_REPLY } from './stages/call.ts';
+import { MASKING_REPLY, QUOTA_REPLY } from './stages/call.ts';
 import { stageOpts } from './stages/handler.ts';
 
 const RULE_WORDS: Record<string, string> = { ...RULE_TEXT, EXPIRED: 'the application deadline has passed' };
@@ -70,8 +70,10 @@ export async function explainFilter(ctx: CommandCtx, args: { link: string }): Pr
   } catch (e) {
     if (e instanceof PrivacyError) return { text: MASKING_REPLY(e.message), uncounted: true };
     if (e instanceof CompileFailed) return { text: `I couldn't read your Profiles cards just now: ${e.problems[0]!.card}: ${e.problems[0]!.reason}` };
-    // Its message is "could not read the Profiles cards: <reason>".
-    if (e instanceof CompileUnavailable) return { text: `I couldn't read your Profiles cards just now: ${e.message.slice(e.message.indexOf(': ') + 2)}` };
+    if (e instanceof CompileUnavailable) {
+      if (e.kind === 'quota') return { text: QUOTA_REPLY };
+      return { text: `The model's reading of your cards didn't check out (${e.reason}). Try again in a minute.` };
+    }
     throw e;
   }
   const today = isoDateIn(ctx.now, cfg.settings.timezone);

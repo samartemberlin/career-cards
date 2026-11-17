@@ -13,7 +13,7 @@ The JSON object has exactly these fields, no others:
   "linkedin_locations": [{ "location": "<place>", "remote": true }],
   "company_exclude": ["<company>"],
   "text_exclude": ["<word or phrase>"],
-  "languages": { "de": { "read": "B2", "write": "B1", "speak": "B2" } },
+  "languages": { "en": { "read": "C1", "write": "C1", "speak": "C1" }, "de": { "read": "B2", "write": "B1", "speak": "B1" } },
   "years_experience": null,
   "profiles": [{
     "name": "<profile name, as written after ## Profile:>",
@@ -48,7 +48,13 @@ Rules:
    `title_exclude` are words the person wants to avoid in titles. Give both languages when the notes show both.
 7. `examples`: 6 to 10 example roles with integer scores from 0 to 10, derived from the dream job and the love/skip
    notes, covering high, middle and low scores.
-8. `languages` and `years_experience`: only when stated.
+8. `languages` and `years_experience`: only when stated. Use two-letter lowercase codes as keys (en, de, fr, …), every
+   language the person names. At most 6 entries.
 9. `unused`: every concrete wish or limit in the notes that none of the fields above can hold, with the reason in plain
    words (e.g. "postings rarely state salary"). Leave nothing out silently.
-10. `problems`: a card that contradicts itself or says nothing usable. Otherwise empty.
+10. `problems`: only when a card says nothing usable or contradicts itself. A love/skip example or wish that conflicts
+    with another card is not a problem — scoring handles it; put such notes in `unused` if they are not used elsewhere.
+11. `text_exclude`: only phrases that make a job unacceptable wherever they appear in the posting (e.g. "unpaid").
+    Never words that commonly appear in requirements, benefits, or general job text (Ausbildung, Studium, degree,
+    enrolled, student, Werkstudent). Words about the kind of job go in the profile's `title_exclude` instead.
+    Keep `text_exclude` short.

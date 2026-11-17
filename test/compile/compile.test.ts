@@ -220,3 +220,24 @@ test('prompt: bare work-mode tags go in keep, ruled-out remote regions in drop',
   }
   assert.match(system, /accepts remote work/);
 });
+
+test('three invalid replies: CompileUnavailable has kind=invalid', async () => {
+  const { p } = await run(['nope']);
+  await assert.rejects(p, (e: unknown) => e instanceof CompileUnavailable && (e as unknown as { kind: string }).kind === 'invalid');
+});
+
+test('QuotaExhausted three times: CompileUnavailable has kind=quota', async () => {
+  const { p } = await run(['quota']);
+  await assert.rejects(p, (e: unknown) => e instanceof CompileUnavailable && (e as unknown as { kind: string }).kind === 'quota');
+});
+
+test('prompt: problems is for unusable cards; conflicting examples go to unused', () => {
+  const system = buildCompileMessages(INPUT, masker)[0]!.content;
+  assert.ok(system.includes('nothing usable'), `prompt should mention "nothing usable" for problems`);
+  assert.ok(system.match(/conflict.*unused|not a problem/is), 'prompt should say conflicting examples are not a problems — go to unused instead');
+});
+
+test('prompt: text_exclude is not for requirement-section words', () => {
+  const system = buildCompileMessages(INPUT, masker)[0]!.content;
+  assert.ok(system.includes('Ausbildung') || system.includes('Werkstudent'), `prompt should mention Ausbildung or Werkstudent as words to avoid in text_exclude: ${system.slice(0, 200)}`);
+});
