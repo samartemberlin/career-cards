@@ -123,11 +123,12 @@ test('why: a place the cards do not keep → PLACE_NOT_KEPT with the location', 
   assert.equal(result.text, 'Rejected: location not in your places (`PLACE_NOT_KEPT`): "Zürich, Switzerland"');
 });
 
-test('why: cards the model cannot use → the first reason', async () => {
+test('why: a model problem in the reply is a warning, not a show-stopper', async () => {
   const jd: FetchJdResult = { jd: 'Run events.', meta: { title: 'Event Manager' } };
   const { ctx } = setup(async () => jd, () => ({ ...COMPILED, problems: [{ card: 'Default › My dream job', reason: 'says nothing usable' }] }));
   const result = await explainFilter(ctx, { link: 'https://8.8.8.8/event-manager/10' });
-  assert.equal(result.text, "I couldn't read your Profiles cards just now: Default › My dream job: says nothing usable");
+  assert.ok(!result.text.startsWith("I couldn't read your Profiles cards"), `should not stop on model problem: ${result.text}`);
+  assert.ok(result.text.startsWith('No filter rejects it'), `expected filter to run normally: ${result.text}`);
 });
 
 test('why: counted in the model cap class; a reply before the compile is uncounted', async () => {

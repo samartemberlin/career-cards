@@ -110,11 +110,11 @@ test('a deadline closer than the pause: one attempt only', async () => {
   assert.equal(f.bodies.length, 1);
 });
 
-test('a problems entry: CompileFailed with that card, no second call', async () => {
+test('a problems entry: compile succeeds; one call; compiled.problems has the entry', async () => {
   const bad = { ...GOOD, problems: [{ card: 'Content editor › My dream job', reason: 'says nothing usable' }] };
   const { p, f } = await run([JSON.stringify(bad), JSON.stringify(GOOD)]);
-  await assert.rejects(p, (e: unknown) => e instanceof CompileFailed
-    && e.problems.some((x) => x.card === 'Content editor › My dream job' && x.reason === 'says nothing usable'));
+  const r = await p;
+  assert.deepEqual(r.compiled.problems, [{ card: 'Content editor › My dream job', reason: 'says nothing usable' }]);
   assert.equal(f.bodies.length, 1);
 });
 
@@ -205,6 +205,31 @@ test('unusable on every attempt: CompileFailed with those problems after the las
   await assert.rejects(p, (e: unknown) => e instanceof CompileFailed
     && e.problems.length === 1 && e.problems[0]!.card === 'Content editor › My dream job' && e.problems[0]!.reason === 'fewer than 3 examples');
   assert.equal(f.bodies.length, 3);
+});
+
+test('unusable on every attempt: CompileFailed carries model and tokens from the last reply', async () => {
+  const { p } = await run([JSON.stringify(THIN)]);
+  const e = await p.catch((x: unknown) => x);
+  assert.ok(e instanceof CompileFailed, `expected CompileFailed, got ${String(e)}`);
+  assert.ok(typeof (e as CompileFailed).model === 'string' && (e as CompileFailed).model!.length > 0, `model should be set, got ${String((e as CompileFailed).model)}`);
+  assert.ok(typeof (e as CompileFailed).tokens === 'number' && (e as CompileFailed).tokens! > 0, `tokens should be > 0, got ${String((e as CompileFailed).tokens)}`);
+});
+
+test('schema error three times: CompileUnavailable carries model and tokens from last reply', async () => {
+  const bad = { ...GOOD, company_exclude: ['x'.repeat(81)] };
+  const { p } = await run([JSON.stringify(bad)]);
+  const e = await p.catch((x: unknown) => x);
+  assert.ok(e instanceof CompileUnavailable, `expected CompileUnavailable, got ${String(e)}`);
+  assert.ok(typeof (e as CompileUnavailable).model === 'string', `model should be set after schema errors, got ${String((e as CompileUnavailable).model)}`);
+  assert.ok(typeof (e as CompileUnavailable).tokens === 'number' && (e as CompileUnavailable).tokens! > 0, `tokens should be > 0, got ${String((e as CompileUnavailable).tokens)}`);
+});
+
+test('QuotaExhausted three times: CompileUnavailable has no model or tokens', async () => {
+  const { p } = await run(['quota']);
+  const e = await p.catch((x: unknown) => x);
+  assert.ok(e instanceof CompileUnavailable);
+  assert.equal((e as CompileUnavailable).model, undefined);
+  assert.equal((e as CompileUnavailable).tokens, undefined);
 });
 
 test('a profile name with spaces around it is matched', async () => {

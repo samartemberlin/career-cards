@@ -227,6 +227,34 @@ describe('buildScanPlan', () => {
     assert.deepEqual(plan.warnings, ['LinkedIn is on but "Where & how I work" names no place to search']);
   });
 
+  // --- LinkedIn deduplication --------------------------------------------
+
+  it('duplicate linkedin locations (same location+remote) produce one search group each', () => {
+    const defaults = loadDefaults();
+    const plan = buildScanPlan({
+      defaults,
+      sources: emptySources(),
+      ...forProfiles(
+        [makeProfile('alice', ['crm'])],
+        [
+          { location: 'Berlin, Germany' },
+          { location: 'berlin, germany' },
+          { location: 'Berlin, Germany', remote: true },
+          { location: 'Berlin, Germany' },
+        ],
+      ),
+      settings: makeSettings({ linkedin: true }),
+    });
+    assert.ok(plan.linkedin !== null, 'linkedin should be set');
+    const searches = (plan.linkedin as { searches?: Array<{ location: string; remote?: boolean }> }).searches;
+    assert.ok(Array.isArray(searches));
+    const berlin = searches!.filter((s) => s.location === 'Berlin, Germany' && !s.remote);
+    assert.equal(berlin.length, 1, `expected one Berlin search, got ${berlin.length}`);
+    const berlinRemote = searches!.filter((s) => s.location === 'Berlin, Germany' && s.remote);
+    assert.equal(berlinRemote.length, 1, `expected one Berlin remote search, got ${berlinRemote.length}`);
+    assert.equal(searches!.length, 2, `expected 2 unique searches, got ${searches!.length}`);
+  });
+
   // --- No mutation --------------------------------------------------------
 
   it('defaults are not mutated', () => {

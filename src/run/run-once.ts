@@ -272,13 +272,22 @@ export async function runOnce(deps: RunDeps, opts: RunOpts): Promise<RunOutcome>
       ctx = buildScoreContext({ user: cfg, profile: { rubric: rules.rubric, cv: cfg.sharedCv }, llm, translateTitle: true });
     } catch (e) {
       if (e instanceof PrivacyError) throw new RunStop('masking failed', [`masking: ${e.message}`]);
-      if (e instanceof CompileFailed) throw new RunStop('cards not usable', e.problems.map((p) => `${p.card}: ${p.reason}`));
-      if (e instanceof CompileUnavailable) throw new RunStop('could not read your cards', [e.message]);
+      if (e instanceof CompileFailed) {
+        if (e.model !== undefined) stats.models[e.model] = (stats.models[e.model] ?? 0) + 1;
+        if (e.tokens !== undefined) stats.tokens += e.tokens;
+        throw new RunStop('cards not usable', e.problems.map((p) => `${p.card}: ${p.reason}`));
+      }
+      if (e instanceof CompileUnavailable) {
+        if (e.model !== undefined) stats.models[e.model] = (stats.models[e.model] ?? 0) + 1;
+        if (e.tokens !== undefined) stats.tokens += e.tokens;
+        throw new RunStop('could not read your cards', [e.message]);
+      }
       throw e;
     }
     stats.reading = rules.reading;
     stats.models[rules.model] = (stats.models[rules.model] ?? 0) + 1;
     stats.tokens += rules.tokens;
+    for (const p of rules.compiled.problems) stats.warnings.push(`${p.card}: ${p.reason}`);
     for (const line of readingText(rules.reading).split('\n')) if (line) log(`reading: ${line}`);
 
     const index = await loadJobIndex(api, deps.boards.jobs);

@@ -16,21 +16,29 @@ export type CompileInput = {
 
 export class CompileFailed extends Error {
   problems: { card: string; reason: string }[];
-  constructor(problems: { card: string; reason: string }[]) {
+  model?: string;
+  tokens?: number;
+  constructor(problems: { card: string; reason: string }[], opts?: { model?: string; tokens?: number }) {
     super(`unusable cards: ${problems.map((p) => `${p.card}: ${p.reason}`).join('; ')}`);
     this.name = 'CompileFailed';
     this.problems = problems;
+    if (opts?.model !== undefined) this.model = opts.model;
+    if (opts?.tokens !== undefined) this.tokens = opts.tokens;
   }
 }
 
 export class CompileUnavailable extends Error {
   kind: 'quota' | 'invalid';
   reason: string;
-  constructor(message: string, kind: 'quota' | 'invalid', reason: string) {
+  model?: string;
+  tokens?: number;
+  constructor(message: string, kind: 'quota' | 'invalid', reason: string, opts?: { model?: string; tokens?: number }) {
     super(message);
     this.name = 'CompileUnavailable';
     this.kind = kind;
     this.reason = reason;
+    if (opts?.model !== undefined) this.model = opts.model;
+    if (opts?.tokens !== undefined) this.tokens = opts.tokens;
   }
 }
 
@@ -77,6 +85,8 @@ export async function compileCards(input: CompileInput, o: {
   let lastWasQuota = false;
   // Set when the last attempt's result was unusable by code checks alone: thrown as CompileFailed if no attempt is left.
   let lastUnusable: { card: string; reason: string }[] | null = null;
+  let lastModel: string | undefined;
+  let lastTokens: number | undefined;
   for (let n = 1; n <= attempts; n++) {
     o.signal?.throwIfAborted();
     if (n > 1) {
@@ -85,20 +95,23 @@ export async function compileCards(input: CompileInput, o: {
     }
     try {
       const r = await callLLM(o.llm, messages, opts);
+      const model = `${r.provider}:${r.model}`;
+      const u = r.usage;
+      const tokens = u.total_tokens ?? (u.prompt_tokens ?? 0) + (u.completion_tokens ?? 0);
+      lastModel = model;
+      lastTokens = tokens;
       o.log(`compile: model ${r.provider}/${r.model}`);
       const parsed = CompiledSchema.safeParse(parseJsonObject(r.text));
       // Paths only: the values are model output.
       if (!parsed.success) throw new StageOutputInvalid(`schema: ${parsed.error.issues.map((i) => i.path.join('.') || '(root)').join(', ')}`);
       const compiled = matchProfiles(parsed.data, input);
       const problems = unusable(compiled, input.profiles.map((p) => p.name));
-      if (problems.length && compiled.problems.length) throw new CompileFailed(problems);
       if (problems.length) {
         lastUnusable = problems;
         o.log(`compile: attempt ${n} failed: unusable: ${[...new Set(problems.map((p) => p.card))].join(', ')}`);
         continue;
       }
-      const u = r.usage;
-      return { compiled, model: `${r.provider}:${r.model}`, tokens: u.total_tokens ?? (u.prompt_tokens ?? 0) + (u.completion_tokens ?? 0) };
+      return { compiled, model, tokens };
     } catch (e) {
       if (o.signal?.aborted) throw o.signal.reason;
       if (!(e instanceof QuotaExhausted || e instanceof StageOutputInvalid)) throw e;
@@ -108,6 +121,6 @@ export async function compileCards(input: CompileInput, o: {
       o.log(`compile: attempt ${n} failed: ${last}`);
     }
   }
-  if (lastUnusable) throw new CompileFailed(lastUnusable);
-  throw new CompileUnavailable(`could not read the Profiles cards: ${last}`, lastWasQuota ? 'quota' : 'invalid', last);
+  if (lastUnusable) throw new CompileFailed(lastUnusable, { model: lastModel, tokens: lastTokens });
+  throw new CompileUnavailable(`could not read the Profiles cards: ${last}`, lastWasQuota ? 'quota' : 'invalid', last, { model: lastModel, tokens: lastTokens });
 }

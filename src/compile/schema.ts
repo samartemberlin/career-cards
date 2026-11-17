@@ -37,8 +37,6 @@ export type CompiledProfile = Compiled['profiles'][number];
 export function unusable(c: Compiled, activeProfiles: string[]): { card: string; reason: string }[] {
   const out: { card: string; reason: string }[] = [];
 
-  for (const p of c.problems) out.push(p);
-
   if (!c.places.anywhere && c.places.keep.length === 0) {
     out.push({ card: specOf('where').name, reason: 'no place to keep jobs in' });
   }
