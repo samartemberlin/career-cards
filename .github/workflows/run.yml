@@ -12,6 +12,16 @@ on:
         required: false
         type: string
         default: manual
+      retried:
+        description: "True when this is an automatic re-run after a crash"
+        required: false
+        type: boolean
+        default: false
+      caller_workflow:
+        description: "Workflow file name to dispatch on retry"
+        required: false
+        type: string
+        default: run.yml
     secrets:
       TRELLO_KEY:
         required: false
@@ -33,6 +43,8 @@ jobs:
   run:
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    outputs:
+      reported: ${{ steps.run.outputs.reported }}
     steps:
       - name: Print parameters
         env:
@@ -107,6 +119,7 @@ jobs:
           ~/.local/claude-cli/bin/claude --version
 
       - name: Run pipeline
+        id: run
         env:
           TRIGGER: ${{ inputs.trigger }}
           TRELLO_KEY: ${{ secrets.TRELLO_KEY }}
@@ -122,3 +135,13 @@ jobs:
         run: |
           trap 'echo "elapsed: $((SECONDS * 1000)) ms"' EXIT
           node src/main.ts run --trigger "$TRIGGER"
+
+  retry:
+    needs: run
+    if: ${{ failure() && needs.run.outputs.reported != 'true' && !inputs.retried }}
+    runs-on: ubuntu-latest
+    permissions: { actions: write }
+    steps:
+      - name: Re-run once
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: gh workflow run "${{ inputs.caller_workflow }}" --repo "${{ github.repository }}" -f trigger="${{ inputs.trigger }}" -f retried=true

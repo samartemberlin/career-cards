@@ -207,3 +207,74 @@ describe('pin-drift guards', () => {
     assert.equal(permissions['actions'], 'write', 'bot caller permissions.actions must be write');
   });
 });
+
+describe('reusable run: retry on crash', () => {
+  it('has a retry job', () => {
+    const jobs = reusableRun['jobs'] as Record<string, unknown>;
+    assert.ok('retry' in jobs, 'reusable run should have a retry job');
+  });
+
+  it('retry job has the exact if condition', () => {
+    const jobs = reusableRun['jobs'] as Record<string, unknown>;
+    const retry = jobs['retry'] as Record<string, unknown>;
+    assert.equal(
+      String(retry['if']),
+      "${{ failure() && needs.run.outputs.reported != 'true' && !inputs.retried }}",
+    );
+  });
+
+  it('retry job needs the run job', () => {
+    const jobs = reusableRun['jobs'] as Record<string, unknown>;
+    const retry = jobs['retry'] as Record<string, unknown>;
+    assert.equal(retry['needs'], 'run');
+  });
+
+  it('run job exposes reported output from steps.run', () => {
+    const jobs = reusableRun['jobs'] as Record<string, unknown>;
+    const run = jobs['run'] as Record<string, unknown>;
+    const outputs = run['outputs'] as Record<string, unknown> | undefined;
+    assert.ok(outputs, 'run job should have outputs');
+    assert.equal(outputs['reported'], '${{ steps.run.outputs.reported }}');
+  });
+
+  it('has retried input (boolean, default false)', () => {
+    const on = reusableRun['on'] as Record<string, unknown>;
+    const wc = on['workflow_call'] as Record<string, unknown>;
+    const inputs = wc['inputs'] as Record<string, unknown>;
+    const retried = inputs['retried'] as Record<string, unknown> | undefined;
+    assert.ok(retried, 'reusable run should have retried input');
+    assert.equal(retried['type'], 'boolean');
+    assert.equal(retried['default'], false);
+  });
+
+  it('has caller_workflow input (string, default run.yml)', () => {
+    const on = reusableRun['on'] as Record<string, unknown>;
+    const wc = on['workflow_call'] as Record<string, unknown>;
+    const inputs = wc['inputs'] as Record<string, unknown>;
+    const callerWorkflow = inputs['caller_workflow'] as Record<string, unknown> | undefined;
+    assert.ok(callerWorkflow, 'reusable run should have caller_workflow input');
+    assert.equal(callerWorkflow['type'], 'string');
+    assert.equal(callerWorkflow['default'], 'run.yml');
+  });
+});
+
+describe('template run: retry inputs', () => {
+  it('passes retried input', () => {
+    const job = callerJob(templateRun);
+    const withInputs = job['with'] as Record<string, unknown>;
+    assert.ok('retried' in withInputs, 'template run should pass retried input');
+  });
+
+  it('permissions.actions is write', () => {
+    const permissions = templateRun['permissions'] as Record<string, unknown> | undefined;
+    assert.ok(permissions, 'template run should have a permissions block');
+    assert.equal(permissions['actions'], 'write', 'template run permissions.actions must be write');
+  });
+
+  it('schedule is commented out', () => {
+    const raw = readFileSync(join(ROOT, 'template/.github/workflows/run.yml'), 'utf8');
+    const on = templateRun['on'] as Record<string, unknown>;
+    assert.ok(!('schedule' in on), 'template run schedule must be commented out');
+    assert.ok(raw.includes('# schedule:') || raw.includes('#   - cron:'), 'template run should have commented-out schedule');
+  });
+});

@@ -293,3 +293,23 @@ test('main: bad --trigger returns 1', async () => {
   assert.equal(code, 1);
   assert.ok(lines.some((l) => l.includes('--trigger')));
 });
+
+test('main: writes reported=true to GITHUB_OUTPUT after runOnce completes', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'cli-test-'));
+  try {
+    const outputFile = join(tmp, 'github-output');
+    writeFileSync(outputFile, '');
+    const { trello, boards } = setupBoards();
+    const lines: string[] = [];
+    const code = await main(
+      ['--dry-run'],
+      { JOBS_BOARD_ID: boards.jobs, PROFILES_BOARD_ID: boards.profiles, SYSTEM_BOARD_ID: boards.system, GITHUB_OUTPUT: outputFile, ...model.env },
+      { trello, scan: async () => ({ jobs: [], bySource: {}, errors: [] }), out: (s) => lines.push(s) },
+    );
+    assert.equal(code, 0);
+    const output = readFileSync(outputFile, 'utf8');
+    assert.ok(output.includes('reported=true'), `reported=true must be written to GITHUB_OUTPUT; got: ${JSON.stringify(output)}`);
+  } finally {
+    rmSync(tmp, { recursive: true });
+  }
+});
