@@ -21,6 +21,11 @@ on:
         required: false
         type: string
         default: ''
+      retried:
+        description: "True when this is an automatic re-run after a crash"
+        required: false
+        type: boolean
+        default: false
   # Uncomment to enable nightly runs:
   # schedule:
   #   - cron: '0 2 * * *'
@@ -29,6 +34,7 @@ run-name: "${{ github.event_name == 'schedule' && format('run-nightly-{0}', gith
 
 permissions:
   contents: read
+  actions: write
 
 concurrency:
   group: run
@@ -40,6 +46,7 @@ jobs:
     with:
       ref: "0000000000000000000000000000000000000000"
       trigger: ${{ inputs.trigger || 'scheduled' }}
+      retried: ${{ inputs.retried || false }}
     secrets:
       TRELLO_KEY: ${{ secrets.TRELLO_KEY }}
       TRELLO_TOKEN: ${{ secrets.TRELLO_TOKEN }}

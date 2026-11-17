@@ -1,5 +1,5 @@
 // CLI entrypoint: --cap can only lower the cap from Settings (never raise it).
-import { readFileSync } from 'node:fs';
+import { appendFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createTrelloClient } from './trello/client.ts';
@@ -192,6 +192,7 @@ export async function main(
 
   const result = await runOnce(deps, opts);
   out(result.report);
+  if (env.GITHUB_OUTPUT) appendFileSync(env.GITHUB_OUTPUT, 'reported=true\n');
   return result.exitCode;
 }
 

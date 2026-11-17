@@ -54,3 +54,7 @@ This registers the relay webhook and verifies the setup.
 ## 5. Enable nightly runs (optional)
 
 Uncomment the `schedule:` block in `.github/workflows/run.yml`.
+
+## Automatic re-run on crash
+
+If the run job crashes (OOM, timeout, unhandled error) without reporting an outcome, the `retry` job in the reusable workflow re-dispatches `run.yml` once automatically.
