@@ -42,7 +42,7 @@ function emptyFacts(key: string): ParsedFacts {
   return {
     key, posting_lang: 'en', title_en: null,
     german: { level: null, spoken_heavy: null, evidence: null },
-    english_working_language: null,
+    english_working_language: null, other_languages: [],
     years: { min: null, max: null, evidence: null },
     degree_field: null, function: null, sector: null, seniority: null,
     driving_licence: null, unpaid_internship: null, methodology: [], deadline: null,

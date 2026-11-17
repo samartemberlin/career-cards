@@ -191,7 +191,7 @@ test('a maximal answer keeps the unverified footer once posted, citing only the 
     assert.ok(r.links!.length < pages.length, 'some points were left out');
     for (const link of r.links!) assert.ok(r.text.includes(`(source: ${link})`));
     const posted = finishReply({
-      text: r.text, author: 'usera', marker: { actionId: 'fa4e0000000000000000c001', cls: 'research' },
+      text: r.text, marker: { actionId: 'fa4e0000000000000000c001', cls: 'research' },
       masker: buildMasker(cfg.personalDetails), allowedLinks: r.links!,
     }).join('\n');
     assert.match(posted, /Research \\\(from the web, unverified\\\)\\:/, `${urlLength}`);

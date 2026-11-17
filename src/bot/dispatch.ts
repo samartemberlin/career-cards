@@ -161,12 +161,12 @@ async function respond(d: DispatchDeps, a: CommentAction, signal: AbortSignal): 
     let parts: string[];
     try {
       parts = r.proposal
-        ? finishProposal({ text: r.text, keyword: trigger.keyword, author: a.author, marker: { ...marker, proposal: r.proposal }, masker, allowedLinks: links })
-        : finishReply({ text: r.text, author: a.author, marker, masker, allowedLinks: links });
+        ? finishProposal({ text: r.text, keyword: trigger.keyword, marker: { ...marker, proposal: r.proposal }, masker, allowedLinks: links })
+        : finishReply({ text: r.text, marker, masker, allowedLinks: links });
     } catch (e) {
       if (!(e instanceof PrivacyError)) throw e;
       d.log(`reply ${a.id} failed masking: ${e.message}`);
-      parts = finishReply({ text: MASKING_FAILED, author: a.author, marker, masker: IDENTITY, allowedLinks: [] });
+      parts = finishReply({ text: MASKING_FAILED, marker, masker: IDENTITY, allowedLinks: [] });
     }
     for (const part of parts) await d.api.comment(a.cardId, part);
     d.log(`reply ${a.id} on ${a.cardId}: ${r.cls}${r.resolves ? ` resolves ${r.resolves}` : ''}${r.proposal ? ` proposes ${r.proposal.action.id}` : ''}`);

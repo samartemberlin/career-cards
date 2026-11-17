@@ -169,8 +169,13 @@ export function jobLabels(r: Job & { facts?: Facts }): { name: string; color: st
     out.push({ name: part, color: part === 'Berlin' ? 'green' : part === 'Remote' ? 'blue' : 'sky' });
   }
   const level = r.facts?.german?.level;
+  const otherLangs = r.facts?.other_languages ?? [];
   const g = level != null ? GERMAN_LABELS[level] : undefined;
-  if (g) out.push({ name: g[0], color: g[1] });
+  // "English OK" is suppressed when other languages are required: the job clearly isn't English-only.
+  if (g && !(g[0] === 'English OK' && otherLangs.length > 0)) out.push({ name: g[0], color: g[1] });
+  for (const lang of otherLangs) {
+    out.push({ name: `${lang.name} required`, color: 'red' });
+  }
   return out;
 }
 

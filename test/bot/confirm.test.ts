@@ -170,7 +170,7 @@ test('a very long record_feedback proposal still yields a part 1 that ends with 
     const keyword = `/${'b'.repeat(19)}`;
     const parts = finishProposal({
       text: `Record this feedback: "${(p.action.args as { text: string }).text}"`, keyword,
-      author: 'u'.repeat(100), marker, masker, allowedLinks: [],
+      marker, masker, allowedLinks: [],
     });
     assert.equal(parts.length, 1, JSON.stringify(unit));
     assert.ok(parts[0]!.length <= REPLY_MAX);
@@ -183,8 +183,8 @@ test('a very long record_feedback proposal still yields a part 1 that ends with 
 test('finishProposal keeps a short proposal whole', () => {
   const masker = buildMasker(['Theo Example']);
   const marker = { actionId: ASK1, cls: 'static' as const, proposal: proposal(RUN, NOW) };
-  const [part] = finishProposal({ text: 'Start a run now?', keyword: '/bot', author: 'usera', marker, masker, allowedLinks: [] });
-  assert.ok(part!.startsWith('@usera Start a run now?\n\nReply \\`/bot yes\\` within 24 h'));
+  const [part] = finishProposal({ text: 'Start a run now?', keyword: '/bot', marker, masker, allowedLinks: [] });
+  assert.ok(part!.startsWith('Start a run now?\n\nReply \\`/bot yes\\` within 24 h'));
 });
 
 test('finishProposal never posts part of a listed detail at the cut', () => {
@@ -192,7 +192,7 @@ test('finishProposal never posts part of a listed detail at the cut', () => {
   const marker = { actionId: ASK1, cls: 'static' as const, proposal: proposal({ id: 'record_feedback', args: { text: big('a') } }, NOW) };
   for (let k = 0; k < 40; k++) {
     const text = 'w'.repeat(k) + ' Theo Example +49 30 1234567x'.repeat(200);
-    const [part, ...rest] = finishProposal({ text, keyword: '/bot', author: 'usera', marker, masker, allowedLinks: [] });
+    const [part, ...rest] = finishProposal({ text, keyword: '/bot', marker, masker, allowedLinks: [] });
     assert.equal(rest.length, 0);
     assert.doesNotMatch(part!, /Theo|Exa|\+49|\\\+49|1234/, `shift ${k}`);
   }

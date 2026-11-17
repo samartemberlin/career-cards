@@ -1,14 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { EXTRACTOR_V, buildFactsMessages, extractAll, loadExtractor, parseFacts } from '../../src/pipeline/facts.ts';
+import { EXTRACTOR_V, HIGH_GERMAN_RE, buildFactsMessages, extractAll, loadExtractor, parseFacts } from '../../src/pipeline/facts.ts';
 import type { Job } from '../../src/pipeline/keys.ts';
 import type { FetchJson, LlmConfig } from '../../src/pipeline/llm.ts';
 
 const good = (o: object = {}): string => JSON.stringify({
   key: 'k', posting_lang: 'de', title_en: 'Project Coordinator (m/f/d)',
   german: { level: 'c1', spoken_heavy: true, evidence: 'verhandlungssicheres Deutsch' },
-  english_working_language: false, years: { min: 3, max: 5, evidence: '3-5 Jahre Erfahrung' },
+  english_working_language: false, other_languages: [],
+  years: { min: 3, max: 5, evidence: '3-5 Jahre Erfahrung' },
   degree_field: 'business', function: 'coordination', sector: 'ngo', seniority: 'junior',
   driving_licence: false, unpaid_internship: false, methodology: ['PRINCE2'], deadline: '2026-11-01', ...o,
 });
@@ -114,4 +115,72 @@ test('captured real reply (German posting, "Sehr gute Deutschkenntnisse in Wort 
   const f = parseFacts(reply, 'probe');
   assert.equal(f.german.level, 'c1'); assert.match(f.german.evidence ?? '', /Deutschkenntnisse/);
   assert.equal(f.years.min, null); assert.equal(f.posting_lang, 'de');
+});
+
+test('parseFacts: other_languages are parsed with name, level and evidence', () => {
+  const f = parseFacts(good({ other_languages: [
+    { name: 'French', level: 'B2', evidence: 'French B2 required' },
+    { name: 'Spanish', level: null, evidence: 'Spanish helpful' },
+  ] }), 'k');
+  assert.equal(f.other_languages.length, 2);
+  assert.equal(f.other_languages[0]?.name, 'French');
+  assert.equal(f.other_languages[0]?.level, 'B2');
+  assert.equal(f.other_languages[1]?.name, 'Spanish');
+  assert.equal(f.other_languages[1]?.level, null);
+});
+
+test('parseFacts: other_languages items without evidence are dropped', () => {
+  const f = parseFacts(good({ other_languages: [
+    { name: 'French', level: 'B2', evidence: '' },
+    { name: '', level: null, evidence: 'some evidence' },
+    { name: 'Italian', level: null, evidence: 'Italiano richiesto' },
+  ] }), 'k');
+  assert.equal(f.other_languages.length, 1);
+  assert.equal(f.other_languages[0]?.name, 'Italian');
+});
+
+test('parseFacts: missing other_languages field defaults to empty array', () => {
+  const withoutField = JSON.parse(good());
+  delete withoutField.other_languages;
+  assert.deepEqual(parseFacts(JSON.stringify(withoutField), 'k').other_languages, []);
+});
+
+test('HIGH_GERMAN_RE matches key phrases and is exported', () => {
+  // positive: German-language phrases
+  assert.ok(HIGH_GERMAN_RE.test('Sehr gute Deutschkenntnisse in Wort und Schrift'));
+  assert.ok(HIGH_GERMAN_RE.test('verhandlungssicheres Deutsch'));
+  assert.ok(HIGH_GERMAN_RE.test('fließende Deutschkenntnisse'));
+  assert.ok(HIGH_GERMAN_RE.test('Deutsch als Muttersprache'));
+  assert.ok(HIGH_GERMAN_RE.test('Deutsch auf Muttersprachniveau'));
+  // positive: English-language phrases (common in Berlin)
+  assert.ok(HIGH_GERMAN_RE.test('fluent German required'));
+  assert.ok(HIGH_GERMAN_RE.test('fluent in German'));
+  assert.ok(HIGH_GERMAN_RE.test('native German speaker required'));
+  assert.ok(HIGH_GERMAN_RE.test('native-level German'));
+  // negative: "nice to have" phrases must NOT trigger
+  assert.ok(!HIGH_GERMAN_RE.test('German is a plus'));
+  assert.ok(!HIGH_GERMAN_RE.test('Deutsch von Vorteil'));
+  assert.ok(!HIGH_GERMAN_RE.test('German skills are nice to have'));
+  // negative: unrelated words
+  assert.ok(!HIGH_GERMAN_RE.test('English fluency required'));
+  assert.ok(!HIGH_GERMAN_RE.test('Deutschlandreise erforderlich'));
+});
+
+test('parseFacts: HIGH_GERMAN_RE guard sets level to null (unknown) when JD matches and model said none', () => {
+  const reply = good({ german: { level: 'none', spoken_heavy: null, evidence: null } });
+  const jdWithGerman = 'Sie verfügen über sehr gute Deutschkenntnisse in Wort und Schrift.';
+  const f = parseFacts(reply, 'k', jdWithGerman);
+  assert.equal(f.german.level, null);
+});
+
+test('parseFacts: HIGH_GERMAN_RE guard does not change level when JD does not match', () => {
+  const reply = good({ german: { level: 'none', spoken_heavy: null, evidence: null } });
+  const f = parseFacts(reply, 'k', 'An English-only posting with no German.');
+  assert.equal(f.german.level, 'none');
+});
+
+test('parseFacts: existing level is not overridden by HIGH_GERMAN_RE', () => {
+  const reply = good({ german: { level: 'c1', spoken_heavy: true, evidence: 'fließend Deutsch' } });
+  const jd = 'Deutschkenntnisse erforderlich';
+  assert.equal(parseFacts(reply, 'k', jd).german.level, 'c1');
 });

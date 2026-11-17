@@ -200,7 +200,7 @@ test('every cap refusal survives finishReply whole: it names its setting without
     [overCap('research', 'c1', usage({ research: 10 }), DEFAULT_CAPS)!, 'research_per_day'],
   ];
   for (const [text, key] of refusals) {
-    const [part, ...rest] = finishReply({ text, author: 'usera', marker: { actionId: 'a'.repeat(24), cls: 'refusal' }, masker: identity, allowedLinks: [] });
+    const [part, ...rest] = finishReply({ text, marker: { actionId: 'a'.repeat(24), cls: 'refusal' }, masker: identity, allowedLinks: [] });
     assert.equal(rest.length, 0);
     assert.doesNotMatch(part!, /link removed/, text);
     const shown = part!.split('\n')[0]!.replace(/\\(.)/g, '$1');

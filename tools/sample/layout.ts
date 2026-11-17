@@ -1,4 +1,5 @@
 import { jobCardDesc, jobCardTitle, RUN_SUMMARY_PREFIX } from '../../src/trello/cards.ts';
+import { loadDefaults } from '../../src/run/sources-plan.ts';
 import type { SampleBoard } from './guard.ts';
 import { SAMPLE_PROFILES } from './profiles.ts';
 
@@ -15,6 +16,40 @@ export type CardSpec = {
 };
 export type ListSpec = { name: string; cards: CardSpec[]; closed?: boolean };
 export type BoardLayout = { labels: { name: string; color: string }[]; lists: ListSpec[] };
+
+/**
+ * Description for the Sources card on the System board, generated from the built-in defaults.
+ * Add checklist: extra sources beyond the defaults (URL for job boards, company name for tracked companies).
+ * Drop checklist: built-in sources to skip for this user.
+ * Empty checklists mean "use all built-in sources as-is".
+ */
+export function sourcesCardDesc(): string {
+  const d = loadDefaults();
+  const portals = d.portals as Record<string, { name?: string }[]>;
+  const named = (arr: { name?: string }[] | undefined) =>
+    (arr ?? []).map((x) => x.name).filter((n): n is string => Boolean(n));
+  const boards = named(portals.job_boards);
+  const interamt = named(portals.interamt_searches);
+  const companies = named(portals.tracked_companies);
+  const rss = named(d.extra.rss as { name?: string }[]);
+  const pages = named(d.extra.pages as { name?: string }[]);
+  const hasLinkedin = !!d.extra.linkedin;
+  const lines: string[] = [
+    'Add and Drop checklists override the built-in source list for this user.',
+    '- **Add**: extra sources to scan (a career-page URL, or a company name that career-ops already tracks).',
+    '- **Drop**: built-in sources to skip. Each item must match a source name exactly.',
+    '- Empty checklists mean "use all built-in sources without change".',
+    '',
+    '**Built-in sources:**',
+  ];
+  if (boards.length) lines.push('', `Job boards (${boards.length}): ${boards.join(', ')}.`);
+  if (interamt.length) lines.push('', `Interamt searches (${interamt.length}): ${interamt.join(', ')}.`);
+  if (companies.length) lines.push('', `Tracked companies (${companies.length}): ${companies.join(', ')}.`);
+  if (rss.length) lines.push('', `RSS feeds: ${rss.join(', ')}.`);
+  if (pages.length) lines.push('', `Career pages: ${pages.join(', ')}.`);
+  if (hasLinkedin) lines.push('', 'LinkedIn (public guest search, see extra-sources.yml for limits).');
+  return lines.join('\n');
+}
 
 export const RUN_COLUMN = 'Nov 9 · 01:00';
 export const OLD_RUN_COLUMN = 'Oct 1 · 01:00';
@@ -121,7 +156,7 @@ export const LAYOUT: Record<SampleBoard, BoardLayout> = {
           },
           {
             name: 'Sources',
-            desc: 'Sources added to or dropped from the defaults.',
+            desc: sourcesCardDesc(),
             checklists: [
               { name: 'Add', items: ['Example GmbH — https://example.com/careers'] },
               { name: 'Drop', items: ['Old Example AG'] },

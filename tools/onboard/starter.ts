@@ -1,4 +1,5 @@
 import type { BoardLayout, CardSpec } from '../sample/layout.ts';
+import { sourcesCardDesc } from '../sample/layout.ts';
 import { starterProfiles } from '../sample/profiles.ts';
 
 const yaml = (body: string, note: string): string => `${note}\n\n\`\`\`yaml\n${body}\`\`\``;
@@ -39,7 +40,7 @@ function layout(allowed: string[]): Record<'jobs' | 'profiles' | 'system', Board
           name: 'Config',
           cards: [
             settings(allowed),
-            { name: 'Sources', desc: 'Sources added to or dropped from the defaults, one per item.', checklists: [{ name: 'Add', items: [] }, { name: 'Drop', items: [] }] },
+            { name: 'Sources', desc: sourcesCardDesc(), checklists: [{ name: 'Add', items: [] }, { name: 'Drop', items: [] }] },
             { name: 'Schedule', desc: 'The nightly run is started by a Trello automation rule. Edit that rule to change the time.' },
           ],
         },

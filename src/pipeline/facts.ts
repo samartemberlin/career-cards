@@ -5,9 +5,16 @@ import type { Job } from './keys.ts';
 import { QuotaExhausted, callLLM } from './llm.ts';
 import type { FetchJson, LlmConfig, Message } from './llm.ts';
 
-export const EXTRACTOR_V = '1';
+export const EXTRACTOR_V = '2';
 const JD_MAX_CHARS = 6000;
 const GERMAN_LEVELS = new Set(['none', 'a2', 'b1', 'b2', 'c1', 'native']);
+
+/**
+ * Matches JD text that strongly implies German is required (spoken/written) even when the model
+ * replies `none`. Applied as a deterministic safety net only when the model says `none`.
+ */
+export const HIGH_GERMAN_RE =
+  /\b(?:Deutschkenntnisse|(?:flie[sß]end\w*|verhandlungssicher\w*|muttersprachlich\w*|sehr\s+gut\w*|hervorragend\w*|exzellent\w*)\s+(?:in\s+)?(?:der\s+)?(?:deutschen?\s+)?Deutsch\b|Deutsch\s*(?:flie[sß]end|verhandlungssicher|C1|C2|B1|B2)|Deutsch\s+in\s+Wort\s+und\s+Schrift|Muttersprache\s+Deutsch|Deutsch\s+als\s+Muttersprache|Deutsch\s+auf\s+Muttersprachniveau|fluent(?:\s+in)?\s+German|native(?:-level)?\s+German)/i;
 
 /** The default extractor prompt, config/defaults/extractor.md. */
 export const loadExtractor = (): string => readFileSync(new URL('../../config/defaults/extractor.md', import.meta.url), 'utf8');
@@ -18,6 +25,7 @@ export type ParsedFacts = {
   title_en: string | null;
   german: { level: string | null; spoken_heavy: boolean | null; evidence: string | null };
   english_working_language: boolean | null;
+  other_languages: { name: string; level: string | null; evidence: string }[];
   years: { min: number | null; max: number | null; evidence: string | null };
   degree_field: string | null;
   function: string | null;
@@ -44,19 +52,33 @@ const bool = (v: unknown): boolean | null => (v === true ? true : v === false ? 
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 40 ? v : null);
 
 /** Validate a reply. Anything doubtful becomes null: a fact without evidence is a guess, and a guess must not cost points. */
-export function parseFacts(text: string, key: string): ParsedFacts {
+export function parseFacts(text: string, key: string, jd?: string): ParsedFacts {
   let o: any;
   try { o = JSON.parse(text.trim().replace(/^```(?:json)?\s*|\s*```$/g, '')); } catch { throw new Error(`not JSON: ${text.slice(0, 120)}`); }
   if (o?.key !== key) throw new Error(`key mismatch: got ${o?.key}`);
   const gEvidence = str(o.german?.evidence, 200);
   let level: string | null = GERMAN_LEVELS.has(o.german?.level) ? o.german.level : null;
   if (level && level !== 'none' && !gEvidence) level = null;
+  // Guard: if the model says `none` but the JD clearly mentions German, treat as unknown (null = no label, no penalty).
+  if (level === 'none' && jd && HIGH_GERMAN_RE.test(jd)) level = null;
   const yEvidence = str(o.years?.evidence, 200);
+  const other_languages: ParsedFacts['other_languages'] = [];
+  if (Array.isArray(o.other_languages)) {
+    for (const item of o.other_languages) {
+      if (other_languages.length >= 4) break;
+      const name = str(item?.name, 40);
+      const evidence = str(item?.evidence, 200);
+      if (!name || !evidence) continue;
+      const langLevel = typeof item?.level === 'string' && item.level.trim() ? item.level.trim().slice(0, 20) : null;
+      other_languages.push({ name, level: langLevel, evidence });
+    }
+  }
   return {
     key, posting_lang: ['de', 'en', 'other'].includes(o.posting_lang) ? o.posting_lang : null,
     title_en: str(o.title_en),
     german: { level, spoken_heavy: level && level !== 'none' ? bool(o.german?.spoken_heavy) : null, evidence: gEvidence },
     english_working_language: bool(o.english_working_language),
+    other_languages,
     years: { min: yEvidence ? num(o.years?.min) : null, max: yEvidence ? num(o.years?.max) : null, evidence: yEvidence },
     degree_field: str(o.degree_field, 60), function: str(o.function, 60), sector: str(o.sector, 60), seniority: str(o.seniority, 40),
     driving_licence: bool(o.driving_licence), unpaid_internship: bool(o.unpaid_internship),
@@ -107,7 +129,7 @@ export async function extractAll(opts: ExtractAllOpts): Promise<ExtractAllResult
           const meta = await callLLM(llm, msgs, { fetchImpl, retries });
           tokens += meta.usage.total_tokens ?? 0;
           try {
-            facts.set(job.key, { ...parseFacts(meta.text, job.key), extractor_v: EXTRACTOR_V, model: `${meta.provider}:${meta.model}` });
+            facts.set(job.key, { ...parseFacts(meta.text, job.key, job.jd ?? undefined), extractor_v: EXTRACTOR_V, model: `${meta.provider}:${meta.model}` });
             break;
           } catch (e) { if (i) throw e; }
         }
