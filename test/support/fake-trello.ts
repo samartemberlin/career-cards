@@ -62,6 +62,9 @@ export class FakeTrello {
     return max + 16384;
   }
 
+  /** Tests of the sample-boards setup tool only: PUT /cards/{id} may then also set `desc`. */
+  public allowDescEdits: boolean = false;
+
   /** Set to false to make POST /webhooks simulate a failed HEAD check (returns 400, not WebhookExists). */
   public webhookHeadOk: boolean = true;
   private _webhooks = new Map<string, string>();  // key: `${idModel}\0${callbackURL}` → id
@@ -403,6 +406,11 @@ export class FakeTrello {
         const card = this._cards.get(m[1]!);
         if (!card) return notFound();
         const body = await readJson() as Record<string, unknown>;
+        if (this.allowDescEdits && Object.keys(body).length === 1 && typeof body.desc === 'string') {
+          const updated = { ...card, desc: body.desc };
+          this._cards.set(card.id, updated);
+          return ok(this._cardBody(updated, false));
+        }
         // The bot never edits a card: archiving is the only change it may send, so anything else fails the test.
         if (Object.keys(body).some((k) => k !== 'closed') || typeof body.closed !== 'boolean') {
           return new Response('the bot never edits a card', { status: 400 });

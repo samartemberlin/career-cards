@@ -234,3 +234,89 @@ test('withAllowedMembers rewrites only the allowed_members line of the YAML bloc
   assert.throws(() => withAllowedMembers('```yaml\ntimezone: x\n```', ['a']), /allowed_members/);
   assert.throws(() => withAllowedMembers('no block', ['a']), /allowed_members/);
 });
+
+// ── setup converges, capture reads the new layout ───────────────────────────
+
+async function sampleFake() {
+  const { FakeTrello } = await import('../support/fake-trello.ts');
+  const { seedLayout } = await import('../support/seed-layout.ts');
+  const { LAYOUT } = await import('../../tools/sample/layout.ts');
+  const { scopeClient } = await import('../../src/trello/scoped.ts');
+  const fake = new FakeTrello();
+  fake.allowDescEdits = true;
+  const ids = { jobs: await seedLayout(fake, LAYOUT.jobs), profiles: await seedLayout(fake, LAYOUT.profiles), system: await seedLayout(fake, LAYOUT.system) };
+  const other = await seedLayout(fake, { labels: [], lists: [{ name: 'Mine', cards: [{ name: 'CV', desc: 'real' }] }] });
+  const raw = createTrelloClient({ key: 'k', token: 't', fetchImpl: fake.fetch, sleep: async () => {} });
+  const boards = [ids.jobs, ids.profiles, ids.system];
+  const api = scopeClient(raw, { boards, profilesBoard: ids.profiles });
+  const asUser = scopeClient(raw, { boards });
+  return { fake, raw, api, asUser, ids, other, boards, LAYOUT };
+}
+
+const zero = () => ({ labels: 0, lists: 0, cards: 0, checklists: 0, items: 0, closedChanged: 0, descs: 0, listsArchived: 0 });
+
+test('setup converges the Profiles board: stale descs updated, lists not in the layout archived', async () => {
+  const { applyLayout } = await import('../../tools/sample/apply.ts');
+  const { rawPut, sampleDescWriter } = await import('../../tools/sample/guard.ts');
+  const { fake, raw, api, asUser, ids, boards, LAYOUT } = await sampleFake();
+  const details = fake.openCardId(ids.profiles, 'Personal details', 'About me');
+  fake.setCardDesc(details, 'old checklist hint');
+  const stray = await raw.createList(ids.profiles, 'Profile settings', 'bottom');
+  const setDesc = sampleDescWriter(raw, rawPut(fake.fetch, { key: 'k', token: 't' }), boards);
+
+  const made = zero();
+  await applyLayout({ api, asUser, setDesc }, ids.profiles, LAYOUT.profiles, made, { converge: true });
+
+  const want = LAYOUT.profiles.lists.find((l) => l.name === 'About me')!.cards.find((c) => c.name === 'Personal details')!.desc;
+  assert.equal((await raw.card(details)).desc, want);
+  assert.equal((await raw.list(stray.id)).closed, true);
+  assert.equal(made.descs, 1);
+  assert.equal(made.listsArchived, 1);
+  assert.equal(made.cards, 0);
+
+  const again = zero();
+  await applyLayout({ api, asUser, setDesc }, ids.profiles, LAYOUT.profiles, again, { converge: true });
+  assert.deepEqual(again, zero(), 'a second setup changes nothing');
+});
+
+test('setup leaves the Jobs board lists and descs alone', async () => {
+  const { applyLayout } = await import('../../tools/sample/apply.ts');
+  const { fake, raw, api, asUser, ids, LAYOUT } = await sampleFake();
+  const extra = await raw.createList(ids.jobs, 'Nov 10 · 01:00', 'bottom');
+  const first = fake.openCardId(ids.jobs, LAYOUT.jobs.lists[0]!.cards[1]!.name);
+  fake.setCardDesc(first, `changed\n\n---\ncareer-cards-key: sample:job-1`);
+  const made = zero();
+  const setDesc = async () => { throw new Error('no desc edits on the Jobs board'); };
+  await applyLayout({ api, asUser, setDesc }, ids.jobs, LAYOUT.jobs, made, { converge: false });
+  assert.equal((await raw.list(extra.id)).closed, false);
+  assert.equal(made.listsArchived, 0);
+  assert.equal(made.descs, 0);
+  assert.equal(made.cards, 0);
+});
+
+test('the desc writer refuses a card that is not on a sample board, with no write', async () => {
+  const { SampleGuardError, rawPut, sampleDescWriter } = await import('../../tools/sample/guard.ts');
+  const { fake, raw, other, boards } = await sampleFake();
+  const card = fake.openCardId(other, 'CV');
+  fake.requests.length = 0;
+  const setDesc = sampleDescWriter(raw, rawPut(fake.fetch, { key: 'k', token: 't' }), boards);
+  await assert.rejects(setDesc(card, 'x'), SampleGuardError);
+  assert.equal((await raw.card(card)).desc, 'real');
+  assert.ok(fake.requests.every((r) => r.method === 'GET'), JSON.stringify(fake.requests));
+});
+
+test('capture lookups work on the new layout (Personal details is plain text, no checklist)', async () => {
+  const { captureLookups } = await import('../../tools/sample/apply.ts');
+  const { fake, api, ids } = await sampleFake();
+  const reads = {
+    jobLists: await api.lists(ids.jobs, 'all'), jobCards: await api.allCards(ids.jobs),
+    profileLists: await api.lists(ids.profiles, 'all'), profileCards: await api.cards(ids.profiles, { filter: 'open', checklists: true }),
+    systemCards: await api.cards(ids.system, { filter: 'open', checklists: true }),
+  };
+  fake.requests.length = 0;
+  await captureLookups(api, reads);
+  const paths = fake.requests.map((r) => `${r.method} ${r.path.replace(/^\/1/, '').replace(/[0-9a-f]{24}/g, '<id>')}`);
+  assert.ok(paths.includes('GET /checklists/<id>'), paths.join('\n'));
+  assert.ok(paths.includes('GET /lists/<id>'), paths.join('\n'));
+  assert.ok(fake.requests.every((r) => r.method === 'GET'));
+});

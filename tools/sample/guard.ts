@@ -1,6 +1,8 @@
 // The bot token also sees real users' boards. These checks keep the sample tool on its own three boards.
 import type { TrelloApi } from '../../src/trello/api.ts';
 
+export type RawPut = (path: string, body: Record<string, string>) => Promise<void>;
+
 export const SAMPLE_NAMES = {
   jobs: 'career-cards sample · Jobs',
   profiles: 'career-cards sample · Profiles',
@@ -79,4 +81,25 @@ export function withAllowedMembers(desc: string, usernames: string[]): string {
   }
   const body = lines.map((l) => (/^allowed_members:/.test(l) ? `allowed_members: [${usernames.join(', ')}]` : l)).join('\n');
   return desc.slice(0, block!.index) + '```yaml\n' + body + '```' + desc.slice(block!.index + block![0].length);
+}
+
+/** A PUT with the tool's own credentials, for the writes the API client does not offer (it never edits a card). */
+export function rawPut(f: typeof fetch, auth: { key: string; token: string }): RawPut {
+  return async (path, body) => {
+    const res = await f(new URL(`https://api.trello.com/1${path}`), {
+      method: 'PUT',
+      headers: { authorization: `OAuth oauth_consumer_key="${auth.key}", oauth_token="${auth.token}"`, 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`PUT ${path.replace(/[0-9a-f]{24}/g, '<id>')} → ${res.status}`);
+  };
+}
+
+/** Sets a card's description after a fresh lookup shows the card is on one of `boards`. */
+export function sampleDescWriter(api: Pick<TrelloApi, 'card'>, put: RawPut, boards: string[]): (cardId: string, desc: string) => Promise<void> {
+  return async (cardId, desc) => {
+    const card = await api.card(cardId);
+    if (!boards.includes(card.idBoard)) throw new SampleGuardError('refused: that card is not on a sample board');
+    await put(`/cards/${cardId}`, { desc });
+  };
 }
