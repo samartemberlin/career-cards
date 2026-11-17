@@ -1,5 +1,6 @@
 // One webhook comment in, at most one reply out. Every reply goes through finishReply with the user's masker; the
-// only exceptions are CONFIG_BROKEN, NOT_PRIVATE and MASKING_FAILED, constants that carry no personal detail.
+// only exceptions are CONFIG_BROKEN, NOT_PRIVATE and MASKING_FAILED, constants that carry no personal detail, and the
+// config fix list, which names cards and lists only.
 import { gate } from '../serve/gate.ts';
 import type { CommentAction, GateDeps } from '../serve/gate.ts';
 import type { RunStarter } from '../serve/runs.ts';
@@ -23,6 +24,7 @@ import type { BotApi, TCard } from '../trello/api.ts';
 import type { UserBoards } from '../trello/scoped.ts';
 import { parseJobLink } from '../trello/cards.ts';
 import { TIMEOUT_REPLY } from './stages/call.ts';
+import { configFixText } from './check.ts';
 
 export type DispatchDeps = GateDeps & {
   starter: RunStarter; net: NetDeps; env: Env;
@@ -183,7 +185,7 @@ async function respond(d: DispatchDeps, a: CommentAction, signal: AbortSignal): 
   } catch (e) {
     if (!(e instanceof ConfigInvalid || e instanceof PrivacyError)) throw e;
     d.log(`config unusable for ${a.id}: ${e.name}`);
-    await post(IDENTITY, { text: CONFIG_BROKEN, cls: 'refusal' });
+    await post(IDENTITY, { text: e instanceof ConfigInvalid ? configFixText(e.problems) : CONFIG_BROKEN, cls: 'refusal' });
     return 'handled';
   }
   if (refusal) { await post(masker, { text: refusal, cls: 'refusal' }); return 'handled'; }

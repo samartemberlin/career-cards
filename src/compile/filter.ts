@@ -24,9 +24,10 @@ export function normEmployment(raw: string | undefined): (typeof EMPLOYMENT)[num
   const matched = new Set<(typeof EMPLOYMENT)[number]>();
   if (f === 'full_time' || f === 'full' || f.includes('vollzeit')) matched.add('full_time');
   if (f === 'part_time' || f === 'part' || f.includes('teilzeit')) matched.add('part_time');
-  if (f === 'contract' || f === 'contractor' || f.includes('befristet')) matched.add('contract');
+  if (f === 'contract' || f === 'contractor' || f.includes('werkvertrag')) matched.add('contract');
   if (f === 'internship' || f.includes('intern') || f.includes('praktik')) matched.add('internship');
-  if (f === 'temporary') matched.add('temporary');
+  // befristet is a fixed-term employee job; unbefristet is permanent.
+  if (f === 'temporary' || f === 'fixed_term' || (f.includes('befristet') && !f.includes('unbefristet'))) matched.add('temporary');
   if (f === 'freelance' || f.includes('freiberuf')) matched.add('freelance');
   // Two or more types in one value → ambiguous, treat as unknown to avoid a wrong rejection.
   if (matched.size !== 1) return null;

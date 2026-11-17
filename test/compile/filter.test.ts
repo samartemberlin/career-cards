@@ -174,3 +174,19 @@ test('passes: employment.keep part_time + "Vollzeit, Teilzeit" → ambiguous, no
 test('RULE_TEXT: PLACE_NOT_KEPT is exactly correct', () => {
   assert.equal(RULE_TEXT['PLACE_NOT_KEPT'], 'location not in your places');
 });
+
+test('bare "Remote" is kept; a ruled-out remote region is dropped first', () => {
+  const c = compiled({ places: { keep: ['Remote', 'Berlin'], drop: ['United States'] } });
+  assert.equal(filter(c)(job({ location: 'Remote' })), null);
+  assert.equal(filter(c)(job({ location: 'Remote, United States' })), 'PLACE_DROPPED: "Remote, United States"');
+});
+
+test('normEmployment: befristet / fixed-term → temporary; Werkvertrag / contractor → contract', () => {
+  assert.equal(normEmployment('befristet'), 'temporary');
+  assert.equal(normEmployment('Befristet'), 'temporary');
+  assert.equal(normEmployment('fixed-term'), 'temporary');
+  assert.equal(normEmployment('Fixed term'), 'temporary');
+  assert.equal(normEmployment('Werkvertrag'), 'contract');
+  assert.equal(normEmployment('contractor'), 'contract');
+  assert.equal(normEmployment('unbefristet'), null);
+});

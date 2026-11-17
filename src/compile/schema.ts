@@ -18,7 +18,7 @@ export const CompiledSchema = z.object({
   languages: z.object({ de: z.object({ read: Level.optional(), write: Level.optional(), speak: Level.optional() }).strict().optional() }).strict(),
   years_experience: z.number().min(0).max(60).nullable(),
   profiles: z.array(z.object({
-    name: z.string().min(1).max(100),
+    name: z.string().trim().min(1).max(100),
     search_terms: Phrases(20),
     title_include: Phrases(60),
     title_exclude: Phrases(60),

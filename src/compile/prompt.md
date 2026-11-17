@@ -39,6 +39,9 @@ Rules:
    country in English and German, its large cities, common region tags such as DACH or "Remote (EU)". Up to 300.
 3. `places.anywhere`: true only when the person says location does not matter.
 4. `places.drop`: only places the person rules out.
+   When the person accepts remote work, also put in `keep` the bare tags postings use for it that they accept
+   ("Remote", "Homeoffice", "Home office", "Work from home", "Anywhere" as applicable), and put in `drop` the remote
+   regions or countries they rule out (e.g. "United States", "USA", "US only", "Canada", "UK", "India").
 5. `employment`: only when the person states it; otherwise both lists are empty. `remote_only` lists the employment
    types for which a remote job is accepted (e.g. "remote only if full-time" gives ["full_time"]).
 6. `search_terms` are what one types into a job site; `title_include` are words a fitting job title contains;

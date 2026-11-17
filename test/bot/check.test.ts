@@ -9,13 +9,13 @@ import { checkCard } from '../../src/bot/check.ts';
 import { CATALOGUE, matchStatic } from '../../src/bot/catalogue.ts';
 import { helpText } from '../../src/bot/handlers.ts';
 import { capClassOf } from '../../src/bot/caps.ts';
-import { LISTS } from '../../src/config/cards.ts';
+import { LISTS, specOf } from '../../src/config/cards.ts';
 import type { UserConfig } from '../../src/config/schema.ts';
 import type { Compiled } from '../../src/compile/schema.ts';
 import { fakeLlm, fakeLlmEnv } from '../support/fake-llm.ts';
 import type { CompileReply } from '../support/fake-llm.ts';
 import { testConfig } from '../support/user-config.ts';
-import { QUOTA_REPLY } from '../../src/bot/stages/call.ts';
+import { MASKING_REPLY, QUOTA_REPLY } from '../../src/bot/stages/call.ts';
 import { readingOf, readingText } from '../../src/compile/reading.ts';
 import { compileInputOf, scoringTextOf } from '../../src/run/profiles.ts';
 import { ConfigInvalid } from '../../src/trello/config.ts';
@@ -149,17 +149,61 @@ test('check: profile list card → shows block for that profile card', async () 
   assert.ok(result.text.includes('Default › My dream job'), `expected display name in text: ${result.text}`);
 });
 
-test('check: profile list card in inactive profile → not read reply, uncounted', async () => {
+const NOT_ONE = 'This card is not one the run reads.';
+
+async function cardIn(raw: ReturnType<typeof setup>['raw'], list: string, name: string): Promise<string> {
+  const l = await raw.createList(PROFILES_BOARD, list, 'bottom');
+  return (await raw.createCard({ idList: l.id, name, desc: '', pos: 'bottom' })).id;
+}
+
+test('check: card in an inactive profile → not active, uncounted, no model call', async () => {
   const { raw, llm, makeCtx } = setup();
-  // List named "Inactive" — no active profile has that name in testConfig
-  const list = await raw.createList(PROFILES_BOARD, 'Inactive', 'bottom');
-  const card = await raw.createCard({ idList: list.id, name: 'My dream job', desc: '', pos: 'bottom' });
-  const ctx = makeCtx(card.id);
-  const result = await checkCard(ctx);
-  assert.ok(result.text.includes('not read'), `unexpected text: ${result.text}`);
+  const two = testConfig({ settings: cfg.settings, cv: cfg.board.cv, personalDetails: cfg.personalDetails, dream: 'Looking for editor work.', profiles: [{ name: 'Default', active: true }, { name: 'Spare', active: false }] });
+  const id = await cardIn(raw, 'Spare', 'My dream job');
+  const result = await checkCard(makeCtx(id, async () => two));
+  assert.equal(result.text, "This card is not read by tonight's run (its profile is not active).");
   assert.equal(result.uncounted, true);
-  // Compile still runs — only 1 model call
+  assert.equal(llm.requests.length, 0);
+});
+
+test('check: an empty optional card → skipped, uncounted, no model call', async () => {
+  const { raw, llm, makeCtx } = setup();
+  const withEmpty: UserConfig = structuredClone(cfg);
+  const spec = specOf('examples');
+  withEmpty.board.profiles[0]!.cards.push({ key: 'examples', name: spec.name, text: '', ref: { id: 'x', name: spec.name, url: 'https://trello.com/c/x', board: 'profiles' } });
+  const id = await cardIn(raw, 'Default', spec.name);
+  const result = await checkCard(makeCtx(id, async () => withEmpty));
+  assert.equal(result.text, 'This card is empty, so tonight\'s run skips it.');
+  assert.equal(result.uncounted, true);
+  assert.equal(llm.requests.length, 0);
+});
+
+for (const [list, name] of [['Feedback', 'Too senior'], ['Originals', 'My dream job'], ['Ideas', 'My notes'], [LISTS.dealBreakers, 'My notes'], [LISTS.niceToHave, 'Salary'], ['Default', 'Active']]) {
+  test(`check: ${list} › ${name} → not one the run reads, uncounted, no model call`, async () => {
+    const { raw, llm, makeCtx } = setup();
+    const result = await checkCard(makeCtx(await cardIn(raw, list!, name!)));
+    assert.equal(result.text, NOT_ONE);
+    assert.equal(result.uncounted, true);
+    assert.equal(llm.requests.length, 0);
+  });
+}
+
+test('check: list and card names match trimmed, in any case', async () => {
+  const { raw, llm, makeCtx } = setup();
+  const result = await checkCard(makeCtx(await cardIn(raw, ' default ', ' MY DREAM JOB ')));
+  assert.ok(result.text.startsWith('How a run would read this card:'), result.text);
+  assert.ok(result.text.includes('Default › My dream job'), result.text);
   assert.equal(llm.requests.length, 1);
+});
+
+test('check: a masking failure → masking reply, uncounted', async () => {
+  const { raw, llm, makeCtx } = setup();
+  const leaky = testConfig({ settings: cfg.settings, cv: cfg.board.cv, dream: 'Looking for editor work.', personalDetails: ['Default'] });
+  const id = await cardIn(raw, 'Default', 'My dream job');
+  const result = await checkCard(makeCtx(id, async () => leaky));
+  assert.equal(result.text, MASKING_REPLY('a profile name contains a personal detail'));
+  assert.equal(result.uncounted, true);
+  assert.equal(llm.requests.length, 0);
 });
 
 test('check: config error → fix list, uncounted, no model call', async () => {

@@ -3,13 +3,15 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { createTrelloClient } from '../src/trello/client.ts';
-import { isOriginalsName, scopeClient } from '../src/trello/scoped.ts';
+import { scopeClient } from '../src/trello/scoped.ts';
 import type { TrelloApi, TCard, TList } from '../src/trello/api.ts';
-import { parseJobKey } from '../src/trello/cards.ts';
-import { SAMPLE_NAMES, SampleGuardError, denyBoardListing, pickBotWorkspace, verifySampleBoards, withAllowedMembers } from './sample/guard.ts';
+import { applyLayout, captureLookups } from './sample/apply.ts';
+import type { Counts } from './sample/apply.ts';
+import {
+  SAMPLE_NAMES, SampleGuardError, denyBoardListing, pickBotWorkspace, rawPut, sampleDescWriter, verifySampleBoards, withAllowedMembers,
+} from './sample/guard.ts';
 import type { SampleBoard, SampleState } from './sample/guard.ts';
-import { LAYOUT, OLD_RUN_COLUMN, RUN_COLUMN, cardCount } from './sample/layout.ts';
-import type { BoardLayout } from './sample/layout.ts';
+import { LAYOUT, cardCount } from './sample/layout.ts';
 import { personalStrings, scrubRecordings } from './sample/scrub.ts';
 import type { RecordedCall, Recording } from './sample/scrub.ts';
 
@@ -61,86 +63,29 @@ function recordingFetch(onCall: (c: RecordedCall) => void, counter: { n: number 
   }) as typeof fetch;
 }
 
-function rawClient(fetchImpl: typeof fetch): TrelloApi {
+function auth(): { key: string; token: string } {
   const key = process.env.TRELLO_KEY;
   const token = process.env.TRELLO_TOKEN;
   if (!key || !token) throw new Error('TRELLO_KEY and TRELLO_TOKEN must be set (node --env-file=...)');
-  return createTrelloClient({ key, token, fetchImpl });
+  return { key, token };
 }
 
-type Counts = Record<'labels' | 'lists' | 'cards' | 'checklists' | 'items' | 'closedChanged', number>;
-
-/** `asUser` writes the Originals column, which in real use only the user fills; it is still limited to the sample boards. */
-async function applyLayout(api: TrelloApi, asUser: TrelloApi, boardId: string, layout: BoardLayout, made: Counts): Promise<void> {
-  const labels = await api.labels(boardId);
-  for (const l of layout.labels) {
-    if (!labels.some((x) => x.name === l.name)) {
-      labels.push(await api.createLabel(boardId, l.name, l.color));
-      made.labels++;
-    }
-  }
-  const labelId = (name: string): string => labels.find((x) => x.name === name)!.id;
-
-  const lists = await api.lists(boardId, 'all');
-  const hasChecklists = layout.lists.some((l) => l.cards.some((c) => c.checklists));
-  // The Jobs board is over 1,000 cards and needs paging; the others are small and need their checklists.
-  const cards: TCard[] = hasChecklists
-    ? await api.cards(boardId, { filter: 'all', checklists: true })
-    : await api.allCards(boardId);
-
-  for (const ls of layout.lists) {
-    let list: TList | undefined = lists.find((x) => x.name === ls.name);
-    if (!list) {
-      list = await api.createList(boardId, ls.name, 'bottom');
-      made.lists++;
-    }
-    const writer = isOriginalsName(ls.name) ? asUser : api;
-    for (const cs of ls.cards) {
-      // Open and archived job cards share titles; their keys tell them apart.
-      const key = parseJobKey(cs.desc);
-      let card = cards.find((c) => c.idList === list.id && (key ? parseJobKey(c.desc) === key : c.name === cs.name));
-      if (!card) {
-        card = await writer.createCard({ idList: list.id, name: cs.name, desc: cs.desc, pos: 'bottom', idLabels: (cs.labels ?? []).map(labelId) });
-        made.cards++;
-        if (cs.comment) await api.comment(card.id, cs.comment);
-        if (cs.attachment) await api.attachText(card.id, cs.attachment.name, cs.attachment.text);
-      }
-      for (const cls of cs.checklists ?? []) {
-        let cl = card.checklists?.find((x) => x.name === cls.name);
-        if (!cl) {
-          cl = await api.createChecklist(card.id, cls.name);
-          made.checklists++;
-        }
-        for (const item of cls.items) {
-          if (!cl.checkItems.some((x) => x.name === item)) {
-            await api.addCheckItem(cl.id, item);
-            made.items++;
-          }
-        }
-      }
-      if (Boolean(cs.closed) !== card.closed) {
-        await api.setCardClosed(card.id, Boolean(cs.closed));
-        made.closedChanged++;
-      }
-    }
-    if (Boolean(ls.closed) !== list.closed) {
-      await api.setListClosed(list.id, Boolean(ls.closed));
-      made.closedChanged++;
-    }
-  }
+function rawClient(fetchImpl: typeof fetch): TrelloApi {
+  return createTrelloClient({ ...auth(), fetchImpl });
 }
 
 async function setup(): Promise<void> {
   const state = loadState();
   const counter = { n: 0 };
-  const raw = rawClient(recordingFetch((c) => {
+  const recording = recordingFetch((c) => {
     if (c.method === 'GET' || c.status !== 200) return;
     const kind = WRITE_KINDS.find(([, re, m]) => m === c.method && re.test(c.path))?.[0];
     if (kind && !state.writes?.[kind]) {
       state.writes = { ...state.writes, [kind]: c };
       saveState(state);
     }
-  }, counter));
+  }, counter);
+  const raw = rawClient(recording);
 
   if (!state.workspace) {
     state.workspace = await pickBotWorkspace(raw);
@@ -159,10 +104,13 @@ async function setup(): Promise<void> {
 
   const api = scopeClient(raw, { boards: BOARDS.map((b) => s[b]), profilesBoard: s.profiles });
   const asUser = scopeClient(raw, { boards: BOARDS.map((b) => s[b]) });
+  // The setup tool acts as the tester here; the bot's own client has no card edits. Not recorded: the fixtures'
+  // PUT /cards/{id} is the archive call.
+  const setDesc = sampleDescWriter(raw, rawPut(denyBoardListing(fetch), auth()), BOARDS.map((b) => s[b]));
   let total = boardsCreated;
   for (const b of BOARDS) {
-    const made: Counts = { labels: 0, lists: 0, cards: 0, checklists: 0, items: 0, closedChanged: 0 };
-    await applyLayout(api, asUser, s[b], LAYOUT[b], made);
+    const made: Counts = { labels: 0, lists: 0, cards: 0, checklists: 0, items: 0, closedChanged: 0, descs: 0, listsArchived: 0 };
+    await applyLayout({ api, asUser, setDesc }, s[b], LAYOUT[b], made, { converge: b !== 'jobs' });
     const n = Object.values(made).reduce((a, x) => a + x, 0);
     total += n;
     console.log(`${SAMPLE_NAMES[b]}: ${cardCount(LAYOUT[b])} cards in the layout; created ${JSON.stringify(made)}`);
@@ -201,21 +149,9 @@ async function capture(): Promise<void> {
   }
 
   into = files.lookups;
-  const listId = (lists: TList[], name: string): string => lists.find((l) => l.name === name)!.id;
-  const oldRun = jobCards.find((c) => c.idList === listId(jobLists, OLD_RUN_COLUMN))!;
-  const jobCard = jobCards.find((c) => c.idList === listId(jobLists, RUN_COLUMN) && !c.closed && !c.name.startsWith('ℹ'))!;
-  const profiles = read.profiles!;
-  const originals = listId(profiles.lists, 'Originals');
-  await api.card(oldRun.id);
-  await api.card(profiles.cards.find((c) => c.idList === originals)!.id);
-  await api.card(jobCard.id);
-  await api.list(originals);
-  const details = profiles.cards.flatMap((c) => c.checklists ?? []).find((cl) => cl.name === 'Personal details')!;
-  await api.checklist(details.id);
-  await api.card('0'.repeat(24)).then(
-    () => { throw new Error('expected a 404 for a card that does not exist'); },
-    (e: unknown) => { if ((e as { status?: number }).status !== 404) throw e; },
-  );
+  const jobCard = await captureLookups(api, {
+    jobLists, jobCards, profileLists: read.profiles!.lists, profileCards: read.profiles!.cards, systemCards: read.system!.cards,
+  });
   into = null;
 
   // Comments: capture GET /cards/{id}/actions for the job card with a known comment,
@@ -280,17 +216,7 @@ async function share(memberId: string | undefined): Promise<void> {
   const me = await raw.me();
   if (!/^[a-z0-9_]+$/.test(me.username)) throw new Error('unexpected username format');
 
-  const put = async (path: string, body: Record<string, string>): Promise<void> => {
-    const res = await guarded(new URL(`https://api.trello.com/1${path}`), {
-      method: 'PUT',
-      headers: {
-        authorization: `OAuth oauth_consumer_key="${process.env.TRELLO_KEY}", oauth_token="${process.env.TRELLO_TOKEN}"`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) throw new Error(`PUT ${path.replace(/[0-9a-f]{24}/g, '<id>')} → ${res.status}`);
-  };
+  const put = rawPut(guarded, auth());
 
   state.guests = [...new Set([...(state.guests ?? []), memberId])];
   saveState(state);

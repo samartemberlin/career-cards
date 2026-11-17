@@ -174,7 +174,7 @@ export function readProfilesBoard(
     problems.push({ message: 'at least one profile must be active', where: 'Profiles board' });
   }
 
-  // About me: CV (raw desc) and Personal details.
+  // About me: CV and Personal details.
   let cv = '';
   let personalDetails: string[] = [];
   const aboutMeCol = all.find((x) => norm(x.list.name) === norm(LISTS.aboutMe));
@@ -194,8 +194,14 @@ export function readProfilesBoard(
           where: `Profiles › ${LISTS.aboutMe} › ${cvSpec.name}`,
           card: cardRef(cvCard),
         });
+      } else if (/^none\.?$/i.test(answer)) {
+        problems.push({
+          message: `the ${cvSpec.name} card must hold your CV`,
+          where: `Profiles › ${LISTS.aboutMe} › ${cvSpec.name}`,
+          card: cardRef(cvCard),
+        });
       } else {
-        cv = cvCard.desc;
+        cv = answer;
       }
     }
 

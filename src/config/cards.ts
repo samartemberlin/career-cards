@@ -132,7 +132,7 @@ export const ABOUT_ME: CardSpec[] = [
     name: 'CV',
     required: true,
     questions: [
-      "Paste your CV or write a summary. None means you'll rely on the shared CV.",
+      'Paste your CV here as text.',
     ],
   },
   {

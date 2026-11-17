@@ -238,14 +238,31 @@ test('Personal details: list at least one item, one per line', async () => {
   );
 });
 
-// ── about me: CV raw desc ─────────────────────────────────────────────────
+// ── about me: CV ──────────────────────────────────────────────────────────
 
-test('ProfilesBoard.cv is the raw card desc', async () => {
+test('ProfilesBoard.cv is the user text without the template question', async () => {
   const { lists, cards } = await setup();
-  const cvSpec = ABOUT_ME.find((s) => s.key === 'cv')!;
+  const cvSpec = specOf('cv');
   const cvCard = cards.find((c) => norm(c.name) === norm(cvSpec.name))!;
+  cvCard.desc = `${templateOf(cvSpec)}\nEditor, 5 years at a magazine.`;
   const { board, problems } = readProfilesBoard(lists, cards);
   assert.equal(problems.length, 0);
   assert.ok(board !== null);
-  assert.equal(board.cv, cvCard.desc);
+  assert.equal(board.cv, 'Editor, 5 years at a magazine.');
+});
+
+test('a CV card that says only "none" is a problem', async () => {
+  const { lists, cards } = await setup();
+  const cvSpec = specOf('cv');
+  const cvCard = cards.find((c) => norm(c.name) === norm(cvSpec.name))!;
+  cvCard.desc = `${templateOf(cvSpec)}\nNone.`;
+  const { board, problems } = readProfilesBoard(lists, cards);
+  assert.equal(board, null);
+  assert.deepEqual(problems.map((p) => p.message), ['the CV card must hold your CV']);
+});
+
+test('the CV question asks for the CV text, with no "none" hint', () => {
+  const q = specOf('cv').questions.join('\n');
+  assert.match(q, /CV/);
+  assert.doesNotMatch(q, /none|shared/i);
 });

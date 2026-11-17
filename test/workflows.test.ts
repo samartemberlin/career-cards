@@ -229,6 +229,12 @@ describe('reusable run: retry on crash', () => {
     assert.equal(retry['needs'], 'run');
   });
 
+  it('run job has least-privilege permissions; retry keeps actions: write', () => {
+    const jobs = reusableRun['jobs'] as Record<string, Record<string, unknown>>;
+    assert.deepEqual(jobs['run']!['permissions'], { contents: 'read' });
+    assert.deepEqual(jobs['retry']!['permissions'], { actions: 'write' });
+  });
+
   it('run job exposes reported output from steps.run', () => {
     const jobs = reusableRun['jobs'] as Record<string, unknown>;
     const run = jobs['run'] as Record<string, unknown>;
