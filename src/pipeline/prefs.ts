@@ -83,7 +83,7 @@ export function applyPenalties(facts: PenaltyFacts | null | undefined, prefs: Pr
       const code = LANG_NAME_TO_CODE[lang.name.toLowerCase()];
       return !code || !spoken.has(code);
     });
-    if (missing) hit('other_language_required', rules.other_language_required.points, null);
+    if (missing) hit('other_language_required', rules.other_language_required.points, 'other-lang');
   }
   return out;
 }

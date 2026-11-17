@@ -146,19 +146,31 @@ test('parseFacts: missing other_languages field defaults to empty array', () => 
 });
 
 test('HIGH_GERMAN_RE matches key phrases and is exported', () => {
+  // positive: German-language phrases
   assert.ok(HIGH_GERMAN_RE.test('Sehr gute Deutschkenntnisse in Wort und Schrift'));
   assert.ok(HIGH_GERMAN_RE.test('verhandlungssicheres Deutsch'));
   assert.ok(HIGH_GERMAN_RE.test('fließende Deutschkenntnisse'));
   assert.ok(HIGH_GERMAN_RE.test('Deutsch als Muttersprache'));
+  assert.ok(HIGH_GERMAN_RE.test('Deutsch auf Muttersprachniveau'));
+  // positive: English-language phrases (common in Berlin)
+  assert.ok(HIGH_GERMAN_RE.test('fluent German required'));
+  assert.ok(HIGH_GERMAN_RE.test('fluent in German'));
+  assert.ok(HIGH_GERMAN_RE.test('native German speaker required'));
+  assert.ok(HIGH_GERMAN_RE.test('native-level German'));
+  // negative: "nice to have" phrases must NOT trigger
+  assert.ok(!HIGH_GERMAN_RE.test('German is a plus'));
+  assert.ok(!HIGH_GERMAN_RE.test('Deutsch von Vorteil'));
+  assert.ok(!HIGH_GERMAN_RE.test('German skills are nice to have'));
+  // negative: unrelated words
   assert.ok(!HIGH_GERMAN_RE.test('English fluency required'));
   assert.ok(!HIGH_GERMAN_RE.test('Deutschlandreise erforderlich'));
 });
 
-test('parseFacts: HIGH_GERMAN_RE guard promotes none→b1 when JD matches', () => {
+test('parseFacts: HIGH_GERMAN_RE guard sets level to null (unknown) when JD matches and model said none', () => {
   const reply = good({ german: { level: 'none', spoken_heavy: null, evidence: null } });
   const jdWithGerman = 'Sie verfügen über sehr gute Deutschkenntnisse in Wort und Schrift.';
   const f = parseFacts(reply, 'k', jdWithGerman);
-  assert.equal(f.german.level, 'b1');
+  assert.equal(f.german.level, null);
 });
 
 test('parseFacts: HIGH_GERMAN_RE guard does not change level when JD does not match', () => {

@@ -14,7 +14,7 @@ const GERMAN_LEVELS = new Set(['none', 'a2', 'b1', 'b2', 'c1', 'native']);
  * replies `none`. Applied as a deterministic safety net only when the model says `none`.
  */
 export const HIGH_GERMAN_RE =
-  /\b(?:Deutschkenntnisse|(?:flie[sß]end\w*|verhandlungssicher\w*|muttersprachlich\w*|sehr\s+gut\w*|hervorragend\w*|exzellent\w*)\s+(?:in\s+)?(?:der\s+)?(?:deutschen?\s+)?Deutsch\b|Deutsch\s*(?:flie[sß]end|verhandlungssicher|C1|C2|B1|B2)|Deutsch\s+in\s+Wort\s+und\s+Schrift|Muttersprache\s+Deutsch|Deutsch\s+als\s+Muttersprache)/i;
+  /\b(?:Deutschkenntnisse|(?:flie[sß]end\w*|verhandlungssicher\w*|muttersprachlich\w*|sehr\s+gut\w*|hervorragend\w*|exzellent\w*)\s+(?:in\s+)?(?:der\s+)?(?:deutschen?\s+)?Deutsch\b|Deutsch\s*(?:flie[sß]end|verhandlungssicher|C1|C2|B1|B2)|Deutsch\s+in\s+Wort\s+und\s+Schrift|Muttersprache\s+Deutsch|Deutsch\s+als\s+Muttersprache|Deutsch\s+auf\s+Muttersprachniveau|fluent(?:\s+in)?\s+German|native(?:-level)?\s+German)/i;
 
 /** The default extractor prompt, config/defaults/extractor.md. */
 export const loadExtractor = (): string => readFileSync(new URL('../../config/defaults/extractor.md', import.meta.url), 'utf8');
@@ -59,12 +59,13 @@ export function parseFacts(text: string, key: string, jd?: string): ParsedFacts 
   const gEvidence = str(o.german?.evidence, 200);
   let level: string | null = GERMAN_LEVELS.has(o.german?.level) ? o.german.level : null;
   if (level && level !== 'none' && !gEvidence) level = null;
-  // Guard: if the model says `none` but the JD clearly mentions German, promote to a1 (unknown level, still not `none`).
-  if ((!level || level === 'none') && jd && HIGH_GERMAN_RE.test(jd)) level = 'b1';
+  // Guard: if the model says `none` but the JD clearly mentions German, treat as unknown (null = no label, no penalty).
+  if (level === 'none' && jd && HIGH_GERMAN_RE.test(jd)) level = null;
   const yEvidence = str(o.years?.evidence, 200);
   const other_languages: ParsedFacts['other_languages'] = [];
   if (Array.isArray(o.other_languages)) {
     for (const item of o.other_languages) {
+      if (other_languages.length >= 4) break;
       const name = str(item?.name, 40);
       const evidence = str(item?.evidence, 200);
       if (!name || !evidence) continue;

@@ -59,8 +59,10 @@ test('unknown speaking ability costs nothing', () => {
 test('other_language_required: penalty when job requires a language the person does not speak', () => {
   const withPenalty: Preferences = { ...alex, penalties: { ...alex.penalties, other_language_required: { points: 2 } } };
   const french = f({ other_languages: [{ name: 'French', level: 'B2', evidence: 'French required' }] });
-  assert.equal(applyPenalties(french, withPenalty).total, 2);
-  assert.equal(applyPenalties(french, withPenalty).parts.other_language_required, 2);
+  const r = applyPenalties(french, withPenalty);
+  assert.equal(r.total, 2);
+  assert.equal(r.parts.other_language_required, 2);
+  assert.ok(r.flags.includes('other-lang'), 'flag other-lang should be set');
 });
 
 test('other_language_required: no penalty when person speaks the language', () => {
