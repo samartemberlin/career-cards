@@ -395,3 +395,25 @@ test('statusDesc: a secret inside unused reading text is redacted', () => {
   assert.ok(!desc.includes(secret), 'secret not exposed in desc');
   assert.ok(desc.includes('***'), 'redacted placeholder present');
 });
+
+test('statusDesc keeps full reading while source errors are cut to fit DESC_LIMIT', () => {
+  const marker = 'MARKER_END_OF_READING_9876543210';
+  const stats = emptyStats();
+  stats.reading = [{
+    card: 'Big card',
+    hardRules: ['x'.repeat(5000)],
+    scoring: [],
+    unused: [{ text: marker, reason: 'not a filter' }],
+  }];
+  stats.sourceErrors = Array.from({ length: 300 }, (_, i) => ({
+    company: `Comp${i.toString().padStart(3, '0')}`,
+    error: 'Network error: connection refused after retry',
+  }));
+  const start = new Date('2024-11-10T01:00:00.000Z');
+  const desc = statusDesc(makeView({ state: 'ok', stats, start }));
+  assert.ok(desc.length <= DESC_LIMIT, `desc length ${desc.length} > DESC_LIMIT`);
+  // With the correct cut order (errors before reading), the full reading is preserved and marker is present.
+  assert.ok(desc.includes(marker), 'full reading preserved (source errors cut before reading)');
+  // Source errors raw lines do not add "… and N more"; verify the last entry (Comp299) was dropped.
+  assert.ok(!desc.includes('Comp299:'), 'source errors were cut (last entry absent)');
+});

@@ -313,6 +313,7 @@ export async function runOnce(deps: RunDeps, opts: RunOpts): Promise<RunOutcome>
       try {
         const r = await writeRunColumn(api, {
           board: deps.boards.jobs, name: column, jobs, stats, log,
+          redact: runLog.redact,
           ...(settings.labels ? { labels: settings.labels } : {}),
         });
         stats.cards = { created: r.created, failed: r.failed };

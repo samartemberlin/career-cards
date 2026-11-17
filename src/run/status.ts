@@ -201,26 +201,30 @@ export function statusDesc(v: StatusView): string {
     if (fits(body)) return done(body);
   }
 
-  // Log is gone. Clip reading text (never below 1,500 chars), then proceed with the existing cuts.
+  // Cut in order: source errors → warnings → problems → reading (never below 1,500 chars).
+  // Full reading is kept throughout the first three cuts; reading is clipped only as a last resort.
+  const errs = largest(allErrLines.length, (k) => fits(buildBody(fullReadingPart, allErrLines.slice(0, k), [], P, W)));
+  body = buildBody(fullReadingPart, allErrLines.slice(0, errs), [], P, W);
+  if (fits(body)) return done(body);
+
+  const keepW = largest(W, (k) => fits(buildBody(fullReadingPart, [], [], P, k)));
+  body = buildBody(fullReadingPart, [], [], P, keepW);
+  if (fits(body)) return done(body);
+
+  const keepP = largest(P, (k) => fits(buildBody(fullReadingPart, [], [], k, 0)));
+  body = buildBody(fullReadingPart, [], [], keepP, 0);
+  if (fits(body)) return done(body);
+
   const MIN_READING = 1500;
   let clippedReadingPart = fullReadingPart;
   if (reading && fullReadingText.length > MIN_READING) {
     const extra = fullReadingText.length - MIN_READING;
-    const k = largest(extra, (n) => fits(buildBody(buildReadingPart(readingText(reading, { max: MIN_READING + n })), allErrLines, [], P, W)));
+    const k = largest(extra, (n) => fits(buildBody(buildReadingPart(readingText(reading, { max: MIN_READING + n })), [], [], keepP, 0)));
     clippedReadingPart = buildReadingPart(readingText(reading, { max: MIN_READING + k }));
-    body = buildBody(clippedReadingPart, allErrLines, [], P, W);
+    body = buildBody(clippedReadingPart, [], [], keepP, 0);
     if (fits(body)) return done(body);
   }
 
-  const errs = largest(allErrLines.length, (k) => fits(buildBody(clippedReadingPart, allErrLines.slice(0, k), [], P, W)));
-  body = buildBody(clippedReadingPart, allErrLines.slice(0, errs), [], P, W);
-  if (fits(body)) return done(body);
-
-  const keepW = largest(W, (k) => fits(buildBody(clippedReadingPart, [], [], P, k)));
-  body = buildBody(clippedReadingPart, [], [], P, keepW);
-  if (fits(body)) return done(body);
-
-  const keepP = largest(P, (k) => fits(buildBody(clippedReadingPart, [], [], k, 0)));
   return done(clip(buildBody(clippedReadingPart, [], [], keepP, 0), budget));
 }
 

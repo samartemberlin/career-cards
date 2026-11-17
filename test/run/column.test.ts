@@ -8,7 +8,7 @@ import {
 import { emptyStats } from '../../src/run/stats.ts';
 import type { RunStats } from '../../src/run/stats.ts';
 import type { CardReading } from '../../src/compile/reading.ts';
-import { parseJobKey, parseTitleScore, isRunSummaryTitle } from '../../src/trello/cards.ts';
+import { parseJobKey, parseTitleScore, isRunSummaryTitle, DESC_LIMIT } from '../../src/trello/cards.ts';
 import { createTrelloClient } from '../../src/trello/client.ts';
 import { scopeUserBoards, ScopeError } from '../../src/trello/scoped.ts';
 import type { ScoredJob } from '../../src/trello/writer.ts';
@@ -226,4 +226,43 @@ test('archiveRunCards stops at the deadline with left > 0', async () => {
   const r = await archiveRunCards(api, cards, { deadline: Date.now() - 1, log: noLog });
   assert.deepEqual(r, { archived: 0, failed: 0, left: 1050 });
   assert.ok(!fake.requests.some((q) => q.method === 'PUT'));
+});
+
+test('summaryDesc: a secret in a drop example and in unused reading text is redacted', () => {
+  const secret = 'summary-secret-DEADBEEF';
+  const redact = (s: string): string => s.split(secret).join('***');
+  const s = stats({
+    reading: [{
+      card: 'Test',
+      hardRules: [],
+      scoring: [],
+      unused: [{ text: `ignore ${secret} this`, reason: 'not applicable' }],
+    }],
+    rules: { PLACE_NOT_KEPT: 1 },
+  });
+  s.ruleExamples = {
+    PLACE_NOT_KEPT: Object.assign(Object.create(null) as Record<string, number>, { [`location ${secret} here`]: 1 }),
+  };
+  const desc = summaryDesc(s, redact);
+  assert.ok(!desc.includes(secret), 'secret must not appear in the summary description');
+  assert.ok(desc.includes('***'), 'redacted placeholder must appear');
+});
+
+test('summaryDesc: a 30,000-char reading is clipped to stay ≤ DESC_LIMIT', () => {
+  const s = stats({
+    reading: [{
+      card: 'Big card',
+      hardRules: ['x'.repeat(30000)],
+      scoring: [],
+      unused: [],
+    }],
+    rules: { PLACE_NOT_KEPT: 5 },
+  });
+  s.ruleExamples = {
+    PLACE_NOT_KEPT: Object.assign(Object.create(null) as Record<string, number>, { Berlin: 5 }),
+  };
+  const desc = summaryDesc(s);
+  assert.ok(desc.length <= DESC_LIMIT, `desc length ${desc.length} > DESC_LIMIT`);
+  assert.ok(desc.includes('**How this run read your search**'), 'reading heading preserved');
+  assert.ok(desc.includes('**Dropped jobs**'), 'drop lines preserved');
 });
