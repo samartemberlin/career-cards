@@ -2,9 +2,10 @@ import type { BotApi, TCard, TList } from '../trello/api.ts';
 import type { Settings } from '../config/schema.ts';
 import { createJobCard, createLabelResolver, archiveCards } from '../trello/writer.ts';
 import type { ScoredJob } from '../trello/writer.ts';
-import { jobLabels, isRunColumnName, RUN_SUMMARY_PREFIX } from '../trello/cards.ts';
+import { jobLabels, isRunColumnName, RUN_SUMMARY_PREFIX, DESC_LIMIT } from '../trello/cards.ts';
 import { isGuardError } from '../trello/scoped.ts';
-import { topRules } from './status.ts';
+import { dropLines } from './status.ts';
+import { readingText } from '../compile/reading.ts';
 import type { RunStats } from './stats.ts';
 
 const ARCHIVE_CHUNK = 50;
@@ -18,20 +19,28 @@ export function summaryTitle(s: RunStats): string {
 }
 
 /** Headline counts. Carries no key line, so memory and archiving skip this card. The status card can't be linked: it is
- *  written after the column, once the run's counts are final. */
-export function summaryDesc(s: RunStats): string {
+ *  written after the column, once the run's counts are final. Pass `redact` (e.g. `runLog.redact`) to scrub secrets
+ *  from drop examples and reading text before the description is written to Trello. */
+export function summaryDesc(s: RunStats, redact: (t: string) => string = (t) => t): string {
   const lines = [
     `**Scanned:** ${s.scanned}`,
     `**New:** ${s.scored}`,
     `**Filtered:** ${filtered(s)}`,
     `**Deferred:** ${deferred(s)} (picked up by the next run)`,
   ];
-  const top = topRules(s.rules, 5);
-  if (top.length) {
-    lines.push('', '**Top rules:**', ...top.map(([r, n]) => `- ${r}: ${n}`));
-  }
-  lines.push('', 'Full status: this run\'s card in System › Runs');
-  return lines.join('\n');
+  const drops = dropLines(s);
+  if (drops.length) lines.push('', '**Dropped jobs**', ...drops);
+  const FOOTER = '\n\nFull status: this run\'s card in System › Runs';
+  const BASE = lines.join('\n');
+  if (!s.reading) return redact(BASE + FOOTER);
+  const READING_HEAD = '\n\n**How this run read your search**\n';
+  const rt = readingText(s.reading);
+  const full = BASE + READING_HEAD + rt + FOOTER;
+  if (full.length <= DESC_LIMIT) return redact(full);
+  // Clip the reading text so the whole description stays ≤ DESC_LIMIT.
+  const budget = DESC_LIMIT - BASE.length - READING_HEAD.length - FOOTER.length;
+  const clipped = budget > 0 ? readingText(s.reading, { max: budget }) : '';
+  return redact(clipped ? BASE + READING_HEAD + clipped + FOOTER : BASE + FOOTER);
 }
 
 /** Just left of the leftmost open run column, so the newest run reads first; `'bottom'` when there is none. */
@@ -56,6 +65,8 @@ export async function writeRunColumn(
     jobs: ScoredJob[];
     stats: RunStats;
     labels?: Settings['labels'];
+    /** Applied to the summary card description; pass `runLog.redact` to enforce the secret-free guarantee. */
+    redact?: (s: string) => string;
     log: (s: string) => void;
   },
 ): Promise<{ listId: string | null; created: number; failed: number; summary: boolean }> {
@@ -68,7 +79,7 @@ export async function writeRunColumn(
     await api.createCard({
       idList: list.id,
       name: summaryTitle(o.stats),
-      desc: summaryDesc(o.stats),
+      desc: summaryDesc(o.stats, o.redact ?? ((t) => t)),
       pos: 'bottom',
     });
     summary = true;

@@ -6,8 +6,10 @@ import {
   statusTitle, statusDesc, parseStatusCard,
   findRunsList,
   RUNS_LIST,
+  dropLines,
 } from '../../src/run/status.ts';
 import type { StatusView } from '../../src/run/status.ts';
+import type { CardReading } from '../../src/compile/reading.ts';
 import { DESC_LIMIT } from '../../src/trello/cards.ts';
 import { emptyStats } from '../../src/run/stats.ts';
 import { FakeTrello } from '../support/fake-trello.ts';
@@ -135,12 +137,14 @@ test('top rules are the 5 most frequent, with counts', () => {
   const v = makeView({ state: 'ok', stats });
   const desc = statusDesc(v);
 
-  assert.ok(desc.includes('EXCLUDE_TITLE: 10'), 'top rule 1 with count');
+  // Count lines still show a compact "Top rules:" summary (top 5).
+  assert.ok(desc.includes('EXCLUDE_TITLE: 10'), 'top rule 1 with count in Top rules line');
   assert.ok(desc.includes('NO_GERMAN: 7'), 'top rule 2 with count');
   assert.ok(desc.includes('TOO_JUNIOR: 5'), 'top rule 3 with count');
   assert.ok(desc.includes('LOCATION: 3'), 'top rule 4 with count');
   assert.ok(desc.includes('COMPANY_SKIP: 2'), 'top rule 5 with count');
-  assert.ok(!desc.includes('EXTRA_RULE'), '6th rule must not appear in the description');
+  // 6th rule appears in Dropped jobs (drop lines default to 6) but not in the Top rules line.
+  assert.ok(!desc.match(/^Top rules:.*EXTRA_RULE/m), '6th rule must not appear in Top rules line');
 });
 
 // ── parseStatusCard ───────────────────────────────────────────────────────
@@ -287,4 +291,129 @@ test('statusDesc: problems are kept before warnings', () => {
   assert.ok(desc.length <= DESC_LIMIT);
   assert.match(desc, /- problem 49\n/);
   assert.match(desc, /\nWarnings:\n- warning 0: [\s\S]*- … and \d+ more\n/);
+});
+
+// ── dropLines ─────────────────────────────────────────────────────────────
+
+function sampleReading(): CardReading[] {
+  return [{
+    card: 'Where & how I work',
+    hardRules: ['Keep jobs located in: Berlin'],
+    scoring: [],
+    unused: [{ text: 'Prefer small companies', reason: 'not a filter' }],
+  }];
+}
+
+test('dropLines: exact output for three rules, in count order, with examples', () => {
+  const s = emptyStats();
+  s.rules = { PLACE_NOT_KEPT: 20, TITLE_EXCLUDED: 10, EXPIRED: 5 };
+  s.ruleExamples = {
+    PLACE_NOT_KEPT: Object.assign(Object.create(null) as Record<string, number>, { 'Zürich, Switzerland': 12, 'Remote (EMEA)': 8 }),
+    TITLE_EXCLUDED: Object.assign(Object.create(null) as Record<string, number>, { senior: 7, lead: 3 }),
+    EXPIRED: Object.assign(Object.create(null) as Record<string, number>, {}),
+  };
+  const lines = dropLines(s);
+  assert.deepEqual(lines, [
+    'Dropped 20: location not in your places — Zürich, Switzerland 12, Remote (EMEA) 8',
+    'Dropped 10: title contains excluded word — senior 7, lead 3',
+    'Dropped 5: EXPIRED',
+  ]);
+});
+
+test('dropLines: example order is by count desc, ties keep insertion order', () => {
+  const s = emptyStats();
+  s.rules = { PLACE_NOT_KEPT: 10 };
+  s.ruleExamples = {
+    PLACE_NOT_KEPT: Object.assign(Object.create(null) as Record<string, number>, {
+      'Berlin': 5, 'London': 5, 'Paris': 3,
+    }),
+  };
+  const lines = dropLines(s);
+  assert.equal(lines[0], 'Dropped 10: location not in your places — Berlin 5, London 5, Paris 3');
+});
+
+test('dropLines: defaults to 6 rules and 4 examples; respects options', () => {
+  const s = emptyStats();
+  s.rules = { A: 7, B: 6, C: 5, D: 4, E: 3, F: 2, G: 1 };
+  s.ruleExamples = {
+    A: Object.assign(Object.create(null) as Record<string, number>, { a: 1, b: 2, c: 3, d: 4, e: 5 }),
+  };
+  const all = dropLines(s);
+  assert.equal(all.length, 6, 'default 6 rules');
+  assert.equal(all[0], 'Dropped 7: A — e 5, d 4, c 3, b 2', 'default 4 examples');
+  const fewer = dropLines(s, { rules: 2, examples: 2 });
+  assert.equal(fewer.length, 2);
+  assert.equal(fewer[0], 'Dropped 7: A — e 5, d 4');
+});
+
+// ── statusDesc with reading ───────────────────────────────────────────────
+
+test('statusDesc shows the reading and drop sections after count lines', () => {
+  const stats = emptyStats();
+  stats.reading = sampleReading();
+  stats.rules = { PLACE_NOT_KEPT: 20 };
+  stats.ruleExamples = {
+    PLACE_NOT_KEPT: Object.assign(Object.create(null) as Record<string, number>, { 'Zürich, Switzerland': 12, 'Remote (EMEA)': 8 }),
+  };
+  const desc = statusDesc(makeView({ state: 'ok', stats }));
+  assert.ok(desc.includes('**How this run read your search**'), 'reading heading present');
+  assert.ok(desc.includes('**Dropped jobs**'), 'dropped heading present');
+  assert.ok(desc.includes('Dropped 20: location not in your places — Zürich, Switzerland 12, Remote (EMEA) 8'));
+  assert.ok(desc.includes('Not used:'), 'unused entry from reading appears');
+});
+
+test('statusDesc with a 30,000-char log still keeps the reading heading and stays ≤ DESC_LIMIT', () => {
+  const stats = emptyStats();
+  stats.reading = sampleReading();
+  const log = Array.from({ length: 1000 }, (_, i) => `${'x'.repeat(27)} line ${i}`);
+  const start = new Date('2024-11-10T01:00:00.000Z');
+  const desc = statusDesc(makeView({ state: 'ok', stats, log, start }));
+  assert.ok(desc.length <= DESC_LIMIT, `desc length ${desc.length} > DESC_LIMIT`);
+  assert.ok(desc.includes('**How this run read your search**'), 'reading heading kept after log cut');
+  assert.equal(desc.trimEnd().split('\n').at(-1)!.trim(), `career-cards-run: ${start.toISOString()} ok`);
+});
+
+test('statusDesc: a failed view with null reading shows no reading or drop heading', () => {
+  const stats = emptyStats();
+  // stats.reading is null by default
+  const desc = statusDesc(makeView({ state: 'failed', stats, reason: 'compile failed' }));
+  assert.ok(!desc.includes('**How this run read your search**'), 'no reading heading on failed with null reading');
+  assert.ok(!desc.includes('**Dropped jobs**'), 'no drop heading on failed with null reading');
+});
+
+test('statusDesc: a secret inside unused reading text is redacted', () => {
+  const secret = 'unused-secret-9999';
+  const redact = (s: string): string => s.split(secret).join('***');
+  const stats = emptyStats();
+  stats.reading = [{
+    card: 'Test card',
+    hardRules: [],
+    scoring: [],
+    unused: [{ text: `ignore this ${secret} value`, reason: 'not applicable' }],
+  }];
+  const desc = statusDesc(makeView({ state: 'ok', stats, redact }));
+  assert.ok(!desc.includes(secret), 'secret not exposed in desc');
+  assert.ok(desc.includes('***'), 'redacted placeholder present');
+});
+
+test('statusDesc keeps full reading while source errors are cut to fit DESC_LIMIT', () => {
+  const marker = 'MARKER_END_OF_READING_9876543210';
+  const stats = emptyStats();
+  stats.reading = [{
+    card: 'Big card',
+    hardRules: ['x'.repeat(5000)],
+    scoring: [],
+    unused: [{ text: marker, reason: 'not a filter' }],
+  }];
+  stats.sourceErrors = Array.from({ length: 300 }, (_, i) => ({
+    company: `Comp${i.toString().padStart(3, '0')}`,
+    error: 'Network error: connection refused after retry',
+  }));
+  const start = new Date('2024-11-10T01:00:00.000Z');
+  const desc = statusDesc(makeView({ state: 'ok', stats, start }));
+  assert.ok(desc.length <= DESC_LIMIT, `desc length ${desc.length} > DESC_LIMIT`);
+  // With the correct cut order (errors before reading), the full reading is preserved and marker is present.
+  assert.ok(desc.includes(marker), 'full reading preserved (source errors cut before reading)');
+  // Source errors raw lines do not add "… and N more"; verify the last entry (Comp299) was dropped.
+  assert.ok(!desc.includes('Comp299:'), 'source errors were cut (last entry absent)');
 });

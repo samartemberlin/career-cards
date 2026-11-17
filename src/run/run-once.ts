@@ -277,6 +277,8 @@ export async function runOnce(deps: RunDeps, opts: RunOpts): Promise<RunOutcome>
       throw e;
     }
     stats.reading = rules.reading;
+    stats.models[rules.model] = (stats.models[rules.model] ?? 0) + 1;
+    stats.tokens += rules.tokens;
     for (const line of readingText(rules.reading).split('\n')) if (line) log(`reading: ${line}`);
 
     const index = await loadJobIndex(api, deps.boards.jobs);
@@ -311,6 +313,7 @@ export async function runOnce(deps: RunDeps, opts: RunOpts): Promise<RunOutcome>
       try {
         const r = await writeRunColumn(api, {
           board: deps.boards.jobs, name: column, jobs, stats, log,
+          redact: runLog.redact,
           ...(settings.labels ? { labels: settings.labels } : {}),
         });
         stats.cards = { created: r.created, failed: r.failed };
