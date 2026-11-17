@@ -7,6 +7,7 @@ import type { ProcessDeps } from '../run/process.ts';
 import type { BotApi, TComment, TMember } from '../trello/api.ts';
 import type { UserBoards } from '../trello/scoped.ts';
 import type { Settings, UserConfig } from '../config/schema.ts';
+import { checkCard } from './check.ts';
 import { explainFilter } from './why.ts';
 import { handleOpen } from './open.ts';
 import { applyNeeds, checkLegit } from './stages/reader.ts';
@@ -81,6 +82,7 @@ async function runNow(ctx: CommandCtx): Promise<HandlerResult> {
 export const HANDLERS: Partial<Record<string, Handler>> = {
   show_last_run: showLastRun,
   start_run: runNow,
+  check_card: checkCard,
   explain_filter: explainFilter as Handler,
   check_open: handleOpen,
   check_legit: checkLegit,

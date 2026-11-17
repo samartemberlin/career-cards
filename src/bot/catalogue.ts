@@ -61,6 +61,7 @@ export const CATALOGUE: ActionSpec[] = [
     usage: `feedback <your words, 1 to ${FEEDBACK_MAX} characters>`,
     about: 'your words posted verbatim on the active profile\'s Feedback card.',
   },
+  simple('check_card', ['check', 'prüfen'], 'reader', 'how tonight\'s run would read this Profiles card.'),
   simple('show_last_run', ['last'], 'code', 'a summary of the latest run, with a link.'),
   { ...simple('start_run', ['run'], 'code', 'starts a manual run.'), router: 'confirm' },
 ];

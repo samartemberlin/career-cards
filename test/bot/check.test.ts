@@ -1,0 +1,205 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createTrelloClient } from '../../src/trello/client.ts';
+import { scopeUserBoards } from '../../src/trello/scoped.ts';
+import type { UserBoards } from '../../src/trello/scoped.ts';
+import { FakeTrello } from '../support/fake-trello.ts';
+import type { CommandCtx } from '../../src/bot/handlers.ts';
+import { checkCard } from '../../src/bot/check.ts';
+import { CATALOGUE, matchStatic } from '../../src/bot/catalogue.ts';
+import { helpText } from '../../src/bot/handlers.ts';
+import { capClassOf } from '../../src/bot/caps.ts';
+import { LISTS } from '../../src/config/cards.ts';
+import type { UserConfig } from '../../src/config/schema.ts';
+import type { Compiled } from '../../src/compile/schema.ts';
+import { fakeLlm, fakeLlmEnv } from '../support/fake-llm.ts';
+import type { CompileReply } from '../support/fake-llm.ts';
+import { testConfig } from '../support/user-config.ts';
+import { QUOTA_REPLY } from '../../src/bot/stages/call.ts';
+import { readingOf, readingText } from '../../src/compile/reading.ts';
+import { compileInputOf, scoringTextOf } from '../../src/run/profiles.ts';
+import { ConfigInvalid } from '../../src/trello/config.ts';
+
+const JOBS_BOARD = 'fa4e00000000000000000005';
+const PROFILES_BOARD = 'fa4e0000000000000000000c';
+const BOARDS: UserBoards = { jobs: JOBS_BOARD, profiles: PROFILES_BOARD, system: 'fa4e0000000000000000000d' };
+
+const cfg: UserConfig = testConfig({
+  settings: {
+    timezone: 'UTC', providers: ['gemini'], scoring_cap: 150,
+    linkedin: false, allowed_members: [], bot_keyword: '/bot',
+    caps: { model_per_day: 30, model_per_card_per_day: 8, research_per_day: 10, static_per_day: 100 },
+  },
+  dream: 'Looking for editor work.', cv: 'CV of Test Person', personalDetails: ['Test Person'],
+});
+
+// A compile result that matches the testConfig 'Default' profile.
+const COMPILED: Compiled = {
+  places: { anywhere: false, keep: ['Berlin', 'Germany'], drop: [] },
+  employment: { keep: [], remote_only: [] },
+  linkedin_locations: [],
+  company_exclude: [], text_exclude: [], languages: {}, years_experience: null,
+  profiles: [{
+    name: 'Default', search_terms: ['editor'], title_include: ['editor', 'manager'], title_exclude: [],
+    examples: [
+      { role: 'Content editor at a media company', score: 8 },
+      { role: 'Marketing manager at an agency', score: 5 },
+      { role: 'Sales clerk', score: 1 },
+    ],
+  }],
+  unused: [], problems: [],
+};
+
+function setup(compile: () => CompileReply = () => COMPILED) {
+  const fake = new FakeTrello();
+  const llm = fakeLlm({ score: () => 5, compile });
+  const raw = createTrelloClient({ key: 'k', token: 't', fetchImpl: fake.fetch, sleep: async () => {} });
+
+  const makeCtx = (cardId: string, configFn?: () => Promise<UserConfig>): CommandCtx => ({
+    api: scopeUserBoards(raw, BOARDS),
+    boards: BOARDS,
+    me: { id: 'bot1', username: 'samplebot' },
+    settings: cfg.settings,
+    action: { id: 'act1', authorId: 'u1', text: '', cardId, boardId: PROFILES_BOARD, date: new Date(), author: 'user1' },
+    now: new Date('2026-11-17T12:00:00Z'),
+    config: configFn ?? (async () => cfg),
+    starter: { isRunning: async () => false, start: async () => {} },
+    net: { fetchJd: async () => null, checkOpen: async () => ({ verdict: 'open' as const, reason: 'live' }) },
+    log: () => {},
+    env: fakeLlmEnv,
+    call: { fetchImpl: llm.fetchImpl, retries: 0 },
+    signal: new AbortController().signal,
+    comments: [],
+    researchCap: async () => null,
+  }) as unknown as CommandCtx;
+
+  return { fake, raw, llm, makeCtx };
+}
+
+test('check: profiles Deal-breakers card → exact block from compile', async () => {
+  const { raw, makeCtx } = setup();
+  const list = await raw.createList(PROFILES_BOARD, LISTS.dealBreakers, 'bottom');
+  const card = await raw.createCard({ idList: list.id, name: 'Where & how I work', desc: '', pos: 'bottom' });
+  const ctx = makeCtx(card.id);
+  const result = await checkCard(ctx);
+
+  const input = compileInputOf(cfg);
+  const niceToHave = scoringTextOf(cfg).niceToHave;
+  const reading = readingOf(COMPILED, input, niceToHave);
+  const entry = reading.find((r) => r.card.toLowerCase() === 'where & how i work');
+  assert.ok(entry, 'expected reading entry for the card');
+  const expected = `How a run would read this card:\n${readingText([entry])}`;
+
+  assert.equal(result.text, expected);
+  assert.equal(result.uncounted, undefined, 'compile counts');
+});
+
+test('check: job card → works-on line, uncounted, no model call', async () => {
+  const { raw, llm, makeCtx } = setup();
+  const list = await raw.createList(JOBS_BOARD, 'Nov 17 · Jobs', 'bottom');
+  const card = await raw.createCard({ idList: list.id, name: '7 · Acme — Editor', desc: 'career-cards-key: greenhouse:acme:1', pos: 'bottom' });
+  const ctx = makeCtx(card.id);
+  const result = await checkCard(ctx);
+  assert.ok(result.text.includes('Profiles board'), `unexpected text: ${result.text}`);
+  assert.equal(result.uncounted, true);
+  assert.equal(llm.requests.length, 0);
+});
+
+test('check: compile failed → fix list', async () => {
+  const { raw, makeCtx } = setup(() => ({
+    ...COMPILED,
+    problems: [{ card: 'Default › My dream job', reason: 'says nothing usable' }],
+  }));
+  const list = await raw.createList(PROFILES_BOARD, LISTS.dealBreakers, 'bottom');
+  const card = await raw.createCard({ idList: list.id, name: 'Where & how I work', desc: '', pos: 'bottom' });
+  const ctx = makeCtx(card.id);
+  const result = await checkCard(ctx);
+  assert.ok(result.text.startsWith('These cards need a fix before a run can start:'), `unexpected text: ${result.text}`);
+  assert.ok(result.text.includes('Default › My dream job'), `expected card name in text: ${result.text}`);
+  assert.ok(result.text.includes('says nothing usable'), `expected reason in text: ${result.text}`);
+});
+
+test('check: compile unavailable (quota) → QUOTA_REPLY', async () => {
+  const { raw, makeCtx } = setup(() => 'quota');
+  const list = await raw.createList(PROFILES_BOARD, LISTS.dealBreakers, 'bottom');
+  const card = await raw.createCard({ idList: list.id, name: 'Where & how I work', desc: '', pos: 'bottom' });
+  const ctx = makeCtx(card.id);
+  const result = await checkCard(ctx);
+  assert.equal(result.text, QUOTA_REPLY);
+});
+
+test('check: About me card → works-on line, uncounted', async () => {
+  const { raw, llm, makeCtx } = setup();
+  const list = await raw.createList(PROFILES_BOARD, LISTS.aboutMe, 'bottom');
+  const card = await raw.createCard({ idList: list.id, name: 'Personal details', desc: '', pos: 'bottom' });
+  const ctx = makeCtx(card.id);
+  const result = await checkCard(ctx);
+  assert.ok(result.text.includes('Profiles board'), `unexpected text: ${result.text}`);
+  assert.equal(result.uncounted, true);
+  assert.equal(llm.requests.length, 0);
+});
+
+test('check: profile list card → shows block for that profile card', async () => {
+  const { raw, makeCtx } = setup();
+  const list = await raw.createList(PROFILES_BOARD, 'Default', 'bottom');
+  const card = await raw.createCard({ idList: list.id, name: 'My dream job', desc: '', pos: 'bottom' });
+  const ctx = makeCtx(card.id);
+  const result = await checkCard(ctx);
+  assert.ok(result.text.startsWith('How a run would read this card:'), `unexpected text: ${result.text}`);
+  assert.ok(result.text.includes('Default › My dream job'), `expected display name in text: ${result.text}`);
+});
+
+test('check: profile list card in inactive profile → not read reply, uncounted', async () => {
+  const { raw, llm, makeCtx } = setup();
+  // List named "Inactive" — no active profile has that name in testConfig
+  const list = await raw.createList(PROFILES_BOARD, 'Inactive', 'bottom');
+  const card = await raw.createCard({ idList: list.id, name: 'My dream job', desc: '', pos: 'bottom' });
+  const ctx = makeCtx(card.id);
+  const result = await checkCard(ctx);
+  assert.ok(result.text.includes('not read'), `unexpected text: ${result.text}`);
+  assert.equal(result.uncounted, true);
+  // Compile still runs — only 1 model call
+  assert.equal(llm.requests.length, 1);
+});
+
+test('check: config error → fix list, uncounted, no model call', async () => {
+  const { raw, llm, makeCtx } = setup();
+  const list = await raw.createList(PROFILES_BOARD, LISTS.dealBreakers, 'bottom');
+  const card = await raw.createCard({ idList: list.id, name: 'Where & how I work', desc: '', pos: 'bottom' });
+  const ctx = makeCtx(card.id, async () => {
+    throw new ConfigInvalid([{ where: 'profiles › Deal-breakers › Contract & visa', message: 'missing card' }]);
+  });
+  const result = await checkCard(ctx);
+  assert.ok(result.text.startsWith('These cards need a fix before a run can start:'), `unexpected text: ${result.text}`);
+  assert.ok(result.text.includes('profiles › Deal-breakers › Contract & visa'), `expected where in text: ${result.text}`);
+  assert.equal(result.uncounted, true);
+  assert.equal(llm.requests.length, 0);
+});
+
+const T = { botUsername: 'bot', keyword: '/bot' };
+
+test('matchStatic: "/bot check" → check_card action', () => {
+  const m = matchStatic('/bot check', T);
+  assert.equal(m.kind, 'action', JSON.stringify(m));
+  if (m.kind !== 'action') return;
+  assert.equal(m.spec.id, 'check_card');
+  assert.deepEqual(m.args, {});
+});
+
+test('matchStatic: "/bot prüfen" → check_card action', () => {
+  const m = matchStatic('/bot prüfen', T);
+  assert.equal(m.kind, 'action', JSON.stringify(m));
+  if (m.kind !== 'action') return;
+  assert.equal(m.spec.id, 'check_card');
+});
+
+test('helpText has a check line', () => {
+  const text = helpText('/bot');
+  assert.ok(text.includes('check'), `helpText missing 'check': ${text}`);
+});
+
+test('check_card is stage reader (counted as model cap)', () => {
+  const spec = CATALOGUE.find((s) => s.id === 'check_card');
+  assert.ok(spec, 'check_card not in CATALOGUE');
+  assert.equal(capClassOf(spec), 'model');
+});

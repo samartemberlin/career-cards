@@ -13,6 +13,7 @@ test('catalogue has exactly the spec rows', () => {
     ['company_research', 'company', 'researcher', 'auto'],
     ['explain_filter', 'why', 'reader', 'auto'],
     ['record_feedback', 'feedback', 'code', 'confirm'],
+    ['check_card', 'check', 'reader', 'auto'],
     ['show_last_run', 'last', 'code', 'auto'],
     ['start_run', 'run', 'code', 'confirm'],
   ]);
