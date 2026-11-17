@@ -128,6 +128,16 @@ test('check: compile unavailable (quota) → QUOTA_REPLY', async () => {
   assert.equal(result.text, QUOTA_REPLY);
 });
 
+test('check: compile unavailable (invalid model answer) → invalid reply, counted', async () => {
+  const { raw, makeCtx } = setup(() => 'bad');
+  const list = await raw.createList(PROFILES_BOARD, LISTS.dealBreakers, 'bottom');
+  const card = await raw.createCard({ idList: list.id, name: 'Where & how I work', desc: '', pos: 'bottom' });
+  const ctx = makeCtx(card.id);
+  const result = await checkCard(ctx);
+  assert.ok(result.text.startsWith("The model's reading of your cards didn't check out"), `unexpected text: ${result.text}`);
+  assert.equal(result.uncounted, undefined, 'compile counts');
+});
+
 test('check: About me card → works-on line, uncounted', async () => {
   const { raw, llm, makeCtx } = setup();
   const list = await raw.createList(PROFILES_BOARD, LISTS.aboutMe, 'bottom');

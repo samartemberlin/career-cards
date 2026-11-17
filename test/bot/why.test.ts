@@ -195,3 +195,19 @@ test('why: ATS-key URL whose fetchJd returns a title → passes the filter', asy
   const result = await explainFilter(ctx, { link: url });
   assert.ok(result.text.startsWith('No filter rejects it'), `unexpected text: ${result.text}`);
 });
+
+test('why: compile unavailable (quota) → QUOTA_REPLY', async () => {
+  const jd: FetchJdResult = { jd: 'Run events.', meta: { title: 'Event Manager' } };
+  const { ctx } = setup(async () => jd, () => 'quota');
+  const result = await explainFilter(ctx, { link: 'https://8.8.8.8/event-manager/20' });
+  const { QUOTA_REPLY } = await import('../../src/bot/stages/call.ts');
+  assert.equal(result.text, QUOTA_REPLY);
+});
+
+test('why: compile unavailable (invalid model answer) → invalid reply, counted', async () => {
+  const jd: FetchJdResult = { jd: 'Run events.', meta: { title: 'Event Manager' } };
+  const { ctx } = setup(async () => jd, () => 'bad');
+  const result = await explainFilter(ctx, { link: 'https://8.8.8.8/event-manager/21' });
+  assert.ok(result.text.startsWith("The model's reading of your cards didn't check out"), `unexpected text: ${result.text}`);
+  assert.equal(result.uncounted, undefined, 'compile counts');
+});

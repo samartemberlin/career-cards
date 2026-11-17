@@ -65,7 +65,10 @@ export async function checkCard(ctx: CommandCtx): Promise<HandlerResult> {
       const lines = e.problems.map((p) => `- ${p.card}: ${p.reason}`).join('\n');
       return { text: `${FIX_HEADER}\n${lines}` };
     }
-    if (e instanceof CompileUnavailable) return { text: QUOTA_REPLY };
+    if (e instanceof CompileUnavailable) {
+      if (e.kind === 'quota') return { text: QUOTA_REPLY };
+      return { text: `The model's reading of your cards didn't check out (${e.reason}). Try again in a minute.` };
+    }
     throw e;
   }
 

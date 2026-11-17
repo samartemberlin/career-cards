@@ -107,3 +107,25 @@ test('preferencesOf: omits languages and years_experience when absent', () => {
   assert.equal(prefs.languages, undefined);
   assert.equal(prefs.years_experience, undefined);
 });
+
+test('CompiledSchema: languages with two two-letter codes (en + de) parses', () => {
+  const c = { ...VALID, languages: { en: { read: 'C1', write: 'C1', speak: 'C1' }, de: { read: 'B2', write: 'B1', speak: 'B1' } } };
+  assert.equal(CompiledSchema.safeParse(c).success, true);
+});
+
+test('CompiledSchema: languages rejects a word-length key ("english")', () => {
+  const c = { ...VALID, languages: { english: { read: 'C1' } } };
+  assert.equal(CompiledSchema.safeParse(c).success, false);
+});
+
+test('CompiledSchema: languages rejects more than 6 entries', () => {
+  const langs = Object.fromEntries(['de', 'en', 'fr', 'es', 'it', 'nl', 'pl'].map((k) => [k, { read: 'B1' }]));
+  assert.equal(CompiledSchema.safeParse({ ...VALID, languages: langs }).success, false);
+});
+
+test('preferencesOf: en + de languages → de is used for preferences, en is not', () => {
+  const c = { ...VALID, languages: { en: { read: 'C1', write: 'C1', speak: 'C1' }, de: { read: 'B2', write: 'B1', speak: 'A2' } } } as unknown as Compiled;
+  const prefs = preferencesOf(c);
+  assert.deepEqual(prefs.languages?.de, { read: 'B2', write: 'B1', speak: 'A2' });
+  assert.ok(!prefs.languages || !('en' in prefs.languages), 'en must not be in preferences');
+});

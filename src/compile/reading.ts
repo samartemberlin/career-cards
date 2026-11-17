@@ -13,6 +13,13 @@ const rule = (label: string, xs: string[]): string[] => (xs.length ? [`${label}:
 const AS_WRITTEN = 'Sent to scoring as written';
 const LIMITS_NOTE = "Language and experience limits lower a job's ranking only in the run notes for now; they do not drop jobs.";
 
+const CODE_TO_NAME: Record<string, string> = {
+  en: 'English', de: 'German', fr: 'French', es: 'Spanish', it: 'Italian',
+  nl: 'Dutch', pl: 'Polish', pt: 'Portuguese', ru: 'Russian', tr: 'Turkish',
+  ar: 'Arabic', uk: 'Ukrainian',
+};
+const langName = (code: string): string => CODE_TO_NAME[code] ?? code.toUpperCase();
+
 function dealBreaker(c: Compiled, card: CardText): Pick<CardReading, 'hardRules' | 'scoring'> {
   switch (card.key) {
     case 'where': return {
@@ -26,10 +33,13 @@ function dealBreaker(c: Compiled, card: CardText): Pick<CardReading, 'hardRules'
     };
     case 'contract': return { hardRules: rule('Keep only these contracts', c.employment.keep), scoring: [] };
     case 'languages': {
-      const de = c.languages.de;
-      const levels = de ? (['read', 'write', 'speak'] as const).filter((k) => de[k]).map((k) => `${k} ${de[k]}`) : [];
+      const langLines: string[] = [];
+      for (const [code, skill] of Object.entries(c.languages)) {
+        const levels = (['read', 'write', 'speak'] as const).filter((k) => skill[k]).map((k) => `${k} ${skill[k]}`);
+        if (levels.length) langLines.push(`${langName(code)}: ${levels.join(', ')}`);
+      }
       const scoring = [
-        ...(levels.length ? [`German: ${levels.join(', ')}`] : []),
+        ...langLines,
         ...(c.years_experience !== null ? [`Experience: ${c.years_experience} years`] : []),
       ];
       return { hardRules: [], scoring: scoring.length ? [...scoring, LIMITS_NOTE] : [] };

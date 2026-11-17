@@ -8,6 +8,7 @@ const Phrases = (max: number) => z.array(Phrase).max(max);
 export const EMPLOYMENT = ['full_time', 'part_time', 'contract', 'internship', 'temporary', 'freelance'] as const;
 
 const Level = z.enum(['none', 'A1', 'A2', 'B1', 'B2', 'C1', 'C2', 'native']);
+const LanguageSkill = z.object({ read: Level.optional(), write: Level.optional(), speak: Level.optional() }).strict();
 
 export const CompiledSchema = z.object({
   places: z.object({ anywhere: z.boolean(), keep: Phrases(300), drop: Phrases(300) }).strict(),
@@ -15,7 +16,7 @@ export const CompiledSchema = z.object({
   linkedin_locations: z.array(z.object({ location: Phrase, remote: z.boolean().optional() }).strict()).max(5),
   company_exclude: Phrases(100),
   text_exclude: Phrases(100),
-  languages: z.object({ de: z.object({ read: Level.optional(), write: Level.optional(), speak: Level.optional() }).strict().optional() }).strict(),
+  languages: z.record(z.string().regex(/^[a-z]{2}$/), LanguageSkill).refine((v) => Object.keys(v).length <= 6, 'too many languages'),
   years_experience: z.number().min(0).max(60).nullable(),
   profiles: z.array(z.object({
     name: z.string().trim().min(1).max(100),
