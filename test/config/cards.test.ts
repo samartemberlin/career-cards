@@ -47,3 +47,16 @@ test('Active template ends with yes on its own line', () => {
   const t = templateOf(specOf('active'));
   assert.equal(t.split('\n').at(-1), 'yes');
 });
+
+test('answerOf strips question lines despite CRLF line endings', () => {
+  const s = specOf('where');
+  const crlf = templateOf(s).replace(/\n/g, '\r\n');
+  assert.equal(answerOf(s, crlf), '');
+  assert.equal(answerOf(s, `${crlf}\r\nBerlin.`), 'Berlin.');
+});
+
+test('answerOf strips question lines with leading or trailing spaces', () => {
+  const s = specOf('where');
+  const padded = templateOf(s).split('\n').map((l) => `  ${l}  `).join('\n');
+  assert.equal(answerOf(s, padded), '');
+});

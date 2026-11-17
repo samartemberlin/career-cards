@@ -165,8 +165,9 @@ export function templateOf(spec: CardSpec): string {
 export function answerOf(spec: CardSpec, desc: string): string {
   const questionLines = new Set(spec.questions.map((q) => `_${q}_`));
   return desc
+    .replace(/\r\n|\r/g, '\n')
     .split('\n')
-    .filter((line) => !questionLines.has(line))
+    .filter((line) => !questionLines.has(line.trim()))
     .join('\n')
     .trim();
 }
