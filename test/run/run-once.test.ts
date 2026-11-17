@@ -489,14 +489,14 @@ test('compiled cards: search terms, place rule with its evidence, the reading in
   }
 });
 
-test('a compile reply with problems: ❌ cards not usable, the problem on the status card, nothing scanned', async () => {
+test('a compile reply with model problems: run continues, warning on the ✅ card, scan called', async () => {
   const t = await setup({ compile: () => ({ ...SAMPLE_COMPILED, problems: [{ card: 'Content editor › My dream job', reason: 'says nothing usable' }] }) });
   const out = await run(t.deps);
-  assert.equal(out.state, 'failed');
+  assert.equal(out.state, 'ok');
   const top = (await runCards(t))[0]!;
-  assert.equal(top.name, `❌ ${COLUMN} · scheduled · cards not usable`);
-  assert.match(top.desc, /Problems:\n- Content editor › My dream job: says nothing usable/);
-  assert.equal(t.scans.length, 0);
+  assert.match(top.name, /⚠️ 1 warnings/);
+  assert.match(top.desc, /Content editor › My dream job: says nothing usable/);
+  assert.equal(t.scans.length, 1);
 });
 
 test('the model failing three times: ❌ could not read your cards, nothing scanned', async () => {
@@ -544,13 +544,22 @@ test('stats.models and stats.tokens include the compile call', async () => {
   const t = await setup();
   const out = await run(t.deps);
   assert.equal(out.state, 'ok');
-  // The compile step runs once and contributes tokens (fakeLlm returns total_tokens=10 per call).
-  // After the fix, compile model is counted in stats.models and tokens in stats.tokens.
   const totalKeys = Object.keys(out.stats.models);
   assert.ok(totalKeys.length > 0, 'stats.models must not be empty after a run with compile');
-  // fakeLlm returns total_tokens=10 for the compile call; scoring adds more tokens.
+  // fakeLlm returns total_tokens=10 per call; scoring adds more tokens.
   assert.ok(out.stats.tokens >= 10, `stats.tokens ${out.stats.tokens} should include compile tokens`);
-  // Verify model call count: 3 scoring results + 1 compile = at least 4 model calls tracked
   const totalCalls = Object.values(out.stats.models).reduce((a, b) => a + b, 0);
   assert.ok(totalCalls >= 4, `expected at least 4 model calls (3 scoring + 1 compile), got ${totalCalls}`);
+});
+
+test('compile failed (code-detected): stats.models and stats.tokens counted from the compile reply', async () => {
+  // THIN has fewer than 3 examples — code-detected unusable. All 3 attempts fail → CompileFailed.
+  const THIN_COMPILE = { ...SAMPLE_COMPILED, profiles: [{ ...SAMPLE_COMPILED.profiles[0]!, examples: SAMPLE_COMPILED.profiles[0]!.examples.slice(0, 1) }] };
+  const t = await setup({ compile: () => THIN_COMPILE });
+  const out = await run(t.deps);
+  assert.equal(out.state, 'failed');
+  assert.equal((await runCards(t))[0]!.name, `❌ ${COLUMN} · scheduled · cards not usable`);
+  // The model WAS called (3 times); model and tokens should be counted in stats.
+  assert.ok(Object.keys(out.stats.models).length > 0, `stats.models should be set on a compile-failed run, got ${JSON.stringify(out.stats.models)}`);
+  assert.ok(out.stats.tokens > 0, `stats.tokens should be > 0 on a compile-failed run, got ${out.stats.tokens}`);
 });

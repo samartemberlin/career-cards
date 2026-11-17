@@ -115,9 +115,18 @@ export function buildScanPlan(o: {
   }
 
   const active = new Set(o.activeProfiles.map((n) => n.toLowerCase()));
+  const uniqueLinkedIn = (() => {
+    const seen = new Set<string>();
+    return compiled.linkedin_locations.filter((l) => {
+      const key = `${l.location.toLowerCase()}:${!!l.remote}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  })();
   const searches = compiled.profiles.filter((p) => active.has(p.name.toLowerCase())).map((p) => ({
     board_keywords: [...p.search_terms],
-    linkedin: compiled.linkedin_locations.map((l) => ({ ...l, queries: [...p.search_terms] })),
+    linkedin: uniqueLinkedIn.map((l) => ({ ...l, queries: [...p.search_terms] })),
   }));
   const portals = mergePortals(droppedPortals, searches);
 

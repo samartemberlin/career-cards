@@ -61,9 +61,9 @@ test('readingOf: the sample object reads with the exact strings, in board order'
         'Remote jobs only if: full_time',
         'LinkedIn searches in: Berlin, Germany (remote)',
       ],
-      scoring: [], unused: [],
+      scoring: [], unused: [], problems: [],
     },
-    { card: 'Contract & visa', hardRules: ['Keep only these contracts: full_time, part_time'], scoring: [], unused: [] },
+    { card: 'Contract & visa', hardRules: ['Keep only these contracts: full_time, part_time'], scoring: [], unused: [], problems: [] },
     {
       card: 'Languages', hardRules: [],
       scoring: [
@@ -71,25 +71,26 @@ test('readingOf: the sample object reads with the exact strings, in board order'
         'Experience: 3 years',
         "Language and experience limits lower a job's ranking only in the run notes for now; they do not drop jobs.",
       ],
-      unused: [],
+      unused: [], problems: [],
     },
     {
       card: 'Never these companies or words',
-      hardRules: ['Drop these companies: Acme Corp', 'Drop jobs whose text says: unpaid'], scoring: [], unused: [],
+      hardRules: ['Drop these companies: Acme Corp', 'Drop jobs whose text says: unpaid'], scoring: [], unused: [], problems: [],
     },
-    { card: 'Company size', hardRules: [], scoring: ['Sent to scoring as written'], unused: [] },
-    { card: 'Industries I like', hardRules: [], scoring: ['Nothing to use ("none")'], unused: [] },
+    { card: 'Company size', hardRules: [], scoring: ['Sent to scoring as written'], unused: [], problems: [] },
+    { card: 'Industries I like', hardRules: [], scoring: ['Nothing to use ("none")'], unused: [], problems: [] },
     {
       card: "Content editor › Role names I'd take",
-      hardRules: ['Search for: content editor, Redakteur', 'Keep job titles containing: editor, redakteur'], scoring: [], unused: [],
+      hardRules: ['Search for: content editor, Redakteur', 'Keep job titles containing: editor, redakteur'], scoring: [], unused: [], problems: [],
     },
-    { card: 'Content editor › Words I want / avoid', hardRules: ['Drop job titles containing: senior'], scoring: [], unused: [] },
+    { card: 'Content editor › Words I want / avoid', hardRules: ['Drop job titles containing: senior'], scoring: [], unused: [], problems: [] },
     {
       card: 'Content editor › My dream job', hardRules: [],
       scoring: ['Sent to scoring as written', 'Example roles: Editor at a culture magazine 9, Copy editor at an agency 6, Sales manager 1'],
       unused: [{ text: 'at least 50k a year', reason: 'postings rarely state salary' }],
+      problems: [],
     },
-    { card: 'Other', hardRules: [], scoring: [], unused: [{ text: 'a dog-friendly office', reason: 'no field for it' }] },
+    { card: 'Other', hardRules: [], scoring: [], unused: [{ text: 'a dog-friendly office', reason: 'no field for it' }], problems: [] },
   ]);
 });
 
@@ -100,6 +101,56 @@ test('readingOf: anywhere, and a contract card with nothing to keep', () => {
   assert.deepEqual(r[1]!.hardRules, []);
 });
 
+test('readingOf: model problem shown as a reason on matching entry; unmatched goes to Other', () => {
+  const c: Compiled = {
+    ...SAMPLE,
+    problems: [
+      { card: 'contract & visa', reason: 'says employee contracts only' },
+      { card: 'Unknown card', reason: 'no matching card' },
+    ],
+  };
+  const r = readingOf(c, { dealBreakers: INPUT.dealBreakers.slice(0, 2), profiles: [] }, []);
+  const contract = r.find((e) => e.card === 'Contract & visa');
+  assert.ok(contract, 'Contract & visa entry expected');
+  assert.deepEqual(contract!.problems, ['says employee contracts only']);
+  const other = r.find((e) => e.card === 'Other');
+  assert.ok(other, 'Other entry expected for unmatched problem');
+  assert.deepEqual(other!.problems, ['no matching card']);
+});
+
+test('readingText: "Check this card:" renders after "Not used"', () => {
+  const r: CardReading[] = [{
+    card: 'Contract & visa',
+    hardRules: [],
+    scoring: [],
+    unused: [{ text: 'freelance', reason: 'no field' }],
+    problems: ['says employee contracts only'],
+  }];
+  const out = readingText(r);
+  assert.ok(out.includes('Not used: freelance (no field)'), `missing Not used: ${out}`);
+  assert.ok(out.includes('Check this card: says employee contracts only'), `missing Check this card: ${out}`);
+  const notUsedPos = out.indexOf('Not used:');
+  const checkPos = out.indexOf('Check this card:');
+  assert.ok(notUsedPos < checkPos, `"Not used" should appear before "Check this card": ${out}`);
+});
+
+test('readingOf: duplicate LinkedIn locations are deduplicated (case-insensitive, by location+remote)', () => {
+  const c: Compiled = {
+    ...SAMPLE,
+    linkedin_locations: [
+      { location: 'Berlin' },
+      { location: 'berlin' },
+      { location: 'Berlin', remote: true },
+      { location: 'Berlin' },
+    ],
+  };
+  const r = readingOf(c, { dealBreakers: [INPUT.dealBreakers[0]!], profiles: [] }, []);
+  const where = r.find((e) => e.card === 'Where & how I work');
+  const liLine = where!.hardRules.find((l) => l.startsWith('LinkedIn searches in'));
+  assert.ok(liLine, `no LinkedIn line in: ${JSON.stringify(where!.hardRules)}`);
+  assert.equal(liLine!, 'LinkedIn searches in: Berlin, Berlin (remote)');
+});
+
 test('readingOf: 9 places show 8 and "… and 1 more"', () => {
   const keep = ['A1', 'B2', 'C3', 'D4', 'E5', 'F6', 'G7', 'H8', 'I9'];
   const c: Compiled = { ...SAMPLE, places: { anywhere: false, keep, drop: [] }, employment: { keep: [], remote_only: [] }, linkedin_locations: [] };
@@ -108,10 +159,11 @@ test('readingOf: 9 places show 8 and "… and 1 more"', () => {
 });
 
 const TWO: CardReading[] = [
-  { card: 'Where & how I work', hardRules: ['Keep jobs located in: Berlin', 'Drop jobs located in: Munich'], scoring: [], unused: [] },
+  { card: 'Where & how I work', hardRules: ['Keep jobs located in: Berlin', 'Drop jobs located in: Munich'], scoring: [], unused: [], problems: [] },
   {
     card: 'Content editor › My dream job', hardRules: [], scoring: ['Sent to scoring as written'],
     unused: [{ text: 'at least 50k', reason: 'postings rarely state salary' }, { text: 'a dog', reason: 'no field' }],
+    problems: [],
   },
 ];
 
@@ -128,7 +180,7 @@ test('readingText: exact output for two cards', () => {
 });
 
 test('readingText: model text stays on one line', () => {
-  const r: CardReading[] = [{ card: 'Other', hardRules: [], scoring: [], unused: [{ text: 'a\n**Fake**', reason: 'x' }] }];
+  const r: CardReading[] = [{ card: 'Other', hardRules: [], scoring: [], unused: [{ text: 'a\n**Fake**', reason: 'x' }], problems: [] }];
   assert.equal(readingText(r), '**Other**\nHard rules: none\nNot used: a **Fake** (x)');
 });
 

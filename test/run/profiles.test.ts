@@ -71,8 +71,9 @@ describe('the sample board as the run sees it', () => {
     assert.equal(out.reading[0]!.card, 'Where & how I work');
   });
 
-  it('compileUser: a problem from the model is CompileFailed', async () => {
+  it('compileUser: a problem from the model is in compiled.problems, not CompileFailed', async () => {
     const cfg = await sampleConfig();
-    await assert.rejects(compile(cfg, () => ({ ...SAMPLE_COMPILED, problems: [{ card: 'Languages', reason: 'unclear' }] })), CompileFailed);
+    const { out } = await compile(cfg, () => ({ ...SAMPLE_COMPILED, problems: [{ card: 'Languages', reason: 'unclear' }] }));
+    assert.deepEqual(out.compiled.problems, [{ card: 'Languages', reason: 'unclear' }]);
   });
 });

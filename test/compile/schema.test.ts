@@ -47,10 +47,10 @@ test('unusable: good object returns empty array', () => {
   assert.deepEqual(unusable(VALID, ['Editor']), []);
 });
 
-test('unusable: c.problems passed through', () => {
+test('unusable: c.problems is not passed through (model problems are warnings, not blockers)', () => {
   const c: Compiled = { ...VALID, problems: [{ card: 'Some card', reason: 'bad input' }] };
   const result = unusable(c, []);
-  assert.ok(result.some(r => r.card === 'Some card' && r.reason === 'bad input'));
+  assert.deepEqual(result, []);
 });
 
 test('unusable: places anywhere false + empty keep', () => {

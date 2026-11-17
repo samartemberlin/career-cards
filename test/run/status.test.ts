@@ -301,6 +301,7 @@ function sampleReading(): CardReading[] {
     hardRules: ['Keep jobs located in: Berlin'],
     scoring: [],
     unused: [{ text: 'Prefer small companies', reason: 'not a filter' }],
+    problems: [],
   }];
 }
 
@@ -390,6 +391,7 @@ test('statusDesc: a secret inside unused reading text is redacted', () => {
     hardRules: [],
     scoring: [],
     unused: [{ text: `ignore this ${secret} value`, reason: 'not applicable' }],
+    problems: [],
   }];
   const desc = statusDesc(makeView({ state: 'ok', stats, redact }));
   assert.ok(!desc.includes(secret), 'secret not exposed in desc');
@@ -404,6 +406,7 @@ test('statusDesc keeps full reading while source errors are cut to fit DESC_LIMI
     hardRules: ['x'.repeat(5000)],
     scoring: [],
     unused: [{ text: marker, reason: 'not a filter' }],
+    problems: [],
   }];
   stats.sourceErrors = Array.from({ length: 300 }, (_, i) => ({
     company: `Comp${i.toString().padStart(3, '0')}`,

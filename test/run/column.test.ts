@@ -92,6 +92,7 @@ test('summaryDesc: drop lines replace top rules; reading section appears with No
     hardRules: ['Keep jobs located in: Berlin'],
     scoring: [],
     unused: [{ text: 'Prefer small companies', reason: 'not a filter' }],
+    problems: [],
   }];
   const s = stats({
     reading,
@@ -237,6 +238,7 @@ test('summaryDesc: a secret in a drop example and in unused reading text is reda
       hardRules: [],
       scoring: [],
       unused: [{ text: `ignore ${secret} this`, reason: 'not applicable' }],
+      problems: [],
     }],
     rules: { PLACE_NOT_KEPT: 1 },
   });
@@ -255,6 +257,7 @@ test('summaryDesc: a 30,000-char reading is clipped to stay ≤ DESC_LIMIT', () 
       hardRules: ['x'.repeat(30000)],
       scoring: [],
       unused: [],
+      problems: [],
     }],
     rules: { PLACE_NOT_KEPT: 5 },
   });

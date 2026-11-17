@@ -105,7 +105,7 @@ test('check: job card → works-on line, uncounted, no model call', async () => 
   assert.equal(llm.requests.length, 0);
 });
 
-test('check: compile failed → fix list', async () => {
+test('check: model problem in reply → reading shows "Check this card: …", no fix list', async () => {
   const { raw, makeCtx } = setup(() => ({
     ...COMPILED,
     problems: [{ card: 'Default › My dream job', reason: 'says nothing usable' }],
@@ -114,9 +114,33 @@ test('check: compile failed → fix list', async () => {
   const card = await raw.createCard({ idList: list.id, name: 'Where & how I work', desc: '', pos: 'bottom' });
   const ctx = makeCtx(card.id);
   const result = await checkCard(ctx);
+  assert.ok(result.text.startsWith('How a run would read this card:'), `expected reading block, got: ${result.text}`);
+  assert.ok(!result.text.includes('These cards need a fix'), `should not show fix list: ${result.text}`);
+});
+
+test('check: code-detected unusable (empty search_terms on the one attempt) → "These cards need a fix" naming the card', async () => {
+  // With attempts:1 in check.ts, one unusable attempt → CompileFailed thrown by compileCards.
+  const thinCompiled = { ...COMPILED, profiles: [{ ...COMPILED.profiles[0]!, search_terms: [] }] };
+  const { raw, makeCtx } = setup(() => thinCompiled);
+  const list = await raw.createList(PROFILES_BOARD, LISTS.dealBreakers, 'bottom');
+  const card = await raw.createCard({ idList: list.id, name: 'Where & how I work', desc: '', pos: 'bottom' });
+  const ctx = makeCtx(card.id);
+  const result = await checkCard(ctx);
   assert.ok(result.text.startsWith('These cards need a fix before a run can start:'), `unexpected text: ${result.text}`);
-  assert.ok(result.text.includes('Default › My dream job'), `expected card name in text: ${result.text}`);
-  assert.ok(result.text.includes('says nothing usable'), `expected reason in text: ${result.text}`);
+  assert.ok(result.text.includes('Default'), `expected card name in text: ${result.text}`);
+});
+
+test('check: checking the very card that carries a model problem → "Check this card: <reason>" in the reading', async () => {
+  const { raw, makeCtx } = setup(() => ({
+    ...COMPILED,
+    problems: [{ card: 'Default › My dream job', reason: 'too generic to score' }],
+  }));
+  const list = await raw.createList(PROFILES_BOARD, 'Default', 'bottom');
+  const card = await raw.createCard({ idList: list.id, name: 'My dream job', desc: '', pos: 'bottom' });
+  const ctx = makeCtx(card.id);
+  const result = await checkCard(ctx);
+  assert.ok(result.text.startsWith('How a run would read this card:'), `expected reading block: ${result.text}`);
+  assert.ok(result.text.includes('Check this card: too generic to score'), `expected Check this card in: ${result.text}`);
 });
 
 test('check: compile unavailable (quota) → QUOTA_REPLY', async () => {

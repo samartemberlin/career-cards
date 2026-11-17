@@ -3,7 +3,7 @@ import { displayName } from './compile.ts';
 import type { CardText, CompileInput } from './compile.ts';
 import type { Compiled } from './schema.ts';
 
-export type CardReading = { card: string; hardRules: string[]; scoring: string[]; unused: { text: string; reason: string }[] };
+export type CardReading = { card: string; hardRules: string[]; scoring: string[]; unused: { text: string; reason: string }[]; problems: string[] };
 
 const SHOWN = 8;
 const list = (xs: string[]): string =>
@@ -27,7 +27,7 @@ function dealBreaker(c: Compiled, card: CardText): Pick<CardReading, 'hardRules'
         ...(c.places.anywhere ? ['Keep jobs anywhere'] : rule('Keep jobs located in', c.places.keep)),
         ...rule('Drop jobs located in', c.places.drop),
         ...rule('Remote jobs only if', c.employment.remote_only),
-        ...rule('LinkedIn searches in', c.linkedin_locations.map((l) => (l.remote ? `${l.location} (remote)` : l.location))),
+        ...rule('LinkedIn searches in', uniqueLinkedIn(c.linkedin_locations).map((l) => (l.remote ? `${l.location} (remote)` : l.location))),
       ],
       scoring: [],
     };
@@ -66,19 +66,33 @@ function profileCard(c: Compiled, profile: string, card: CardText): Pick<CardRea
 
 const isNone = (text: string): boolean => /^none\.?$/i.test(text.trim());
 
-/** One entry per card the user wrote, in board order. Rendered from `compiled` by code; only `unused` is model text. */
+function uniqueLinkedIn(locs: Compiled['linkedin_locations']): Compiled['linkedin_locations'] {
+  const seen = new Set<string>();
+  return locs.filter((l) => {
+    const key = `${l.location.toLowerCase()}:${!!l.remote}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/** One entry per card the user wrote, in board order. Rendered from `compiled` by code; only `unused` and `problems` are model text. */
 export function readingOf(c: Compiled, input: CompileInput, niceToHave: { name: string; text: string }[]): CardReading[] {
   const out: CardReading[] = [
-    ...input.dealBreakers.map((card) => ({ card: card.name, ...dealBreaker(c, card), unused: [] })),
-    ...niceToHave.map((n) => ({ card: n.name, hardRules: [], scoring: [isNone(n.text) ? 'Nothing to use ("none")' : AS_WRITTEN], unused: [] })),
-    ...input.profiles.flatMap((p) => p.cards.map((card) => ({ card: displayName(p.name, card.name), ...profileCard(c, p.name, card), unused: [] }))),
+    ...input.dealBreakers.map((card) => ({ card: card.name, ...dealBreaker(c, card), unused: [], problems: [] })),
+    ...niceToHave.map((n) => ({ card: n.name, hardRules: [], scoring: [isNone(n.text) ? 'Nothing to use ("none")' : AS_WRITTEN], unused: [], problems: [] })),
+    ...input.profiles.flatMap((p) => p.cards.map((card) => ({ card: displayName(p.name, card.name), ...profileCard(c, p.name, card), unused: [], problems: [] }))),
   ];
-  const other: CardReading = { card: 'Other', hardRules: [], scoring: [], unused: [] };
+  const other: CardReading = { card: 'Other', hardRules: [], scoring: [], unused: [], problems: [] };
   for (const u of c.unused) {
     const home = out.find((r) => r.card.toLowerCase() === u.card.toLowerCase()) ?? other;
     home.unused.push({ text: u.text, reason: u.reason });
   }
-  if (other.unused.length) out.push(other);
+  for (const p of c.problems) {
+    const home = out.find((r) => r.card.toLowerCase() === p.card.toLowerCase()) ?? other;
+    home.problems.push(p.reason);
+  }
+  if (other.unused.length || other.problems.length) out.push(other);
   return out;
 }
 
@@ -88,6 +102,7 @@ export function readingText(r: CardReading[], o: { max?: number } = {}): string 
     `Hard rules: ${e.hardRules.length ? e.hardRules.map(oneLine).join('; ') : 'none'}`,
     ...(e.scoring.length ? [`Used by scoring: ${e.scoring.map(oneLine).join('; ')}`] : []),
     ...(e.unused.length ? [`Not used: ${e.unused.map((u) => `${oneLine(u.text)} (${oneLine(u.reason)})`).join('; ')}`] : []),
+    ...e.problems.map((r) => `Check this card: ${oneLine(r)}`),
   ].join('\n')).join('\n\n');
   return o.max !== undefined && text.length > o.max ? `${text.slice(0, o.max - 1)}…` : text;
 }
