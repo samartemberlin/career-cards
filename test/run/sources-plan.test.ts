@@ -2,7 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadDefaults, buildScanPlan } from '../../src/run/sources-plan.ts';
 import type { Defaults } from '../../src/run/sources-plan.ts';
-import type { Sources, Settings, Profile } from '../../src/config/schema.ts';
+import type { Sources, Settings } from '../../src/config/schema.ts';
+import type { Compiled } from '../../src/compile/schema.ts';
 
 // --- helpers ----------------------------------------------------------------
 
@@ -11,8 +12,6 @@ function makeSettings(overrides: Partial<Settings> = {}): Settings {
     timezone: 'Europe/Berlin',
     providers: ['gemini'],
     scoring_cap: 150,
-    locations: ['berlin'],
-    linkedin_locations: [],
     linkedin: false,
     allowed_members: [], bot_keyword: '/bot',
     caps: { model_per_day: 30, model_per_card_per_day: 8, research_per_day: 10, static_per_day: 100 },
@@ -20,19 +19,18 @@ function makeSettings(overrides: Partial<Settings> = {}): Settings {
   };
 }
 
-function makeProfile(name: string, keywords: string[], active = true): Profile {
+type P = { name: string; terms: string[]; active: boolean };
+const makeProfile = (name: string, terms: string[], active = true): P => ({ name, terms, active });
+
+/** What the compile step would read for these profiles, and which of them are active. */
+function forProfiles(ps: P[], linkedin: Compiled['linkedin_locations'] = []): { compiled: Compiled; activeProfiles: string[] } {
   return {
-    name,
-    active,
-    rubric: '',
-    searchKeywords: keywords,
-    filters: {
-      includeTitles: [],
-      excludeTitles: [],
-      excludeCompanies: [],
-      excludeText: [],
-      excludeLocations: [],
+    compiled: {
+      places: { anywhere: true, keep: [], drop: [] }, employment: { keep: [], remote_only: [] }, linkedin_locations: linkedin,
+      company_exclude: [], text_exclude: [], languages: {}, years_experience: null, unused: [], problems: [],
+      profiles: ps.map((p) => ({ name: p.name, search_terms: p.terms, title_include: ['x'], title_exclude: [], examples: [] })),
     },
+    activeProfiles: ps.filter((p) => p.active).map((p) => p.name),
   };
 }
 
@@ -63,7 +61,7 @@ describe('buildScanPlan', () => {
     const plan = buildScanPlan({
       defaults,
       sources: { add: [], drop: [' vinted '] },
-      profiles: [makeProfile('alice', [])],
+      ...forProfiles([makeProfile('alice', [])]),
       settings: makeSettings(),
     });
     assert.equal(plan.warnings.length, 0);
@@ -75,7 +73,7 @@ describe('buildScanPlan', () => {
     const plan = buildScanPlan({
       defaults,
       sources: { add: [], drop: ['VintedXXX'] },
-      profiles: [makeProfile('alice', [])],
+      ...forProfiles([makeProfile('alice', [])]),
       settings: makeSettings(),
     });
     assert.equal(plan.warnings.length, 1);
@@ -92,7 +90,7 @@ describe('buildScanPlan', () => {
     const plan = buildScanPlan({
       defaults,
       sources: { add: [], drop: [target] },
-      profiles: [makeProfile('alice', [])],
+      ...forProfiles([makeProfile('alice', [])]),
       settings: makeSettings(),
     });
     const remaining = (plan.portals as { tracked_companies: Array<{ name: string }> }).tracked_companies;
@@ -107,7 +105,7 @@ describe('buildScanPlan', () => {
     const plan = buildScanPlan({
       defaults,
       sources: { add: [{ name: 'Acme GmbH', careers_url: 'https://acme.example.com/careers' }], drop: [] },
-      profiles: [makeProfile('alice', [])],
+      ...forProfiles([makeProfile('alice', [])]),
       settings: makeSettings(),
     });
     const companies = (plan.portals as { tracked_companies: Array<{ name: string; careers_url: string }> }).tracked_companies;
@@ -124,7 +122,7 @@ describe('buildScanPlan', () => {
     const plan = buildScanPlan({
       defaults,
       sources: { add: [{ name: target, careers_url: newUrl }], drop: [] },
-      profiles: [makeProfile('alice', [])],
+      ...forProfiles([makeProfile('alice', [])]),
       settings: makeSettings(),
     });
     const result = (plan.portals as { tracked_companies: Array<{ name: string; careers_url: string }> }).tracked_companies;
@@ -148,7 +146,7 @@ describe('buildScanPlan', () => {
     const plan = buildScanPlan({
       defaults,
       sources: { add: [{ name: 'OldCo', careers_url: 'https://new.example.com' }], drop: [] },
-      profiles: [makeProfile('alice', [])],
+      ...forProfiles([makeProfile('alice', [])]),
       settings: makeSettings(),
     });
     const result = (plan.portals as { tracked_companies: Array<Record<string, unknown>> }).tracked_companies;
@@ -167,10 +165,11 @@ describe('buildScanPlan', () => {
     const plan = buildScanPlan({
       defaults,
       sources: emptySources(),
-      profiles: [
+      ...forProfiles([
         makeProfile('alice', ['CRM', 'Eventmanagement']),
         makeProfile('bob', ['crm', 'RevOps']),
-      ],
+        makeProfile('carol', ['Inactive Term'], false),
+      ]),
       settings: makeSettings(),
     });
     const boards = (plan.portals as { job_boards: Array<{ provider: string; arbeitsagentur?: { keywords?: string[] } }> }).job_boards;
@@ -181,6 +180,7 @@ describe('buildScanPlan', () => {
     assert.equal(kw.filter((k) => k.toLowerCase() === 'crm').length, 1);
     assert.ok(kw.map((k) => k.toLowerCase()).includes('eventmanagement'));
     assert.ok(kw.map((k) => k.toLowerCase()).includes('revops'));
+    assert.ok(!kw.includes('Inactive Term'), 'an inactive profile adds no search term');
   });
 
   // --- LinkedIn -----------------------------------------------------------
@@ -190,23 +190,20 @@ describe('buildScanPlan', () => {
     const plan = buildScanPlan({
       defaults,
       sources: emptySources(),
-      profiles: [makeProfile('alice', ['crm'])],
+      ...forProfiles([makeProfile('alice', ['crm'])]),
       settings: makeSettings({ linkedin: false }),
     });
     assert.equal(plan.linkedin, null);
     assert.equal(plan.warnings.length, 0);
   });
 
-  it('linkedin on → searches per linkedin_locations with the profiles keywords', () => {
+  it('linkedin on → searches per compiled location with the profiles\' search terms', () => {
     const defaults = loadDefaults();
     const plan = buildScanPlan({
       defaults,
       sources: emptySources(),
-      profiles: [makeProfile('alice', ['crm']), makeProfile('bob', ['event'])],
-      settings: makeSettings({
-        linkedin: true,
-        linkedin_locations: [{ location: 'Berlin, Germany' }, { location: 'Germany', remote: true }],
-      }),
+      ...forProfiles([makeProfile('alice', ['crm']), makeProfile('bob', ['event'])], [{ location: 'Berlin, Germany' }, { location: 'Germany', remote: true }]),
+      settings: makeSettings({ linkedin: true }),
     });
     assert.ok(plan.linkedin !== null, 'linkedin should be set');
     const searches = (plan.linkedin as { searches?: Array<{ location: string; queries: string[] }> }).searches;
@@ -215,6 +212,7 @@ describe('buildScanPlan', () => {
     assert.ok(berlin, 'Berlin search expected');
     assert.ok(berlin!.queries.map((q) => q.toLowerCase()).includes('crm'));
     assert.ok(berlin!.queries.map((q) => q.toLowerCase()).includes('event'));
+    assert.deepEqual(searches!.find((s) => s.location === 'Germany'), { location: 'Germany', remote: true, queries: ['crm', 'event'] });
   });
 
   it('linkedin on without locations → null and a warning', () => {
@@ -222,12 +220,11 @@ describe('buildScanPlan', () => {
     const plan = buildScanPlan({
       defaults,
       sources: emptySources(),
-      profiles: [makeProfile('alice', ['crm'])],
-      settings: makeSettings({ linkedin: true, linkedin_locations: [] }),
+      ...forProfiles([makeProfile('alice', ['crm'])]),
+      settings: makeSettings({ linkedin: true }),
     });
     assert.equal(plan.linkedin, null);
-    assert.equal(plan.warnings.length, 1);
-    assert.match(plan.warnings[0]!, /linkedin_locations/i);
+    assert.deepEqual(plan.warnings, ['LinkedIn is on but "Where & how I work" names no place to search']);
   });
 
   // --- No mutation --------------------------------------------------------
@@ -239,8 +236,8 @@ describe('buildScanPlan', () => {
     buildScanPlan({
       defaults,
       sources: { add: [{ name: 'NewCo', careers_url: 'https://newco.example.com/jobs' }], drop: ['Vinted'] },
-      profiles: [makeProfile('alice', ['crm'])],
-      settings: makeSettings({ linkedin: true, linkedin_locations: [{ location: 'Berlin, Germany' }] }),
+      ...forProfiles([makeProfile('alice', ['crm'])], [{ location: 'Berlin, Germany' }]),
+      settings: makeSettings({ linkedin: true }),
     });
     assert.equal(JSON.stringify(defaults), before, 'defaults must not be mutated');
   });

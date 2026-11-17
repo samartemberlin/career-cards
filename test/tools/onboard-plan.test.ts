@@ -11,10 +11,12 @@ import type { Observed, ObservedBoard, OnboardPlan, Role } from '../../tools/onb
 import type { BoardLayout } from '../../tools/sample/layout.ts';
 import { SAMPLE_NAMES, denyBoardListing } from '../../tools/sample/guard.ts';
 import { main } from '../../tools/onboard.ts';
+import { SAMPLE_PROFILES } from '../../tools/sample/profiles.ts';
+import { specOf, templateOf } from '../../src/config/cards.ts';
 
 const ROLES: Role[] = ['jobs', 'profiles', 'system'];
 const TITLE = { jobs: 'Jobs', profiles: 'Profiles', system: 'System' } as const;
-const SETTINGS_OTHER = '```yaml\ntimezone: Europe/Paris\nproviders: [groq]\nlocations: [berlin]\nallowed_members: [usera]\n```';
+const SETTINGS_OTHER = '```yaml\ntimezone: Europe/Paris\nproviders: [groq]\nallowed_members: [usera]\n```';
 
 const nothing: Observed = {
   bot: 'samplebot',
@@ -48,21 +50,23 @@ describe('starter', () => {
   it('has the brief\'s lists and cards', () => {
     assert.deepEqual(STARTER.jobs.lists.map((l) => l.name), ['To apply', 'Applied', 'Interview', 'Rejected', 'Closed', 'Dismissed']);
     assert.deepEqual(STARTER.profiles.lists.map((l) => [l.name, l.cards.map((c) => c.name)]), [
-      ['Originals', []],
-      ['Shared', ['CV', 'Personal details']],
-      ['My profile', ['Profile', 'Rubric', 'Search keywords', 'Filters', 'Feedback']],
+      ['Deal-breakers', ['Where & how I work', 'Contract & visa', 'Languages', 'Never these companies or words']],
+      ['Nice to have', ['Company size', 'Industries I like', 'What matters to me']],
+      ['My profile', ["Role names I'd take", 'Words I want / avoid', 'My dream job', "Jobs I'd love / jobs I'd skip", 'Active', 'Feedback']],
+      ['About me', ['CV', 'Personal details']],
     ]);
     assert.deepEqual(STARTER.system.lists.map((l) => [l.name, l.cards.map((c) => c.name)]), [
       ['Config', ['Settings', 'Sources', 'Schedule']],
       ['Runs', []],
     ]);
-    const details = STARTER.profiles.lists[1]!.cards[1]!;
-    assert.deepEqual(details.checklists, [{ name: 'Personal details', items: [] }]);
+    // Questions only: the run refuses until the cards are answered.
+    const details = STARTER.profiles.lists[3]!.cards[1]!;
+    assert.equal(details.desc, templateOf(specOf('details')));
   });
 
   it('starterLayout puts the owner in allowed_members', () => {
     const settings = starterLayout('usera').system.lists[0]!.cards[0]!.desc;
-    assert.match(settings, /timezone: Europe\/Berlin\nproviders: \[gemini\]\nlocations: \[\]\nlinkedin: false\nallowed_members: \[usera\]\n/);
+    assert.match(settings, /timezone: Europe\/Berlin\nproviders: \[gemini\]\nlinkedin: false\nallowed_members: \[usera\]\n/);
   });
 });
 
@@ -99,12 +103,12 @@ describe('planOnboarding', () => {
     const o = full();
     const profiles = o.boards.profiles as Extract<ObservedBoard, { exists: true }>;
     const mine = profiles.lists.find((l) => l.name === 'My profile')!;
-    mine.cards = mine.cards.filter((c) => c !== 'Rubric');
+    mine.cards = mine.cards.filter((c) => c !== 'My dream job');
     o.allowedMembers = ['usera'];
     const p = planOnboarding({ observed: o, owner: 'usera' });
     assert.deepEqual(p.refuse, []);
     assert.deepEqual(p.actions.map((a) => a.kind), ['createCard']);
-    assert.ok(p.actions[0]!.kind === 'createCard' && p.actions[0]!.card.name === 'Rubric' && p.actions[0]!.list === 'My profile');
+    assert.ok(p.actions[0]!.kind === 'createCard' && p.actions[0]!.card.name === 'My dream job' && p.actions[0]!.list === 'My profile');
     assert.ok(!JSON.stringify(p.actions).includes('Settings'));
   });
 
@@ -200,7 +204,7 @@ describe('planOnboarding', () => {
     o.config = {
       problems: [
         { where: 'System › Settings', message: 'providers: Required', card: { id: 'c1', name: 'Settings', url: 'https://trello.com/c/abc', board: 'system' } },
-        { where: 'Profiles › Shared › Personal details', message: 'Array must contain at least 1 element(s)' },
+        { where: 'Profiles › About me › Personal details', message: 'Personal details: list at least one item, one per line' },
         { where: 'Profiles board', message: 'at least one profile must be active' },
       ],
     };
@@ -231,14 +235,14 @@ describe('planOnboarding', () => {
 
 describe('formatPlan', () => {
   it('dry-run output lists refusals, actions and notes and no card text', () => {
-    const cv = STARTER.profiles.lists[1]!.cards[0]!;
+    const cv = STARTER.profiles.lists[3]!.cards[0]!;
     const plan: OnboardPlan = {
       refuse: ['Jobs: not private (org)'],
       actions: [
         { kind: 'createBoard', board: 'system', name: 'career-cards · System' },
         { kind: 'addMember', board: 'system', username: 'samplebot' },
-        { kind: 'createList', board: 'profiles', list: 'Shared' },
-        { kind: 'createCard', board: 'profiles', list: 'Shared', card: cv },
+        { kind: 'createList', board: 'profiles', list: 'About me' },
+        { kind: 'createCard', board: 'profiles', list: 'About me', card: cv },
         { kind: 'webhook', board: 'jobs', callbackURL: 'https://worker.example.com/trello' },
       ],
       notes: ['Settings: allowed_members does not include usera'],
@@ -250,8 +254,8 @@ describe('formatPlan', () => {
       'Will do:',
       '  System: create board "career-cards · System"',
       '  System: add member samplebot',
-      '  Profiles: create list "Shared"',
-      '  Profiles: create card "CV" in "Shared"',
+      '  Profiles: create list "About me"',
+      '  Profiles: create card "CV" in "About me"',
       '  Jobs: webhook to https://worker.example.com/trello',
       'Check by hand:',
       '  Settings: allowed_members does not include usera',
@@ -270,7 +274,10 @@ const USER_A = { id: 'a1'.padEnd(24, '0'), username: 'usera' };
 
 type Built = { fake: FakeTrello; ids: Record<Role, string> };
 
-/** Builds the starter boards in a FakeTrello, then forgets the setup requests. */
+const SAMPLE_ANSWERS = new Map(SAMPLE_PROFILES.lists.flatMap((l) => l.cards).reverse().map((c) => [c.name, c.desc]));
+
+/** Builds the starter boards in a FakeTrello, then forgets the setup requests. With `personal`, the Profiles cards are
+ *  answered with the sample's text and Personal details lists `personal`. */
 async function built(o: { personal?: string[]; botMember?: boolean } = {}): Promise<Built> {
   const fake = new FakeTrello();
   const raw = createTrelloClient({ key: 'k', token: 't', fetchImpl: fake.fetch, sleep: async () => {} });
@@ -285,11 +292,12 @@ async function built(o: { personal?: string[]; botMember?: boolean } = {}): Prom
     for (const ls of layout[r].lists) {
       const list = await raw.createList(b.id, ls.name, 'bottom');
       for (const cs of ls.cards) {
-        const card = await raw.createCard({ idList: list.id, name: cs.name, desc: cs.desc, pos: 'bottom' });
+        const answer = r !== 'profiles' || !o.personal || cs.name === 'Feedback' ? ''
+          : cs.name === 'Personal details' ? o.personal.join('\n') : cs.name === 'Active' ? '' : SAMPLE_ANSWERS.get(cs.name)!;
+        const card = await raw.createCard({ idList: list.id, name: cs.name, desc: answer ? `${cs.desc}\n${answer}` : cs.desc, pos: 'bottom' });
         for (const cls of cs.checklists ?? []) {
           const cl = await raw.createChecklist(card.id, cls.name);
-          const items = cls.name === 'Personal details' ? (o.personal ?? []) : cls.items;
-          for (const it of items) await raw.addCheckItem(cl.id, it);
+          for (const it of cls.items) await raw.addCheckItem(cl.id, it);
         }
       }
     }
@@ -386,13 +394,13 @@ describe('tools/onboard.ts', () => {
     assert.ok(!out.includes(SECRET) && !out.includes('key-SECRET'));
   });
 
-  it('half set up over FakeTrello: Settings with other YAML is left alone, only the missing Rubric is planned', async () => {
+  it('half set up over FakeTrello: Settings with other YAML is left alone, only the missing dream-job card is planned', async () => {
     const { fake, ids } = await built({ personal: ['A. User'] });
     const raw = createTrelloClient({ key: 'k', token: 't', fetchImpl: fake.fetch, sleep: async () => {} });
     const sys = await raw.cards(ids.system, { filter: 'open' });
     fake.setCardDesc(sys.find((c) => c.name === 'Settings')!.id, SETTINGS_OTHER);
     const prof = await raw.cards(ids.profiles, { filter: 'open' });
-    await raw.setCardClosed(prof.find((c) => c.name === 'Rubric')!.id, true);
+    await raw.setCardClosed(prof.find((c) => c.name === 'My dream job')!.id, true);
     fake.requests = [];
     const lines: string[] = [];
     const code = await main(['--dry-run', '--owner-user', 'usera'], { TRELLO_KEY: 'k', TRELLO_TOKEN: SECRET }, {
@@ -403,7 +411,7 @@ describe('tools/onboard.ts', () => {
     const out = lines.join('\n');
     assert.equal(code, 0, out);
     const willDo = out.slice(out.indexOf('Will do:'), out.indexOf('Check by hand:'));
-    assert.equal(willDo, 'Will do:\n  Profiles: create card "Rubric" in "My profile"\n');
+    assert.equal(willDo, 'Will do:\n  Profiles: create card "My dream job" in "My profile"\n');
     assert.ok(!out.includes('Europe/Paris'));
     assert.deepEqual(fake.requests.filter((r) => r.method !== 'GET'), []);
   });

@@ -1,4 +1,4 @@
-import type { Profile, UserConfig } from './config/schema.ts';
+import type { UserConfig } from './config/schema.ts';
 import type { LlmConfig } from './pipeline/llm.ts';
 
 export class PrivacyError extends Error {
@@ -166,7 +166,7 @@ const built = new WeakSet<object>();
 /** The one place prompt text about a person is built. Throws PrivacyError (fails closed) if masking cannot be trusted. */
 export function buildScoreContext(input: {
   user: Pick<UserConfig, 'sharedCv' | 'personalDetails'>;
-  profile: Pick<Profile, 'rubric' | 'cv'>;
+  profile: { rubric: string; cv?: string };
   llm: LlmConfig;
   translateTitle: boolean;
 }): MaskedContext {

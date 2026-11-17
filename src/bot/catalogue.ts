@@ -45,7 +45,7 @@ export const CATALOGUE: ActionSpec[] = [
     about: 'the company: what they do, other openings, locations, news or reputation.',
   },
   {
-    id: 'explain_filter', verbs: ['why', 'warum'], stage: 'code', router: 'auto',
+    id: 'explain_filter', verbs: ['why', 'warum'], stage: 'reader', router: 'auto',
     args: z.object({
       // The link ends up in a reply comment, so only web links are allowed (no javascript:, data:, file:).
       link: z.string().url().refine((u) => /^https?:\/\//i.test(u), { message: 'only http(s) links' }),

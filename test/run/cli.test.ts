@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -12,6 +12,13 @@ import type { Recording } from '../../tools/sample/scrub.ts';
 import type { ScanOutput } from '../../src/run/scan.ts';
 import type { ScanPlan } from '../../src/run/sources-plan.ts';
 import type { SourceResult } from '../../src/pipeline/sources/types.ts';
+import { fakeLlm, serveFakeLlm } from '../support/fake-llm.ts';
+import { useSampleConfig } from '../support/seed-layout.ts';
+
+// A run compiles the Profiles cards first, a dry run too: the model stand-in answers over HTTP.
+let model: Awaited<ReturnType<typeof serveFakeLlm>>;
+before(async () => { model = await serveFakeLlm(fakeLlm({ score: () => 5 })); });
+after(() => model.close());
 
 const DIR = join(import.meta.dirname, '..', 'fixtures', 'trello');
 const load = (name: string): Recording =>
@@ -34,6 +41,7 @@ function setupBoards(): { fake: FakeTrello; trello: TrelloApi; boards: { jobs: s
   const recs = { jobs: load('jobs'), profiles: load('profiles'), system: load('system') };
   const fake = FakeTrello.fromRecordings(recs.jobs, recs.profiles, recs.system, load('lookups'));
   const boards = { jobs: boardId(recs.jobs), profiles: boardId(recs.profiles), system: boardId(recs.system) };
+  useSampleConfig(fake, boards);
   const trello = makeClient(fake);
   return { fake, trello, boards };
 }
@@ -225,7 +233,7 @@ test('main: --dry-run over FakeTrello returns 0 and makes no write request', asy
   const lines: string[] = [];
   const code = await main(
     ['--dry-run'],
-    { JOBS_BOARD_ID: boards.jobs, PROFILES_BOARD_ID: boards.profiles, SYSTEM_BOARD_ID: boards.system },
+    { JOBS_BOARD_ID: boards.jobs, PROFILES_BOARD_ID: boards.profiles, SYSTEM_BOARD_ID: boards.system, ...model.env },
     {
       trello,
       scan: async () => emptyScan,
@@ -250,7 +258,7 @@ test('main: career-ops ScanFailed becomes a source error (⚠️), run still exi
   });
   const code = await main(
     ['--dry-run'],
-    { JOBS_BOARD_ID: boards.jobs, PROFILES_BOARD_ID: boards.profiles, SYSTEM_BOARD_ID: boards.system },
+    { JOBS_BOARD_ID: boards.jobs, PROFILES_BOARD_ID: boards.profiles, SYSTEM_BOARD_ID: boards.system, ...model.env },
     { trello, scan, out: (s) => lines.push(s) },
   );
   assert.equal(code, 0, 'ScanFailed must not fail the run');
@@ -262,7 +270,7 @@ test('main: scan log lines go through the redacting run log', async () => {
   const lines: string[] = [];
   const code = await main(
     ['--dry-run'],
-    { JOBS_BOARD_ID: boards.jobs, PROFILES_BOARD_ID: boards.profiles, SYSTEM_BOARD_ID: boards.system, TRELLO_TOKEN: 'trello-token-0000' },
+    { JOBS_BOARD_ID: boards.jobs, PROFILES_BOARD_ID: boards.profiles, SYSTEM_BOARD_ID: boards.system, TRELLO_TOKEN: 'trello-token-0000', ...model.env },
     {
       trello,
       sources: {

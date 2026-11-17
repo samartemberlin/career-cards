@@ -1,10 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  ConfigError, FilterItemSchema, PreferencesSchema, ProfileMetaSchema, ProfileSchema, SettingsSchema, UserConfigSchema, parseYamlBlock,
-} from '../../src/config/schema.ts';
+import { ConfigError, SettingsSchema, parseYamlBlock } from '../../src/config/schema.ts';
 
-const settingsIn = { providers: ['gemini'], locations: ['Berlin'] };
+const settingsIn = { providers: ['gemini'] };
 
 test('settings defaults', () => {
   const s = SettingsSchema.parse(settingsIn);
@@ -38,50 +36,12 @@ test('unknown timezone rejected', () => {
   assert.equal(SettingsSchema.parse({ ...settingsIn, timezone: 'UTC' }).timezone, 'UTC');
 });
 
-test('filter item parses pattern and note', () => {
-  assert.deepEqual(FilterItemSchema.parse('senior|lead — too senior'), { pattern: 'senior|lead', note: 'too senior' });
-  assert.deepEqual(FilterItemSchema.parse('  werkstudent  '), { pattern: 'werkstudent' });
-});
-
-test('filter item with invalid regex is rejected with the pattern in the message', () => {
-  const r = FilterItemSchema.safeParse('manager(  — broken');
-  assert.equal(r.success, false);
-  assert.match(r.error!.message, /manager\(/);
-});
-
-test('missing active means false', () => {
-  assert.deepEqual(ProfileMetaSchema.parse({}), { active: false });
-  assert.deepEqual(ProfileMetaSchema.parse({ active: true }), { active: true });
-});
-
-const profile = (active: boolean) => ({
-  name: 'Content', active, rubric: '# rubric', searchKeywords: ['editor'],
-  filters: { includeTitles: ['editor'], excludeTitles: ['senior — too senior'], excludeCompanies: [], excludeText: [], excludeLocations: [] },
-});
-
-const userIn = (over: Record<string, unknown> = {}) => ({
-  settings: settingsIn, profiles: [profile(true), profile(false)], sharedCv: '# CV', personalDetails: ['Alex Example'],
-  sources: { add: [], drop: [] }, ...over,
-});
-
-test('user config needs one active profile and one personal detail', () => {
-  assert.ok(UserConfigSchema.parse(userIn()));
-  assert.throws(() => UserConfigSchema.parse(userIn({ profiles: [profile(false)] })), /active/);
-  assert.throws(() => UserConfigSchema.parse(userIn({ personalDetails: [] })));
-});
-
-test('profile filters compile', () => {
-  const p = ProfileSchema.parse(profile(true));
-  assert.deepEqual(p.filters.excludeTitles, [{ pattern: 'senior', note: 'too senior' }]);
-});
-
-test('preferences: the preferences.yml shape parses', () => {
-  const prefs = { languages: { de: { read: 'B2', speak: 'A2' } }, years_experience: 1,
-    penalties: { german_c1_or_native: { points: 4, cap: 4 }, years_over: { points: 1, tolerance: 1, max: 2 },
-      degree_field_mismatch: { points: 1, fields_ok: ['humanities'] } } };
-  assert.deepEqual(PreferencesSchema.parse(prefs), prefs);
-  assert.throws(() => PreferencesSchema.parse({ penalties: { driving_licence: { points: 'two' } } }));
-  assert.ok(UserConfigSchema.parse(userIn({ preferences: prefs })).preferences);
+test('settings: locations and linkedin_locations are gone; the Profiles cards say where', () => {
+  for (const key of ['locations', 'linkedin_locations']) {
+    const r = SettingsSchema.safeParse({ ...settingsIn, [key]: [] });
+    assert.equal(r.success, false, key);
+    assert.match(r.error!.message, new RegExp(`'${key}'`));
+  }
 });
 
 test('parseYamlBlock reads the first yaml fence', () => {
@@ -100,14 +60,4 @@ test('unknown keys fail and the message names the key', () => {
   assert.match(settings.error!.message, /allowed_member/);
   assert.match(SettingsSchema.safeParse({ ...settingsIn, scoring_cpa: 10 }).error!.message, /scoring_cpa/);
   assert.match(SettingsSchema.safeParse({ ...settingsIn, caps: { model_per_dya: 5 } }).error!.message, /model_per_dya/);
-  assert.match(PreferencesSchema.safeParse({ years_experiance: 2 }).error!.message, /years_experiance/);
-  assert.match(PreferencesSchema.safeParse({ penalties: { driving_license: { points: 1 } } }).error!.message, /driving_license/);
-  assert.match(PreferencesSchema.safeParse({ penalties: { years_over: { points: 1, tolarance: 1 } } }).error!.message, /tolarance/);
-});
-
-test('a board with no profile column says so, not that a profile must be active', () => {
-  const r = UserConfigSchema.safeParse(userIn({ profiles: [] }));
-  assert.equal(r.success, false);
-  assert.match(r.error!.message, /no profile column found/);
-  assert.doesNotMatch(r.error!.message, /must be active/);
 });

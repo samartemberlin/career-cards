@@ -22,25 +22,20 @@ import { fakeModel } from '../../support/fake-model.ts';
 import { withWeb } from '../../support/fake-research.ts';
 import type { WebAnswer } from '../../support/fake-research.ts';
 import { FakeTrello } from '../../support/fake-trello.ts';
+import { testConfig } from '../../support/user-config.ts';
 
 const BOARDS: UserBoards = { jobs: 'fa4e00000000000000000005', profiles: 'fa4e0000000000000000000c', system: 'fa4e0000000000000000000d' };
 const NOW = new Date('2026-11-12T12:00:00Z');
 
-const cfg: UserConfig = {
+const cfg: UserConfig = testConfig({
   settings: {
-    timezone: 'Europe/Berlin', providers: ['claude'], scoring_cap: 150, locations: ['berlin'],
-    linkedin_locations: [], linkedin: false, allowed_members: [], bot_keyword: '/bot',
+    timezone: 'Europe/Berlin', providers: ['claude'], scoring_cap: 150,
+    linkedin: false, allowed_members: [], bot_keyword: '/bot',
     caps: { model_per_day: 30, model_per_card_per_day: 8, research_per_day: 10, static_per_day: 100 },
   },
-  profiles: [{
-    name: 'Default', active: true, rubric: 'Wants editing work. Ask Jane Roe. RUBRIC-SENTINEL-9d1',
-    searchKeywords: [],
-    filters: { includeTitles: [], excludeTitles: [], excludeCompanies: [], excludeText: [], excludeLocations: [] },
-  }],
-  sharedCv: 'Jane Roe, editor. jane@roe.example. CV-SENTINEL-9d1', personalDetails: ['Jane Roe'],
-  preferences: undefined,
-  sources: { add: [], drop: [] },
-};
+  dream: 'Wants editing work. Ask Jane Roe. RUBRIC-SENTINEL-9d1',
+  cv: 'Jane Roe, editor. jane@roe.example. CV-SENTINEL-9d1', personalDetails: ['Jane Roe'],
+});
 
 const ABOUT = 'https://acme.example/about';
 const NEWS = 'https://news.example/acme';

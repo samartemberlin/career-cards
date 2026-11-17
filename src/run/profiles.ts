@@ -1,36 +1,80 @@
-// The active profiles of one user, seen as one: a job any of them accepts is kept, and one scoring call covers all.
-import { personFilterFromProfile } from '../config/person.ts';
-import { filterJob } from '../pipeline/filter.ts';
+// The user's Profiles board as the run and the bot use it: one compile call turns the cards into filters, search
+// terms and the rubric; the bot's model-free rubric is built from the card text alone.
+import { compileCards } from '../compile/compile.ts';
+import type { CardText, CompileInput } from '../compile/compile.ts';
+import { compiledFilter } from '../compile/filter.ts';
+import { readingOf } from '../compile/reading.ts';
+import type { CardReading } from '../compile/reading.ts';
+import { buildRubric } from '../compile/rubric.ts';
+import type { ScoringText } from '../compile/rubric.ts';
+import { preferencesOf } from '../compile/schema.ts';
+import type { Compiled } from '../compile/schema.ts';
+import type { UserConfig } from '../config/schema.ts';
 import type { Job } from '../pipeline/keys.ts';
-import type { Profile, Settings, UserConfig } from '../config/schema.ts';
+import type { CallOpts, LlmConfig } from '../pipeline/llm.ts';
+import type { Preferences } from '../pipeline/prefs.ts';
+import { buildMasker } from '../privacy.ts';
+import type { BoardCard } from '../trello/profiles-board.ts';
 
-export function activeProfiles(cfg: UserConfig): Profile[] {
-  return cfg.profiles.filter((p) => p.active);
+const active = (cfg: UserConfig) => cfg.board.profiles.filter((p) => p.active);
+
+export function activeProfileNames(cfg: UserConfig): string[] {
+  return active(cfg).map((p) => p.name);
 }
 
-/** `null` if any profile accepts the job, else the first profile's rejection reason. */
-export function combinedFilter(profiles: Profile[], settings: Settings): (job: Job) => string | null {
-  if (!profiles.length) throw new Error('combinedFilter needs at least one profile');
-  const filters = profiles.map((p) => personFilterFromProfile(p, settings));
-  return (job) => {
-    let first: string | null = null;
-    for (const f of filters) {
-      const why = filterJob(job, f);
-      if (!why) return null;
-      first ??= why;
-    }
-    return first;
+const cardText = (c: BoardCard): CardText => ({ key: c.key, name: c.name, text: c.text });
+
+/** The cards the user wrote: an optional card left empty is not sent. */
+export function compileInputOf(cfg: UserConfig): CompileInput {
+  return {
+    dealBreakers: cfg.board.dealBreakers.map(cardText),
+    profiles: active(cfg).map((p) => ({ name: p.name, cards: p.cards.filter((c) => c.text).map(cardText) })),
   };
 }
 
-export const MIXED_CV_WARNING = 'active profiles have different CV cards; scoring uses the Shared CV';
+export function scoringTextOf(cfg: UserConfig): ScoringText {
+  const textOf = (cards: BoardCard[], key: BoardCard['key']) => cards.find((c) => c.key === key)?.text ?? '';
+  return {
+    niceToHave: cfg.board.niceToHave.map((c) => ({ name: c.name, text: c.text })),
+    profiles: active(cfg).map((p) => ({ name: p.name, dream: textOf(p.cards, 'dream'), examples: textOf(p.cards, 'examples') })),
+  };
+}
 
-/** The rubric and CV override to score with. `cv` undefined means the Shared CV. */
-export function scoringProfile(cfg: UserConfig): { rubric: string; cv?: string; warning?: string } {
-  const active = activeProfiles(cfg);
-  if (active.length === 1) return { rubric: active[0]!.rubric, cv: active[0]!.cv };
-  const rubric = active.map((p) => `## ${p.name}\n\n${p.rubric.trim()}`).join('\n\n');
-  const cvs = new Set(active.map((p) => p.cv));
-  if (cvs.size === 1) return { rubric, cv: active[0]!.cv };
-  return { rubric, cv: undefined, warning: MIXED_CV_WARNING };
+/** Nothing read from the cards: with it, buildRubric gives the cards' own words and no example table. */
+export const EMPTY_COMPILED: Compiled = {
+  places: { anywhere: true, keep: [], drop: [] },
+  employment: { keep: [], remote_only: [] },
+  linkedin_locations: [],
+  company_exclude: [],
+  text_exclude: [],
+  languages: {},
+  years_experience: null,
+  profiles: [],
+  unused: [],
+  problems: [],
+};
+
+/** The bot's rubric, made without a model call. */
+export function botRubric(cfg: UserConfig): string {
+  const names = activeProfileNames(cfg);
+  const profiles = names.map((name) => ({ name, search_terms: [], title_include: [], title_exclude: [], examples: [] }));
+  return buildRubric({ ...EMPTY_COMPILED, profiles }, scoringTextOf(cfg), names);
+}
+
+/** Compiles the board: the one place the run and the bot get rules from. Throws CompileFailed / CompileUnavailable. */
+export async function compileUser(cfg: UserConfig, o: {
+  llm: LlmConfig; call?: CallOpts; log: (s: string) => void; deadline?: number; signal?: AbortSignal;
+  attempts?: number; pauseMs?: number;
+}): Promise<{ compiled: Compiled; reading: CardReading[]; filter: (job: Job) => string | null; rubric: string; preferences: Preferences }> {
+  const input = compileInputOf(cfg);
+  const { compiled } = await compileCards(input, { ...o, masker: buildMasker(cfg.personalDetails) });
+  const names = activeProfileNames(cfg);
+  const text = scoringTextOf(cfg);
+  return {
+    compiled,
+    reading: readingOf(compiled, input, text.niceToHave),
+    filter: compiledFilter(compiled, names),
+    rubric: buildRubric(compiled, text, names),
+    preferences: preferencesOf(compiled),
+  };
 }

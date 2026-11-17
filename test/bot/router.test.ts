@@ -25,6 +25,8 @@ import { commentWebhook } from '../support/webhook.ts';
 import { fakeModel } from '../support/fake-model.ts';
 import { withWeb } from '../support/fake-research.ts';
 import type { Recording } from '../../tools/sample/scrub.ts';
+import { useSampleConfig } from '../support/seed-layout.ts';
+import { LAYOUT } from '../../tools/sample/layout.ts';
 
 // --- prompt ---
 
@@ -123,7 +125,6 @@ const ROUTER_OUTPUTS = JSON.parse(readFileSync(join(import.meta.dirname, '..', '
 const BOARDS: UserBoards = { jobs: 'fa4e00000000000000000005', profiles: 'fa4e0000000000000000000c', system: 'fa4e0000000000000000000d' };
 const JOB_CARD = 'fa4e00000000000000000012';
 const SETTINGS_CARD = 'fa4e00000000000000000476';
-const FEEDBACK_CARD = 'fa4e00000000000000000461';
 const USER_A: TMember = { id: 'fa4e0000000000000000a001', username: 'usera' };
 const NOW = new Date('2026-11-12T12:00:00.000Z');
 
@@ -132,8 +133,9 @@ const newId = () => `fa4e${(nextId++).toString(16).padStart(20, '0')}`;
 
 async function setup(script: (stage: string) => string) {
   const fake = FakeTrello.fromRecordings(load('jobs'), load('profiles'), load('system'));
+  useSampleConfig(fake, BOARDS);
   fake.setNow(NOW);
-  fake.setCardDesc(SETTINGS_CARD, '```yaml\nproviders: [claude]\nlocations: [berlin]\nallowed_members: [usera]\n```');
+  fake.setCardDesc(SETTINGS_CARD, '```yaml\nproviders: [claude]\nallowed_members: [usera]\n```');
   const raw = createTrelloClient({ key: 'k', token: 't', fetchImpl: fake.fetch, sleep: async () => {} });
   const api = scopeUserBoards(raw, BOARDS);
   const logs: string[] = [];
@@ -150,7 +152,9 @@ async function setup(script: (stage: string) => string) {
     env: { PATH: '/usr/bin', HOME: '/home/app', CLAUDE_CODE_OAUTH_TOKEN: 'tok-claude-0000', LLM_RPM: '0' },
     call: m.call,
   };
-  return { fake, api, deps, logs, starts, fetched, m };
+  const feedbackCard = fake.openCardId(BOARDS.profiles, 'Feedback', 'Content editor');
+  const detailsCard = fake.openCardId(BOARDS.profiles, 'Personal details', 'About me');
+  return { fake, api, deps, logs, starts, fetched, m, feedbackCard, detailsCard };
 }
 type S = Awaited<ReturnType<typeof setup>>;
 
@@ -182,6 +186,15 @@ function spyAll() {
 }
 
 const modelUsage = async (s: S) => (await loadUsage(s.api, BOARDS, { botId: s.deps.me.id, now: NOW })).model;
+
+test('the router prompt holds the dream-job text from the Profiles board, masked', async () => {
+  const s = await setup(routed(null, 'hello'));
+  await say(s, '@samplebot am I a fit?');
+  const dream = LAYOUT.profiles.lists.find((l) => l.name === 'Content editor')!.cards.find((c) => c.name === 'My dream job')!.desc;
+  assert.equal(s.m.calls.length, 1);
+  assert.ok(s.m.calls[0]!.user.includes(dream));
+  assert.ok(!s.m.calls[0]!.user.includes('Alex Example'));
+});
 
 test('free text goes to the router: no action, the reply is posted through finishReply', async () => {
   const s = await setup(routed(null, 'Read more at https://evil.example/x before applying.'));
@@ -266,10 +279,10 @@ test('a router feedback proposal of 2,000 characters is one comment whose marker
   const proposed = (marker.proposal!.action.args as { text: string }).text;
   assert.ok(text.startsWith(proposed.trimEnd()));
   assert.match(body(posted[0]!), /^@usera Post this on the Feedback card\?\nGreat team, fast replies\./);
-  assert.equal(s.fake.commentsOn(FEEDBACK_CARD).length, 0);
+  assert.equal(s.fake.commentsOn(s.feedbackCard).length, 0);
 
   await say(s, '@samplebot yes');
-  const fb = s.fake.commentsOn(FEEDBACK_CARD);
+  const fb = s.fake.commentsOn(s.feedbackCard);
   assert.equal(fb.length, 1);
   assert.ok(fb[0]!.includes(proposed.slice(0, 100)));
 });
@@ -411,8 +424,7 @@ test('a jobs-board card without a key footer allows no link from its text', asyn
 
 test('a masking failure: the masking line, uncounted, no model call', async () => {
   const s = await setup(routed(null, 'hello'));
-  const raw = createTrelloClient({ key: 'k', token: 't', fetchImpl: s.fake.fetch, sleep: async () => {} });
-  await raw.addCheckItem('fa4e00000000000000000445', '[USER]', false);
+  s.fake.setCardDesc(s.detailsCard, `${(await s.api.card(s.detailsCard)).desc}\n[USER]`);
   const { posted } = await say(s, '@samplebot about [US\u200BER]');
   assert.equal(s.m.calls.length, 0);
   assert.equal(posted.length, 1);

@@ -142,7 +142,7 @@ describe('applyPlan through the CLI', () => {
     const failing = twoMembers(fake, calls, { failNth: { method: 'POST', path: /^\/cards$/, n: 5 } });
     const first = await cli(fake, state, failing)(['--workspace', WS]);
     assert.equal(first.code, 1, first.out);
-    assert.match(first.out, /failed: Profiles: create card "Search keywords" in "My profile"/);
+    assert.match(first.out, /failed: Profiles: create card "Company size" in "Nice to have"/);
     assert.equal(state.saves, 3);
     // Ids are saved as each board is created, before anything is put on it.
     assert.ok(calls.findIndex((c) => c.method === 'POST' && c.path === '/lists') > calls.findIndex((c) => c.path === '/boards'));
@@ -299,10 +299,10 @@ describe('applyPlan', () => {
     const raw = createTrelloClient({ key: 'k', token: 't', fetchImpl: fake.fetch, sleep: async () => {} });
     const before = [...await raw.cards(ids.system, { filter: 'open', checklists: true }), ...await raw.cards(ids.profiles, { filter: 'open', checklists: true })];
     const settings = before.find((c) => c.name === 'Settings')!;
-    const edited = '```yaml\ntimezone: Europe/Paris\nproviders: [groq]\nlocations: [berlin]\nallowed_members: [usera]\n```';
+    const edited = '```yaml\ntimezone: Europe/Paris\nproviders: [groq]\nallowed_members: [usera]\n```';
     fake.setCardDesc(settings.id, edited);
     // A missing card makes the apply write something next to the existing ones.
-    await raw.setCardClosed(before.find((c) => c.name === 'Rubric')!.id, true);
+    await raw.setCardClosed(before.find((c) => c.name === 'My dream job')!.id, true);
     fake.requests = [];
 
     const { code, out } = await cli(fake, state)(['--workspace', WS]);
@@ -311,7 +311,7 @@ describe('applyPlan', () => {
     assert.deepEqual(w.map((r) => `${r.method} ${r.path}`), ['POST /cards']);
     const now = [...await raw.cards(ids.system, { filter: 'open', checklists: true }), ...await raw.cards(ids.profiles, { filter: 'open', checklists: true })];
     assert.equal(now.find((c) => c.id === settings.id)!.desc, edited);
-    for (const c of before.filter((x) => x.name !== 'Rubric')) {
+    for (const c of before.filter((x) => x.name !== 'My dream job')) {
       const n = now.find((x) => x.id === c.id)!;
       assert.deepEqual({ ...n, desc: '' }, { ...c, desc: '' });
     }
@@ -338,6 +338,8 @@ describe('applyPlan', () => {
     const state: { ids: Partial<BoardIds> } = { ids: {} };
     await cli(fake, state)(['--workspace', WS]);
     const ids = state.ids as BoardIds;
+    // The starter has no Originals list; a user may add one for the CV they keep untouched.
+    await createTrelloClient({ key: 'k', token: 't', fetchImpl: fake.fetch, sleep: async () => {} }).createList(ids.profiles, 'Originals', 'bottom');
     const f = twoMembers(fake);
     const c = { owner: clientFor(f, 'owner'), bot: clientFor(f, 'bot'), ids, saveIds: () => {}, out: () => {} };
     const card = { name: 'Extra', desc: 'x' };
@@ -345,7 +347,7 @@ describe('applyPlan', () => {
     await assert.rejects(
       () => applyPlan(plan([
         { kind: 'createCard', board: 'profiles', list: 'Originals', card },
-        { kind: 'createCard', board: 'profiles', list: 'Shared', card },
+        { kind: 'createCard', board: 'profiles', list: 'About me', card },
       ]), c),
       OriginalsWriteError,
     );

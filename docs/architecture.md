@@ -9,7 +9,7 @@ Trello automation ─POST /trigger/run─┐
 Trello webhook (@bot comment) ───────┴─▶ serve (always on, stateless)
                                           ├─ gate → static verb or router → stage → reply comment
                                           └─ starts ─▶ run (job, one run, then exits)
-run:  lock → config cards → job keys → scan → dedup → filter → JD → filter → facts → score → run column → status card
+run:  lock → config cards → compile cards → job keys → scan → dedup → filter → JD → filter → facts → score → run column → status card
 ```
 
 | Component | Code |
@@ -21,7 +21,8 @@ run:  lock → config cards → job keys → scan → dedup → filter → JD �
 | Trello: scope guard | every Trello call is scoped to the user's three boards; writes into `Originals` throw — [scoped.ts](../src/trello/scoped.ts) |
 | Trello: private-board check | boards must be private, open and have no unexpected members — [private.ts](../src/trello/private.ts) |
 | Trello: card writer | job cards in score order, label resolver, JD attachment, archiving — [writer.ts](../src/trello/writer.ts) |
-| Config schema, config cards reader | [schema.ts](../src/config/schema.ts), [trello/config.ts](../src/trello/config.ts) |
+| Config schema, config cards reader | [schema.ts](../src/config/schema.ts), [trello/config.ts](../src/trello/config.ts), [profiles-board.ts](../src/trello/profiles-board.ts), card catalogue [cards.ts](../src/config/cards.ts) |
+| Compile: free-text cards → filters, search terms, rubric, reading | [src/compile/](../src/compile/), one call for the run and `why`: `compileUser` in [profiles.ts](../src/run/profiles.ts) |
 | Bot: router and stages | [catalogue.ts](../src/bot/catalogue.ts), [router.ts](../src/bot/router.ts), [prompt.ts](../src/bot/prompt.ts), [stages/](../src/bot/stages/) |
 | Masking | [privacy.ts](../src/privacy.ts) |
 | Model child process | `runModelProcess` in [llm.ts](../src/pipeline/llm.ts) |
@@ -37,6 +38,7 @@ No stage gets untrusted content, private data and a way out at once. Stage runne
 | reader | job text (untrusted) | none | none | none |
 | advisor | job text (untrusted), masked profile; for `deep`, research (untrusted) | none | masked | none |
 | researcher | company, job title, posting URL, topic | web search; pages only through [`fetch_page`](../src/net/fetch-tool.ts) | none | public addresses only |
+| compile | Profiles cards (the user's own words) | none | masked | none |
 | code | the action's typed args | Trello, page fetch for `open` | as needed | `open`: posting URL only, no private addresses |
 
 - Stage output is posted, never fed to the router or a stage with tools; the one chain is researcher → advisor (`deep`).
@@ -55,7 +57,8 @@ No stage gets untrusted content, private data and a way out at once. Stage runne
 - A Trello automation rule triggers the run — nothing polls, and the user edits the schedule in Trello. [app.ts](../src/serve/app.ts)
 - Each user runs from a private repo created from the public template — separation of data, tokens and quota; code stays cloud-neutral. [template/README.md](../template/README.md), [relay/README.md](../relay/README.md), [DEPLOY.md](../DEPLOY.md)
 - One run at a time: a lock file locally; via GitHub Actions, the bot checks for queued/in-progress runs before dispatching, with a 1 h job timeout. [lock.ts](../src/run/lock.ts), [gh/runs.ts](../src/gh/runs.ts)
-- A broken config card fails the run before scanning, no stale fallback — the user sees the exact card. [schema.ts](../src/config/schema.ts)
+- A broken config card, or a Profiles card the compile step cannot use, fails the run before scanning, no stale fallback — the user sees the exact card. [schema.ts](../src/config/schema.ts), [compile.ts](../src/compile/compile.ts)
+- The user writes free text, a model turns it into rules once per run, code applies them — the model's output is checked by a strict schema and shown back as the run's reading; the bot's own prompts use the cards' words without a model call. [src/compile/](../src/compile/)
 - Masking with placeholders replaces samjobs' employer rewriting — users score on their own accounts; employers matter for fit. [privacy.ts](../src/privacy.ts)
 - Router output is a strict zod union of catalogue ids with closed args — a forged action fails validation. [catalogue.ts](../src/bot/catalogue.ts)
 - A typed `@bot <verb>` counts as confirmation — the user named the action; only router picks need `yes`. [catalogue.ts](../src/bot/catalogue.ts)

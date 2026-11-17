@@ -13,7 +13,10 @@ import { createTrelloClient } from '../../src/trello/client.ts';
 import { isRunSummaryTitle, parseJobKey, parseTitleScore } from '../../src/trello/cards.ts';
 import type { TCard, TrelloApi } from '../../src/trello/api.ts';
 import { FakeTrello } from '../support/fake-trello.ts';
-import { fakeLlm, fakeLlmEnv } from '../support/fake-llm.ts';
+import { SAMPLE_COMPILED, fakeLlm, fakeLlmEnv } from '../support/fake-llm.ts';
+import type { CompileReply } from '../support/fake-llm.ts';
+import { seedLayout, useSampleConfig } from '../support/seed-layout.ts';
+import { SAMPLE_PROFILES, starterProfiles } from '../../tools/sample/profiles.ts';
 import type { Recording } from '../../tools/sample/scrub.ts';
 
 const DIR = join(import.meta.dirname, '..', 'fixtures', 'trello');
@@ -47,12 +50,14 @@ type Setup = {
   onRequest?: (method: string, path: string, init: RequestInit | undefined) => void;
   /** Another run holds the lock, or acquiring it throws. */
   lock?: 'held' | 'broken';
+  compile?: () => CompileReply;
 };
 
-function setup(s: Setup = {}) {
+async function setup(s: Setup = {}) {
   const recs = { jobs: load('jobs'), profiles: load('profiles'), system: load('system') };
   const fake = FakeTrello.fromRecordings(recs.jobs, recs.profiles, recs.system, load('lookups'));
   const boards = { jobs: boardId(recs.jobs), profiles: boardId(recs.profiles), system: boardId(recs.system) };
+  useSampleConfig(fake, boards);
   const fetchImpl: typeof fetch = (input, init) => {
     const u = new URL(String(input));
     s.onRequest?.((init?.method ?? 'GET').toUpperCase(), u.pathname.replace(/^\/1(?=\/)/, ''), init);
@@ -60,7 +65,7 @@ function setup(s: Setup = {}) {
   };
   const client = (f: typeof fetch): TrelloApi =>
     createTrelloClient({ key: 'trello-key-0000', token: 'trello-token-0000', fetchImpl: f, sleep: async () => {}, maxPer10s: 1e9 });
-  const llm = fakeLlm({ score: s.score ?? ((k) => SCORES[k] ?? 5), ...(s.facts ? { facts: s.facts } : {}) });
+  const llm = fakeLlm({ score: s.score ?? ((k) => SCORES[k] ?? 5), ...(s.facts ? { facts: s.facts } : {}), ...(s.compile ? { compile: s.compile } : {}) });
   const rows = s.rows ?? [row(1), row(2), row(3)];
   const scans: unknown[] = [];
   const fetched: string[] = [];
@@ -90,36 +95,41 @@ function setup(s: Setup = {}) {
     extractor: 'Extract facts as JSON.',
     now: () => NOW,
     sink: (l) => sink.push(l),
+    compile: { pauseMs: 0 },
   };
   const lists = (rec: Recording) => body<{ id: string; name: string }[]>(rec, '/lists');
   const cards = (rec: Recording) => body<{ id: string; name: string; checklists?: { id: string }[] }[]>(rec, '/cards/open');
+  const user = client(fake.fetch);
+  const profileCards = await user.cards(boards.profiles, { filter: 'open' });
   return {
     fake, deps, llm, scans, fetched, sink, boards, lock,
     // A second client for the test's own reads and the user's edits; it is not the run's client.
-    user: client(fake.fetch),
+    user,
     runsList: lists(recs.system).find((l) => l.name === 'Runs')!.id,
     settingsCard: cards(recs.system).find((c) => c.name === 'Settings')!.id,
-    detailsChecklist: cards(recs.profiles).find((c) => c.name === 'Personal details')!.checklists![0]!.id,
+    detailsCard: profileCards.find((c) => c.name === 'Personal details')!,
     listId: (name: string) => lists(recs.jobs).find((l) => l.name === name)!.id,
   };
 }
 
+type T = Awaited<ReturnType<typeof setup>>;
+
 const run = (deps: RunDeps, o: Partial<RunOpts> = {}) => runOnce(deps, { trigger: 'scheduled', dryRun: false, ...o });
 
-async function runCards(t: ReturnType<typeof setup>): Promise<TCard[]> {
+async function runCards(t: T): Promise<TCard[]> {
   return (await t.user.cards(t.boards.system, { filter: 'open' })).filter((c) => c.idList === t.runsList).sort((a, b) => a.pos - b.pos);
 }
 
-async function columnCards(t: ReturnType<typeof setup>, name: string): Promise<TCard[]> {
+async function columnCards(t: T, name: string): Promise<TCard[]> {
   const list = (await t.user.lists(t.boards.jobs, 'open')).filter((l) => l.name === name);
   assert.equal(list.length, 1, `one open list named ${name}`);
   return (await t.user.cards(t.boards.jobs, { filter: 'open' })).filter((c) => c.idList === list[0]!.id).sort((a, b) => a.pos - b.pos);
 }
 
-const cardWrites = (t: ReturnType<typeof setup>) => t.fake.requests.filter((r) => r.method !== 'GET');
+const cardWrites = (t: T) => t.fake.requests.filter((r) => r.method !== 'GET');
 
 test('one run: a column named Nov 10 · 01:00, summary first, cards best first', async () => {
-  const t = setup();
+  const t = await setup();
   const out = await run(t.deps);
   assert.equal(out.state, 'ok');
   assert.equal(out.exitCode, 0);
@@ -134,7 +144,7 @@ test('one run: a column named Nov 10 · 01:00, summary first, cards best first',
 
 test('status card: written once, at the end, as ✅ … · scheduled · +3 cards on top of Runs', async () => {
   const posted: string[] = [];
-  const t: ReturnType<typeof setup> = setup({
+  const t: T = await setup({
     onRequest: (method, path, init) => {
       if (method !== 'POST' || path !== '/cards') return;
       const card = JSON.parse(String(init!.body)) as { name: string; idList: string };
@@ -154,7 +164,7 @@ test('status card: written once, at the end, as ✅ … · scheduled · +3 cards
 
 test('no card is ever changed: the only card update a run sends archives it', async () => {
   const puts: { path: string; body: unknown }[] = [];
-  const t = setup({
+  const t = await setup({
     onRequest: (method, path, init) => {
       if (method === 'PUT') puts.push({ path, body: JSON.parse(String(init?.body ?? '{}')) });
     },
@@ -169,7 +179,7 @@ test('no card is ever changed: the only card update a run sends archives it', as
 
 test('known keys get no card, from both key-line formats', async () => {
   // The sample's Applied list holds a migrated card with a `samjobs-key: sample:old-1` line.
-  const t = setup({ rows: [row(1), row(2), row(3), row(4, { key: 'sample:old-1' })] });
+  const t = await setup({ rows: [row(1), row(2), row(3), row(4, { key: 'sample:old-1' })] });
   t.fake.addCards(t.listId('To apply'), 1, () => ({ name: '9 · Row Company 2 — Content Editor 2', desc: 'Moved.\n\n---\ncareer-cards-key: test:row-2' }));
   const out = await run(t.deps);
   assert.equal(out.stats.known, 2);
@@ -179,7 +189,7 @@ test('known keys get no card, from both key-line formats', async () => {
 });
 
 test('running twice creates nothing twice', async () => {
-  const t = setup();
+  const t = await setup();
   await run(t.deps);
   const second = await run(t.deps);
   assert.equal(second.state, 'ok');
@@ -191,7 +201,7 @@ test('running twice creates nothing twice', async () => {
 });
 
 test('no scored jobs → no column', async () => {
-  const t = setup({ score: () => 'bad' });
+  const t = await setup({ score: () => 'bad' });
   const out = await run(t.deps);
   assert.equal(out.state, 'ok');
   assert.equal(out.stats.scoreErrors, 3);
@@ -201,7 +211,7 @@ test('no scored jobs → no column', async () => {
 });
 
 test("the archived run column's cards are archived; its summary card is not", async () => {
-  const t = setup();
+  const t = await setup();
   const old = t.listId(OLD_COLUMN);
   t.fake.addCards(old, 1, () => ({ name: 'ℹ️ Run · 5 new · 0 filtered · 0 deferred', desc: 'Summary.' }));
   const out = await run(t.deps);
@@ -212,7 +222,7 @@ test("the archived run column's cards are archived; its summary card is not", as
 });
 
 test('config error: ❌ with one comment on the bad card, nothing scanned or written to Jobs', async () => {
-  const t = setup();
+  const t = await setup();
   t.fake.setCardDesc(t.settingsCard, 'no yaml');
   const out = await run(t.deps);
   assert.equal(out.state, 'failed');
@@ -233,7 +243,7 @@ test('config error: ❌ with one comment on the bad card, nothing scanned or wri
 });
 
 test('board not private: ❌, nothing scanned', async () => {
-  const t = setup();
+  const t = await setup();
   t.fake.setBoardPermissionLevel(t.boards.jobs, 'org');
   const out = await run(t.deps);
   assert.equal(out.exitCode, 1);
@@ -244,9 +254,9 @@ test('board not private: ❌, nothing scanned', async () => {
 });
 
 test('masking fails closed: no model call', async () => {
-  const t = setup();
+  const t = await setup();
   // "USER" is still in the masked text, inside the "[USER]" placeholder.
-  await t.user.addCheckItem(t.detailsChecklist, 'USER');
+  t.fake.setCardDesc(t.detailsCard.id, `${t.detailsCard.desc}\nUSER`);
   const out = await run(t.deps);
   assert.equal(out.exitCode, 1);
   assert.equal((await runCards(t))[0]!.name, `❌ ${COLUMN} · scheduled · masking failed`);
@@ -256,11 +266,10 @@ test('masking fails closed: no model call', async () => {
 });
 
 test('no prompt carries a personal detail', async () => {
-  const t = setup();
+  const t = await setup();
   await run(t.deps);
   assert.ok(t.llm.requests.length >= 6, 'scoring and facts calls were made');
-  const details = (await t.user.checklist(t.detailsChecklist)).checkItems
-    .map((i) => i.name.replace(/^(?:address|link|email|phone):\s*/i, '').toLowerCase());
+  const details = t.detailsCard.desc.split('\n').map((l) => l.replace(/^(?:address|link|email|phone):\s*/i, '').toLowerCase());
   assert.ok(details.length >= 5);
   for (const r of t.llm.requests) {
     const text = `${r.system}\n${r.user}`.toLowerCase();
@@ -270,7 +279,7 @@ test('no prompt carries a personal detail', async () => {
 });
 
 test('a crash writes one ❌ card, exits 1 and frees the lock', async () => {
-  const t = setup({ scan: async () => { throw new Error('scanner exploded\nsecond line'); } });
+  const t = await setup({ scan: async () => { throw new Error('scanner exploded\nsecond line'); } });
   const out = await run(t.deps);
   assert.equal(out.state, 'failed');
   assert.equal(out.exitCode, 1);
@@ -282,7 +291,7 @@ test('a crash writes one ❌ card, exits 1 and frees the lock', async () => {
 });
 
 test('a status card that cannot be written: exit 1, the lock is still freed', async () => {
-  const t: ReturnType<typeof setup> = setup({
+  const t: T = await setup({
     onRequest: (method, path, init) => {
       if (method !== 'POST' || path !== '/cards') return;
       if ((JSON.parse(String(init!.body)) as { idList: string }).idList === t.runsList) t.fake.failNext('POST', /^\/cards$/, 400);
@@ -298,7 +307,7 @@ test('a status card that cannot be written: exit 1, the lock is still freed', as
 
 test('quota stops scoring: scored jobs are carded, the rest left', async () => {
   const rows = Array.from({ length: 6 }, (_, i) => row(i + 1));
-  const t = setup({ rows, score: (k) => (k === 'test:row-1' || k === 'test:row-2' ? 8 : 'quota') });
+  const t = await setup({ rows, score: (k) => (k === 'test:row-1' || k === 'test:row-2' ? 8 : 'quota') });
   const out = await run(t.deps);
   assert.equal(out.state, 'ok');
   const s = out.stats;
@@ -310,7 +319,7 @@ test('quota stops scoring: scored jobs are carded, the rest left', async () => {
 });
 
 test('cap lowers scoring_cap', async () => {
-  const t = setup();
+  const t = await setup();
   const out = await run(t.deps, { cap: 1 });
   assert.equal(out.stats.cards.created, 1);
   assert.equal(out.stats.scored, 1);
@@ -320,7 +329,7 @@ test('cap lowers scoring_cap', async () => {
 });
 
 test('a held lock: exit 3, nothing scanned, no Trello request at all', async () => {
-  const t = setup({ lock: 'held' });
+  const t = await setup({ lock: 'held' });
   const before = t.fake.requests.length;
   const out = await run(t.deps);
   assert.equal(out.state, 'skipped');
@@ -332,7 +341,7 @@ test('a held lock: exit 3, nothing scanned, no Trello request at all', async () 
 });
 
 test('a lock that cannot be taken: ❌ card, exit 1, nothing scanned', async () => {
-  const t = setup({ lock: 'broken' });
+  const t = await setup({ lock: 'broken' });
   const out = await run(t.deps);
   assert.equal(out.state, 'failed');
   assert.equal(out.exitCode, 1);
@@ -342,7 +351,7 @@ test('a lock that cannot be taken: ❌ card, exit 1, nothing scanned', async () 
 });
 
 test('a secret in an error never reaches the status card or the log', async () => {
-  const t = setup({ scan: async () => { throw new Error('boom test-key-0000 trello-token-0000'); } });
+  const t = await setup({ scan: async () => { throw new Error('boom test-key-0000 trello-token-0000'); } });
   const out = await run(t.deps);
   const top = (await runCards(t))[0]!;
   for (const text of [top.name, top.desc, out.report, ...t.sink]) {
@@ -352,22 +361,25 @@ test('a secret in an error never reaches the status card or the log', async () =
 });
 
 test('a provider echoing its key in a quota error never reaches the status card', async () => {
-  const t = setup();
-  t.deps.call = {
-    retries: 0,
-    fetchImpl: async () => {
-      const body = '{"error":{"message":"Quota exceeded for key test-key-0000: requests per day"}}';
-      return { ok: false, status: 429, text: async () => body, json: async () => JSON.parse(body) };
-    },
-  };
-  const out = await run(t.deps);
-  assert.ok(out.stats.aborted, 'scoring was aborted');
-  const top = (await runCards(t))[0]!;
-  for (const text of [top.name, top.desc, out.report, ...t.sink]) assert.ok(!text.includes('test-key-0000'), text);
+  const body = '{"error":{"message":"Quota exceeded for key test-key-0000: requests per day"}}';
+  const quota = async () => ({ ok: false, status: 429, text: async () => body, json: async () => JSON.parse(body) });
+  for (const stage of ['compile', 'scoring'] as const) {
+    const t = await setup();
+    t.deps.call = {
+      retries: 0,
+      // In the scoring case the compile call gets its normal reply.
+      fetchImpl: async (url, init) => (stage === 'scoring' && String(init?.body).includes("You turn a job seeker's own notes") ? t.llm.fetchImpl(url, init) : quota()),
+    };
+    const out = await run(t.deps);
+    if (stage === 'compile') assert.equal(out.stats.reading, null, 'the compile failed');
+    else assert.ok(out.stats.aborted, 'scoring was aborted');
+    const top = (await runCards(t))[0]!;
+    for (const text of [top.name, top.desc, out.report, ...t.sink]) assert.ok(!text.includes('test-key-0000'), `${stage}: ${text}`);
+  }
 });
 
 test('a source error clipped through a secret leaves no part of it', async () => {
-  const t = setup({
+  const t = await setup({
     scan: async () => ({ jobs: [row(1)], bySource: { test: 1 }, errors: [{ company: 'Acme', error: `${'z'.repeat(295)} trello-token-0000` }] }),
   });
   const out = await run(t.deps);
@@ -376,13 +388,13 @@ test('a source error clipped through a secret leaves no part of it', async () =>
 });
 
 test('a long crash message clipped through a secret leaves no part of it in the log', async () => {
-  const t = setup({ scan: async () => { throw new Error(`boom ${'w'.repeat(990)} trello-token-0000`); } });
+  const t = await setup({ scan: async () => { throw new Error(`boom ${'w'.repeat(990)} trello-token-0000`); } });
   await run(t.deps);
   for (const text of t.sink) assert.ok(!/w tre/.test(text), text);
 });
 
 test('the scan and the description fetches share the run deadline', async () => {
-  const t = setup();
+  const t = await setup();
   let scanDeadline = 0;
   const jdDeadlines = new Set<number | undefined>();
   const scan = t.deps.scan;
@@ -396,7 +408,7 @@ test('the scan and the description fetches share the run deadline', async () => 
 });
 
 test('a Sources Drop typo is a warning on a ✅ card', async () => {
-  const t = setup({ defaults: { portals: {}, extra: {} } });
+  const t = await setup({ defaults: { portals: {}, extra: {} } });
   const out = await run(t.deps);
   assert.equal(out.state, 'ok');
   const top = (await runCards(t))[0]!;
@@ -406,7 +418,7 @@ test('a Sources Drop typo is a warning on a ✅ card', async () => {
 
 test('a failed career-ops scan is a short warning on a ✅ card', async () => {
   const tail = 'x'.repeat(1990);
-  const t = setup({
+  const t = await setup({
     scan: async () => ({ jobs: [row(1)], bySource: { test: 1 }, errors: [{ company: 'career-ops', error: `scan failed (exit 1)\n${tail}` }] }),
   });
   const out = await run(t.deps);
@@ -418,7 +430,7 @@ test('a failed career-ops scan is a short warning on a ✅ card', async () => {
 });
 
 test('preferences feed shadow penalties, never the score', async () => {
-  const t = setup({ facts: (k) => (k === 'test:row-2' ? { german: { level: 'c1', spoken_heavy: null, evidence: 'C1' } } : {}) });
+  const t = await setup({ facts: (k) => (k === 'test:row-2' ? { german: { level: 'c1', spoken_heavy: null, evidence: 'C1' } } : {}) });
   const out = await run(t.deps);
   assert.equal(out.stats.shadow.jobs, 1);
   assert.equal(out.stats.shadow.points, 3);
@@ -426,7 +438,7 @@ test('preferences feed shadow penalties, never the score', async () => {
 });
 
 test('a run column that cannot be created is a warning; the run still archives', async () => {
-  const t = setup();
+  const t = await setup();
   t.fake.failNext('POST', /^\/lists$/, 400);
   const out = await run(t.deps);
   assert.equal(out.state, 'ok');
@@ -436,7 +448,7 @@ test('a run column that cannot be created is a warning; the run still archives',
 });
 
 test('dry run: no write request at all', async () => {
-  const t = setup({ rows: [row(1), row(2), row(3), row(4, { title: 'Senior Editor' })] });
+  const t = await setup({ rows: [row(1), row(2), row(3), row(4, { title: 'Senior Editor' })] });
   const before = t.fake.requests.length;
   const out = await runOnce(t.deps, { trigger: 'manual', dryRun: true });
   assert.equal(out.state, 'ok');
@@ -444,9 +456,86 @@ test('dry run: no write request at all', async () => {
   assert.equal(out.statusUrl, null);
   assert.deepEqual(t.fake.requests.slice(before).filter((r) => r.method !== 'GET'), []);
   assert.equal(t.fetched.length, 0);
-  assert.equal(t.llm.requests.length, 0);
+  // Only the compile call: a dry run previews the filters the cards make.
+  assert.equal(t.llm.requests.length, 1);
   assert.equal(t.lock.acquired, 0);
   assert.match(out.report, /Scanned: 4 · Known: 0 · Fresh: 4 · Rejected pre: 1/);
   assert.match(out.report, /Would describe and score: up to 3 of the 3 jobs/);
   assert.match(out.report, /Would archive: 1050 cards/);
+});
+
+test('compiled cards: search terms, place rule with its evidence, the reading in the log, the rubric in the scorer', async () => {
+  const defaults: Defaults = { ...DEFAULTS, portals: { ...DEFAULTS.portals, job_boards: [{ name: 'BA', provider: 'arbeitsagentur' }] } };
+  const t = await setup({ defaults, rows: [row(1), row(2), row(3), row(4, { location: 'Zürich, Switzerland' })] });
+  const out = await run(t.deps);
+  assert.equal(out.state, 'ok');
+  const plan = t.scans[0] as { portals: { job_boards: { arbeitsagentur: { keywords: string[] } }[] } };
+  assert.deepEqual(plan.portals.job_boards[0]!.arbeitsagentur.keywords, SAMPLE_COMPILED.profiles[0]!.search_terms);
+  assert.equal(out.stats.rules['PLACE_NOT_KEPT'], 1);
+  assert.equal(out.stats.ruleExamples['PLACE_NOT_KEPT']!['Zürich, Switzerland'], 1);
+  assert.ok(t.sink.some((l) => l.includes('reading: **Where & how I work**')), t.sink.join('\n'));
+  assert.ok(out.stats.reading?.some((r) => r.card === 'Where & how I work'));
+  const scoring = t.llm.requests.filter((r) => r.system.startsWith('You score job postings'));
+  assert.ok(scoring.length >= 3);
+  const dream = SAMPLE_PROFILES.lists.find((l) => l.name === 'Content editor')!.cards.find((c) => c.name === 'My dream job')!.desc;
+  for (const r of scoring) {
+    assert.match(r.system, /### Example roles/);
+    assert.ok(r.system.includes(dream), 'the dream-job text is in the rubric');
+  }
+  const details = t.detailsCard.desc.split('\n').map((l) => l.replace(/^(?:address|link|email|phone):\s*/i, '').toLowerCase());
+  for (const r of t.llm.requests) {
+    const text = `${r.system}\n${r.user}`.toLowerCase();
+    for (const d of details) assert.ok(!text.includes(d), `a prompt contains a personal detail (${details.indexOf(d)})`);
+  }
+});
+
+test('a compile reply with problems: ❌ cards not usable, the problem on the status card, nothing scanned', async () => {
+  const t = await setup({ compile: () => ({ ...SAMPLE_COMPILED, problems: [{ card: 'Content editor › My dream job', reason: 'says nothing usable' }] }) });
+  const out = await run(t.deps);
+  assert.equal(out.state, 'failed');
+  const top = (await runCards(t))[0]!;
+  assert.equal(top.name, `❌ ${COLUMN} · scheduled · cards not usable`);
+  assert.match(top.desc, /Problems:\n- Content editor › My dream job: says nothing usable/);
+  assert.equal(t.scans.length, 0);
+});
+
+test('the model failing three times: ❌ could not read your cards, nothing scanned', async () => {
+  const t = await setup({ compile: () => 'bad' });
+  const out = await run(t.deps);
+  assert.equal(out.state, 'failed');
+  assert.equal((await runCards(t))[0]!.name, `❌ ${COLUMN} · scheduled · could not read your cards`);
+  assert.equal(t.llm.requests.length, 3);
+  assert.equal(t.scans.length, 0);
+});
+
+test('a starter Profiles board: config error, one problem per unfilled card, no model call', async () => {
+  const t = await setup();
+  for (const l of await t.user.lists(t.boards.profiles, 'open')) await t.user.setListClosed(l.id, true);
+  await seedLayout(t.fake, starterProfiles(), { board: t.boards.profiles });
+  const out = await run(t.deps);
+  assert.equal(out.state, 'failed');
+  assert.equal((await runCards(t))[0]!.name, `❌ ${COLUMN} · scheduled · config error`);
+  const unfilled = out.problems.filter((p) => p.includes('is not filled in'));
+  // Every required card but Active, which the template fills with "yes".
+  assert.equal(unfilled.length, 4 + 3 + 3 + 2, out.problems.join('\n'));
+  assert.equal(t.llm.requests.length, 0);
+  assert.equal(t.scans.length, 0);
+});
+
+test('Settings with locations: config error naming the key', async () => {
+  const t = await setup();
+  t.fake.setCardDesc(t.settingsCard, '```yaml\nproviders: [gemini]\nlocations: []\n```');
+  const out = await run(t.deps);
+  assert.equal(out.state, 'failed');
+  assert.ok(out.problems.some((p) => p.startsWith('System › Settings:') && p.includes("'locations'")), out.problems.join('\n'));
+  assert.equal(t.llm.requests.length, 0);
+});
+
+test('dry run without a provider key stops like a real run', async () => {
+  const t = await setup();
+  t.deps.env = { TRELLO_TOKEN: 'trello-token-0000' };
+  const out = await runOnce(t.deps, { trigger: 'manual', dryRun: true });
+  assert.equal(out.state, 'failed');
+  assert.match(out.report, /no scoring provider/);
+  assert.equal(t.scans.length, 0);
 });

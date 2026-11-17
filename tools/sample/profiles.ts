@@ -1,9 +1,23 @@
 import { DEAL_BREAKERS, NICE_TO_HAVE, PROFILE, ABOUT_ME, LISTS, templateOf } from '../../src/config/cards.ts';
 import type { CardSpec } from '../../src/config/cards.ts';
 import type { CardSpec as LayoutCardSpec, BoardLayout } from './layout.ts';
-import { CV } from './layout.ts';
 
-// Personal details as text lines (one per line), matching the Alex Example values in layout.ts.
+export const CV = `# Alex Example
+
+Content editor in Berlin.
+
+## Experience
+- 2023–now: Editor at a small publishing house (about 20 employees)
+- 2021–2023: Editorial intern at a regional newspaper
+
+## Education
+- BA in German studies, Example University
+
+## Languages
+English (C1), German (B2)
+`;
+
+// Personal details as text lines (one per line), the sample person in CV.
 const DETAILS_TEXT = [
   'Alex Example',
   'alex.example@example.com',

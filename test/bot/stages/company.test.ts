@@ -27,6 +27,7 @@ import { fakeModel } from '../../support/fake-model.ts';
 import { withWeb } from '../../support/fake-research.ts';
 import type { WebAnswer } from '../../support/fake-research.ts';
 import type { Recording } from '../../../tools/sample/scrub.ts';
+import { useSampleConfig } from '../../support/seed-layout.ts';
 
 const FIX = join(import.meta.dirname, '..', '..', 'fixtures');
 const FAKE = join(FIX, 'career-ops-fake');
@@ -58,8 +59,9 @@ type Opts = { company?: string; router?: unknown; providers?: string; openings?:
 
 async function setup(o: Opts = {}) {
   const fake = FakeTrello.fromRecordings(load('jobs'), load('profiles'), load('system'));
+  useSampleConfig(fake, BOARDS);
   fake.setNow(NOW);
-  fake.setCardDesc(SETTINGS_CARD, `\`\`\`yaml\nproviders: [${o.providers ?? 'claude'}]\nlocations: [berlin]\nallowed_members: [usera]\n\`\`\``);
+  fake.setCardDesc(SETTINGS_CARD, `\`\`\`yaml\nproviders: [${o.providers ?? 'claude'}]\nallowed_members: [usera]\n\`\`\``);
   fake.setCardDesc(JOB_CARD, jobCardDesc({
     key: jobKey(POSTING), company: o.company ?? 'Acme Robotics', title: 'Robotics Engineer', url: POSTING, location: 'Berlin',
     posted: '2026-11-05', deadline: '', jd: 'Build robots.', source: 'greenhouse-api', reason: 'Robotics role.',

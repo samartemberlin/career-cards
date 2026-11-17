@@ -15,25 +15,20 @@ import { CvSchema, FitSchema, cvTips, explainFit, renderCv, renderFit } from '..
 import { JOB_ONLY_REPLY } from '../../../src/bot/stages/call.ts';
 import { fakeModel } from '../../support/fake-model.ts';
 import { FakeTrello } from '../../support/fake-trello.ts';
+import { testConfig } from '../../support/user-config.ts';
 
 const BOARDS: UserBoards = { jobs: 'fa4e00000000000000000005', profiles: 'fa4e0000000000000000000c', system: 'fa4e0000000000000000000d' };
 const NOW = new Date('2026-11-12T12:00:00Z');
 
-const cfg: UserConfig = {
+const cfg: UserConfig = testConfig({
   settings: {
-    timezone: 'Europe/Berlin', providers: ['claude'], scoring_cap: 150, locations: ['berlin'],
-    linkedin_locations: [], linkedin: false, allowed_members: [], bot_keyword: '/bot',
+    timezone: 'Europe/Berlin', providers: ['claude'], scoring_cap: 150,
+    linkedin: false, allowed_members: [], bot_keyword: '/bot',
     caps: { model_per_day: 30, model_per_card_per_day: 8, research_per_day: 10, static_per_day: 100 },
   },
-  profiles: [{
-    name: 'Default', active: true, rubric: 'Wants editing work. Ask Jane Roe at https://rubric.example/x. RUBRIC-SENTINEL-4e2',
-    searchKeywords: [],
-    filters: { includeTitles: [], excludeTitles: [], excludeCompanies: [], excludeText: [], excludeLocations: [] },
-  }],
-  sharedCv: 'Jane Roe, editor. jane@roe.example, +49 30 1234567. CV-SENTINEL-4e2', personalDetails: ['Jane Roe'],
-  preferences: undefined,
-  sources: { add: [], drop: [] },
-};
+  dream: 'Wants editing work. Ask Jane Roe at https://rubric.example/x. RUBRIC-SENTINEL-4e2',
+  cv: 'Jane Roe, editor. jane@roe.example, +49 30 1234567. CV-SENTINEL-4e2', personalDetails: ['Jane Roe'],
+});
 
 const JD = 'We are looking for an Editor to run the newsletter.\nReferred by Jane Roe.\nApply at jobs@acme.example.';
 const FIT_OK = JSON.stringify({
@@ -94,7 +89,9 @@ test('the advisor prompt holds the masked CV and rubric, never the raw details',
       assert.ok(!text.includes('1234567'), `${stage}: phone`);
       assert.ok(!text.includes('rubric.example'), `${stage}: link`);
     }
-    assert.match(c.user, /=== RUBRIC ===\nWants editing work\. Ask \[USER\] at \[LINK\] RUBRIC-SENTINEL-4e2\n/);
+    // The rubric is the cards' own words (no model call): the dream-job text sits under its heading.
+    assert.match(c.user, /=== RUBRIC ===\n[^=]*### Dream job \(the candidate's words\)\nWants editing work\. Ask \[USER\] at \[LINK\] RUBRIC-SENTINEL-4e2\n/);
+    assert.ok(!c.user.includes('### Example roles'));
     assert.match(c.user, /=== CANDIDATE CV ===\n\[USER\], editor\. \[EMAIL\], \[PHONE\]\. CV-SENTINEL-4e2\n/);
     // The CV, rubric and card text reach the child on stdin: argv (the system prompt) shows up in `ps`.
     for (const text of [c.system, JSON.stringify(c.args)]) {

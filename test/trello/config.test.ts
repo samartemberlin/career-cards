@@ -1,58 +1,31 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { createTrelloClient } from '../../src/trello/client.ts';
 import { scopeUserBoards } from '../../src/trello/scoped.ts';
 import { ConfigInvalid, readSettings, readUserConfig } from '../../src/trello/config.ts';
 import type { ConfigProblem, UserBoards } from '../../src/trello/config.ts';
 import { FakeTrello } from '../support/fake-trello.ts';
-import type { Recording } from '../../tools/sample/scrub.ts';
+import { seedLayout } from '../support/seed-layout.ts';
+import { LAYOUT } from '../../tools/sample/layout.ts';
+import type { BoardLayout } from '../../tools/sample/layout.ts';
 
-const DIR = join(import.meta.dirname, '..', 'fixtures', 'trello');
-const load = (name: string): Recording =>
-  JSON.parse(readFileSync(join(DIR, `${name}.recording.json`), 'utf8')) as Recording;
+type Boards = { profiles: BoardLayout; system: BoardLayout };
 
-type RawChecklist = { id: string; name: string; idCard: string; checkItems: { id: string; name: string; state: string; pos: number }[] };
-type RawCard = { id: string; name: string; desc: string; idList: string; closed: boolean; pos: number; shortUrl: string; checklists?: RawChecklist[] };
-type RawList = { id: string; name: string; closed: boolean };
-type Board = { lists: RawList[]; cards: RawCard[] };
-
-function boardId(rec: Recording): string {
-  const call = rec.find((c) => /^\/boards\/[^/]+$/.test(c.path));
-  if (!call) throw new Error('recording has no board call');
-  return call.path.split('/')[2]!;
-}
-
-function part<T>(rec: Recording, suffix: string): T {
-  const call = rec.find((c) => c.method === 'GET' && c.path.endsWith(suffix));
-  if (!call) throw new Error(`recording has no ${suffix} call`);
-  return call.body as T;
-}
-
-/** The captured Profiles and System boards, editable before the fake is seeded. */
-function setup(edit: (b: { profiles: Board; system: Board }) => void = () => {}) {
-  const profiles = load('profiles');
-  const system = load('system');
-  const view = (rec: Recording): Board => ({ lists: part(rec, '/lists'), cards: part(rec, '/cards/open') });
-  edit({ profiles: view(profiles), system: view(system) });
-  const fake = FakeTrello.fromRecordings(profiles, system);
-  const boards: UserBoards = { jobs: 'fa4e00000000000000000fff', profiles: boardId(profiles), system: boardId(system) };
+/** The sample Profiles and System boards, editable before the fake is seeded. */
+async function setup(edit: (b: Boards) => void = () => {}) {
+  const b: Boards = structuredClone({ profiles: LAYOUT.profiles, system: LAYOUT.system });
+  edit(b);
+  const fake = new FakeTrello();
+  const boards: UserBoards = { jobs: 'fa4e00000000000000000fff', profiles: await seedLayout(fake, b.profiles), system: await seedLayout(fake, b.system) };
+  fake.requests = [];
   const api = scopeUserBoards(createTrelloClient({ key: 'k', token: 't', fetchImpl: fake.fetch, sleep: async () => {} }), boards);
   return { fake, api, boards };
 }
 
-const listNamed = (b: Board, name: string) => b.lists.find((l) => l.name === name)!;
-const cardIn = (b: Board, list: string, name: string) =>
-  b.cards.find((c) => c.name === name && c.idList === listNamed(b, list).id)!;
+const cardIn = (b: BoardLayout, list: string, name: string) => b.lists.find((l) => l.name === list)!.cards.find((c) => c.name === name)!;
+const settingsOf = (b: Boards) => cardIn(b.system, 'Config', 'Settings');
 
-let nextId = 0xf00;
-function cloneCard(card: RawCard, changes: Partial<RawCard> = {}): RawCard {
-  const id = `fa4e${(nextId++).toString(16).padStart(20, '0')}`;
-  return { ...structuredClone(card), id, shortUrl: `https://trello.com/c/test${nextId}`, checklists: [], ...changes };
-}
-
-async function problemsOf(s: ReturnType<typeof setup>): Promise<ConfigProblem[]> {
+async function problemsOf(s: Awaited<ReturnType<typeof setup>>): Promise<ConfigProblem[]> {
   try {
     await readUserConfig(s.api, s.boards);
   } catch (e) {
@@ -63,112 +36,33 @@ async function problemsOf(s: ReturnType<typeof setup>): Promise<ConfigProblem[]>
   assert.fail('expected ConfigInvalid');
 }
 
-test('reads the captured sample boards', async () => {
-  const s = setup();
+test('reads the sample boards: Settings, Sources and the free-text Profiles board', async () => {
+  const s = await setup();
   const config = await readUserConfig(s.api, s.boards);
-
-  assert.deepEqual(config.profiles.map((p) => [p.name, p.active]), [['Content editor', true], ['Copywriter', false]]);
+  assert.deepEqual(config.board.profiles.map((p) => [p.name, p.active]), [['Content editor', true], ['Copywriter', false]]);
+  assert.deepEqual(config.board.dealBreakers.map((c) => c.key), ['where', 'contract', 'languages', 'never']);
   assert.match(config.sharedCv, /^# Alex Example/);
+  assert.equal(config.sharedCv, config.board.cv);
   assert.equal(config.personalDetails.length, 5);
-  const editor = config.profiles[0]!;
-  assert.ok(editor.rubric.startsWith('Prefer Berlin or remote roles.'));
-  assert.match(editor.rubric, /\n\nScore 0-10 how well a job fits a content editor/);
-  assert.deepEqual(editor.searchKeywords, ['content editor', 'redakteur', 'content manager']);
-  assert.deepEqual(editor.filters.excludeTitles, [{ pattern: 'senior|lead', note: 'too senior for now' }]);
-  assert.deepEqual(editor.filters.excludeCompanies, [{ company: 'Example Staffing GmbH', reason: 'agency' }]);
-  assert.equal(editor.cv, undefined);
   assert.deepEqual(config.settings.providers, ['claude', 'gemini']);
   assert.equal(config.settings.timezone, 'Europe/Berlin');
   assert.equal(config.sources.add[0]!.name, 'Example GmbH');
   assert.deepEqual(config.sources.drop, ['Old Example AG']);
-  assert.equal(config.preferences?.years_experience, 3);
-  assert.ok(!config.profiles.some((p) => p.name === 'Old profile' || p.name === 'Originals'));
+  assert.ok(!config.board.profiles.some((p) => p.name === 'Old profile' || p.name === 'Originals'));
   assert.ok(!JSON.stringify(config).includes('(original)'));
   assert.equal(s.fake.requests.length, 4);
 });
 
-test('fixed titles match with stray spaces and other case', async () => {
-  const s = setup(({ profiles }) => {
-    cardIn(profiles, 'Content editor', 'Rubric').name = ' rubric ';
-    cardIn(profiles, 'Shared', 'Personal details').name = 'PERSONAL DETAILS';
-    cardIn(profiles, 'Content editor', 'Filters').checklists![1]!.name = ' exclude TITLES ';
-  });
-  const config = await readUserConfig(s.api, s.boards);
-  assert.match(config.profiles[0]!.rubric, /content editor/);
-  assert.equal(config.personalDetails.length, 5);
-  assert.equal(config.profiles[0]!.filters.excludeTitles.length, 1);
-});
-
-test('ticked checklist items still count', async () => {
-  const s = setup(({ profiles }) => {
-    for (const item of cardIn(profiles, 'Content editor', 'Search keywords').checklists![0]!.checkItems) item.state = 'complete';
-  });
-  const config = await readUserConfig(s.api, s.boards);
-  assert.equal(config.profiles[0]!.searchKeywords.length, 3);
-});
-
-test('a card in an archived list is ignored', async () => {
-  const s = setup(({ profiles }) => {
-    const old = listNamed(profiles, 'Old profile');
-    profiles.cards.push(cloneCard(cardIn(profiles, 'Shared', 'CV'), { idList: old.id, desc: 'stale CV' }));
-    // Counted, this archived second Shared column would give two Rubric basics cards.
-    profiles.lists.push({ ...old, id: 'fa4e00000000000000000ffe', name: 'Shared', closed: true });
-    profiles.cards.push(cloneCard(cardIn(profiles, 'Shared', 'Rubric basics'), { idList: 'fa4e00000000000000000ffe' }));
-  });
-  const config = await readUserConfig(s.api, s.boards);
-  assert.match(config.sharedCv, /^# Alex Example/);
-  assert.deepEqual(config.profiles.map((p) => p.name), ['Content editor', 'Copywriter']);
-});
-
-test('two Rubric cards in one column is a problem naming the column', async () => {
-  let urls: string[] = [];
-  const s = setup(({ profiles }) => {
-    const rubric = cardIn(profiles, 'Content editor', 'Rubric');
-    const copy = cloneCard(rubric, { name: 'Rubric ' });
-    profiles.cards.push(copy);
-    urls = [rubric.shortUrl, copy.shortUrl];
-  });
+test('Settings with locations: a problem on the Settings card naming the key', async () => {
+  const s = await setup((b) => { settingsOf(b).desc = '```yaml\nproviders: [gemini]\nlocations: []\n```'; });
   const problems = await problemsOf(s);
   assert.equal(problems.length, 1);
-  const p = problems[0]!;
-  assert.equal(p.where, 'Profiles › Content editor › Rubric');
-  assert.match(p.message, /Content editor/);
-  for (const u of urls) assert.ok(p.message.includes(u), `message names ${u}`);
-});
-
-test('unknown Filters checklist "Exclude Title" is a problem on the Filters card', async () => {
-  const s = setup(({ profiles }) => {
-    cardIn(profiles, 'Content editor', 'Filters').checklists![1]!.name = 'Exclude Title';
-  });
-  const problems = await problemsOf(s);
-  assert.equal(problems.length, 1);
-  assert.equal(problems[0]!.where, 'Profiles › Content editor › Filters');
-  assert.equal(problems[0]!.card?.name, 'Filters');
-  assert.match(problems[0]!.message, /"Exclude Title"/);
-});
-
-test('invalid regex in Exclude titles points to the Filters card and quotes the pattern', async () => {
-  let filtersId = '';
-  const s = setup(({ profiles }) => {
-    const filters = cardIn(profiles, 'Content editor', 'Filters');
-    filtersId = filters.id;
-    const items = filters.checklists![1]!.checkItems;
-    items.push({ ...items[0]!, id: 'fa4e00000000000000000ffd', name: 'junior (assistant — broken', pos: 99999 });
-  });
-  const problems = await problemsOf(s);
-  assert.equal(problems.length, 1);
-  const p = problems[0]!;
-  assert.equal(p.where, 'Profiles › Content editor › Filters');
-  assert.equal(p.card?.id, filtersId);
-  assert.match(p.message, /Exclude titles/);
-  assert.ok(p.message.includes('"junior (assistant"'), p.message);
+  assert.equal(problems[0]!.where, 'System › Settings');
+  assert.match(problems[0]!.message, /'locations'/);
 });
 
 test('bad timezone points to the Settings card', async () => {
-  const s = setup(({ system }) => {
-    const settings = system.cards.find((c) => c.name === 'Settings')!;
-    settings.desc = settings.desc.replace('Europe/Berlin', 'Europe/Atlantis');
-  });
+  const s = await setup((b) => { settingsOf(b).desc = settingsOf(b).desc.replace('Europe/Berlin', 'Europe/Atlantis'); });
   const problems = await problemsOf(s);
   assert.equal(problems.length, 1);
   assert.equal(problems[0]!.where, 'System › Settings');
@@ -177,53 +71,15 @@ test('bad timezone points to the Settings card', async () => {
 });
 
 test('Settings without a YAML block is a problem', async () => {
-  const s = setup(({ system }) => {
-    system.cards.find((c) => c.name === 'Settings')!.desc = 'timezone: Europe/Berlin';
-  });
+  const s = await setup((b) => { settingsOf(b).desc = 'timezone: Europe/Berlin'; });
   const problems = await problemsOf(s);
   assert.equal(problems.length, 1);
   assert.equal(problems[0]!.where, 'System › Settings');
   assert.match(problems[0]!.message, /yaml/i);
 });
 
-test('a Profile card without a YAML block is inactive; broken YAML is a problem', async () => {
-  const quiet = setup(({ profiles }) => {
-    cardIn(profiles, 'Copywriter', 'Profile').desc = 'No block here.';
-  });
-  assert.equal((await readUserConfig(quiet.api, quiet.boards)).profiles[1]!.active, false);
-
-  const broken = setup(({ profiles }) => {
-    cardIn(profiles, 'Copywriter', 'Profile').desc = '```yaml\nactive: [true\n```';
-  });
-  const problems = await problemsOf(broken);
-  assert.equal(problems.length, 1);
-  assert.equal(problems[0]!.where, 'Profiles › Copywriter › Profile');
-});
-
-test('missing Personal details card is a problem', async () => {
-  const s = setup(({ profiles }) => {
-    profiles.cards.splice(profiles.cards.indexOf(cardIn(profiles, 'Shared', 'Personal details')), 1);
-  });
-  const problems = await problemsOf(s);
-  assert.equal(problems.length, 1);
-  assert.equal(problems[0]!.where, 'Profiles › Shared');
-  assert.match(problems[0]!.message, /Personal details/);
-});
-
-test('missing required cards in a profile column are each a problem', async () => {
-  const s = setup(({ profiles }) => {
-    for (const name of ['Search keywords', 'Filters']) {
-      profiles.cards.splice(profiles.cards.indexOf(cardIn(profiles, 'Copywriter', name)), 1);
-    }
-  });
-  const problems = await problemsOf(s);
-  assert.deepEqual(problems.map((p) => p.where), ['Profiles › Copywriter', 'Profiles › Copywriter']);
-});
-
 test('unknown Sources checklist "Add company" is a problem on the Sources card', async () => {
-  const s = setup(({ system }) => {
-    cardIn(system, 'Config', 'Sources').checklists![0]!.name = 'Add company';
-  });
+  const s = await setup((b) => { cardIn(b.system, 'Config', 'Sources').checklists![0]!.name = 'Add company'; });
   const problems = await problemsOf(s);
   assert.equal(problems.length, 1);
   assert.equal(problems[0]!.where, 'System › Sources');
@@ -232,69 +88,40 @@ test('unknown Sources checklist "Add company" is a problem on the Sources card',
 });
 
 test('no Sources card means nothing added or dropped', async () => {
-  const s = setup(({ system }) => {
-    system.cards.splice(system.cards.findIndex((c) => c.name === 'Sources'), 1);
+  const s = await setup((b) => {
+    const config = b.system.lists.find((l) => l.name === 'Config')!;
+    config.cards = config.cards.filter((c) => c.name !== 'Sources');
   });
   assert.deepEqual((await readUserConfig(s.api, s.boards)).sources, { add: [], drop: [] });
 });
 
-test('several problems are reported together', async () => {
-  const s = setup(({ profiles, system }) => {
-    const settings = system.cards.find((c) => c.name === 'Settings')!;
-    settings.desc = settings.desc.replace('providers: [claude, gemini]', 'providers: []');
-    cardIn(profiles, 'Content editor', 'Filters').checklists![4]!.checkItems[0]!.name = '(berlin';
+test('System and Profiles board problems are reported together, each with its card', async () => {
+  const s = await setup((b) => {
+    settingsOf(b).desc = settingsOf(b).desc.replace('providers: [claude, gemini]', 'providers: []');
+    cardIn(b.system, 'Config', 'Sources').checklists![0]!.items[0] = 'No url here';
+    cardIn(b.profiles, 'Content editor', 'My dream job').desc = '_Describe it in a few sentences: role, kind of company, what it does, pay, team._';
   });
   const problems = await problemsOf(s);
-  assert.deepEqual(problems.map((p) => p.where).sort(), ['Profiles › Content editor › Filters', 'System › Settings']);
-});
-
-test('every problem has a card url when a card exists', async () => {
-  const s = setup(({ profiles, system }) => {
-    system.cards.find((c) => c.name === 'Settings')!.desc = '```yaml\nproviders: [x]\nlocations: [berlin]\nscoring_cap: -1\n```';
-    cardIn(profiles, 'Shared', 'Preferences').desc = '```yaml\nyears_experience: -2\n```';
-    cardIn(profiles, 'Content editor', 'Filters').checklists![0]!.name = 'Include title';
-    cardIn(system, 'Config', 'Sources').checklists![0]!.checkItems[0]!.name = 'No url here';
-    profiles.cards.splice(profiles.cards.indexOf(cardIn(profiles, 'Copywriter', 'Rubric')), 1);
-  });
-  const problems = await problemsOf(s);
-  assert.equal(problems.length, 5);
-  for (const p of problems) {
-    if (p.where === 'Profiles › Copywriter') {
-      assert.equal(p.card, undefined);
-      continue;
-    }
-    assert.match(p.card?.url ?? '', /^https:\/\/trello\.com\/c\//, `${p.where}: ${p.message}`);
-  }
-});
-
-test('readUserConfig works through scopeUserBoards', async () => {
-  const { fake, boards } = setup();
-  const inner = createTrelloClient({ key: 'k', token: 't', fetchImpl: fake.fetch, sleep: async () => {} });
-  const api = scopeUserBoards(inner, boards);
-  const config = await readUserConfig(api, boards);
-  assert.ok(config.profiles.length > 0, 'at least one profile loaded');
+  assert.deepEqual(problems.map((p) => p.where), ['System › Settings', 'System › Sources', 'Profiles › Content editor › My dream job']);
+  for (const p of problems) assert.match(p.card?.url ?? '', /^https:\/\/trello\.com\/c\//, `${p.where}: ${p.message}`);
 });
 
 test('readSettings returns Settings and throws ConfigInvalid naming the card', async () => {
-  const s = setup();
+  const s = await setup();
   const settings = await readSettings(s.api, s.boards);
   assert.deepEqual(settings.providers, ['claude', 'gemini']);
   assert.deepEqual(settings.allowed_members, ['samplebot']);
   assert.equal(settings.caps.model_per_day, 30);
   assert.ok(s.fake.requests.every((r) => r.path.includes(s.boards.system)), 'reads only the System board');
 
-  const broken = setup(({ system }) => {
-    system.cards.find((c) => c.name === 'Settings')!.desc = '```yaml\nproviders: [x\n```';
-  });
+  const broken = await setup((b) => { settingsOf(b).desc = '```yaml\nproviders: [x\n```'; });
   const e = await readSettings(broken.api, broken.boards).catch((x: unknown) => x);
   assert.ok(e instanceof ConfigInvalid, `expected ConfigInvalid, got ${String(e)}`);
   assert.equal(e.problems.length, 1);
   assert.equal(e.problems[0]!.where, 'System › Settings');
   assert.match(e.problems[0]!.card!.url, /^https:\/\/trello\.com\//);
 
-  const invalid = setup(({ system }) => {
-    system.cards.find((c) => c.name === 'Settings')!.desc = '```yaml\nproviders: [x]\nlocations: [berlin]\nscoring_cap: -1\n```';
-  });
+  const invalid = await setup((b) => { settingsOf(b).desc = '```yaml\nproviders: [x]\nscoring_cap: -1\n```'; });
   const e2 = await readSettings(invalid.api, invalid.boards).catch((x: unknown) => x);
   assert.ok(e2 instanceof ConfigInvalid);
   assert.deepEqual(e2.problems.map((p) => p.where), ['System › Settings']);

@@ -11,7 +11,7 @@ test('catalogue has exactly the spec rows', () => {
     ['cv_tips', 'cv', 'advisor', 'auto'],
     ['job_deep_dive', 'deep', 'researcher+advisor', 'auto'],
     ['company_research', 'company', 'researcher', 'auto'],
-    ['explain_filter', 'why', 'code', 'auto'],
+    ['explain_filter', 'why', 'reader', 'auto'],
     ['record_feedback', 'feedback', 'code', 'confirm'],
     ['show_last_run', 'last', 'code', 'auto'],
     ['start_run', 'run', 'code', 'confirm'],

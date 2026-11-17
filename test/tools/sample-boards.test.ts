@@ -187,15 +187,19 @@ test('scrub removes usernames, url, shortLink and background images', () => {
   assert.equal(body.shortUrl, 'https://trello.com/c/sample001');
 });
 
-test('the layout\'s YAML blocks pass the config schemas, and the Jobs board needs two pages', async () => {
+test('the layout\'s Settings pass the schema, its Profiles board is the free-text sample, and the Jobs board needs two pages', async () => {
   const { LAYOUT, cardCount } = await import('../../tools/sample/layout.ts');
-  const { parseYamlBlock, SettingsSchema, ProfileMetaSchema, PreferencesSchema } = await import('../../src/config/schema.ts');
-  const card = (board: 'profiles' | 'system', list: string, name: string) =>
-    LAYOUT[board].lists.find((l) => l.name === list)!.cards.find((c) => c.name === name)!.desc;
-  SettingsSchema.parse(parseYamlBlock(card('system', 'Config', 'Settings')));
-  PreferencesSchema.parse(parseYamlBlock(card('profiles', 'Shared', 'Preferences')));
-  assert.equal(ProfileMetaSchema.parse(parseYamlBlock(card('profiles', 'Content editor', 'Profile'))).active, true);
-  assert.equal(ProfileMetaSchema.parse(parseYamlBlock(card('profiles', 'Copywriter', 'Profile'))).active, false);
+  const { SAMPLE_PROFILES } = await import('../../tools/sample/profiles.ts');
+  const { parseYamlBlock, SettingsSchema } = await import('../../src/config/schema.ts');
+  const settings = LAYOUT.system.lists.find((l) => l.name === 'Config')!.cards.find((c) => c.name === 'Settings')!.desc;
+  SettingsSchema.parse(parseYamlBlock(settings));
+  const names = (b: typeof LAYOUT.profiles) => b.lists.map((l) => [l.name, l.cards.map((c) => c.name)]);
+  const editor = SAMPLE_PROFILES.lists.find((l) => l.name === 'Content editor')!;
+  assert.deepEqual(names(LAYOUT.profiles), [
+    ...names(SAMPLE_PROFILES).map(([n, cards]) => (n === 'Content editor' ? [n, [...editor.cards.map((c) => c.name), 'Feedback', 'My notes']] : [n, cards])),
+    ['Old profile', ['Active']],
+  ]);
+  assert.equal(LAYOUT.profiles.lists.at(-1)!.closed, true);
   assert.equal(cardCount(LAYOUT.jobs), 1062);
 });
 

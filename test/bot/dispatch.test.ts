@@ -22,6 +22,7 @@ import { FakeTrello } from '../support/fake-trello.ts';
 import { commentWebhook } from '../support/webhook.ts';
 import { fakeModel } from '../support/fake-model.ts';
 import type { Recording } from '../../tools/sample/scrub.ts';
+import { useSampleConfig } from '../support/seed-layout.ts';
 
 const DIR = join(import.meta.dirname, '..', 'fixtures', 'trello');
 const load = (name: string): Recording =>
@@ -30,10 +31,7 @@ const load = (name: string): Recording =>
 const BOARDS: UserBoards = { jobs: 'fa4e00000000000000000005', profiles: 'fa4e0000000000000000000c', system: 'fa4e0000000000000000000d' };
 const JOB_CARD = 'fa4e00000000000000000012';
 const SETTINGS_CARD = 'fa4e00000000000000000476';
-const PERSONAL_DETAILS_CARD = 'fa4e00000000000000000444';
-const PERSONAL_DETAILS_CHECKLIST = 'fa4e00000000000000000445';
 const RUNS_LIST = 'fa4e0000000000000000047f';
-const FEEDBACK_CARD = 'fa4e00000000000000000461';
 const USER_A: TMember = { id: 'fa4e0000000000000000a001', username: 'usera' };
 const NOW = new Date('2026-11-12T12:00:00.000Z');
 const SECRET = 'tok-sample-secret-0123456789';
@@ -43,8 +41,9 @@ const newId = () => `fa4e${(nextId++).toString(16).padStart(20, '0')}`;
 
 function setup() {
   const fake = FakeTrello.fromRecordings(load('jobs'), load('profiles'), load('system'));
+  useSampleConfig(fake, BOARDS);
   fake.setNow(NOW);
-  fake.setCardDesc(SETTINGS_CARD, '```yaml\nproviders: [claude]\nlocations: [berlin]\nallowed_members: [usera]\n```');
+  fake.setCardDesc(SETTINGS_CARD, '```yaml\nproviders: [claude]\nallowed_members: [usera]\n```');
   const raw = createTrelloClient({ key: 'k', token: 't', fetchImpl: fake.fetch, sleep: async () => {} });
   const api = scopeUserBoards(raw, BOARDS);
   const logs: string[] = [];
@@ -56,7 +55,9 @@ function setup() {
     net: { fetchJd: async () => null, checkOpen: async () => ({ verdict: 'unknown', reason: 'test' }) },
     env: { TRELLO_TOKEN: SECRET },
   };
-  return { fake, raw, api, deps, logs, starts, starter };
+  const detailsCard = fake.openCardId(BOARDS.profiles, 'Personal details', 'About me');
+  const feedbackCard = fake.openCardId(BOARDS.profiles, 'Feedback', 'Content editor');
+  return { fake, raw, api, deps, logs, starts, starter, detailsCard, feedbackCard };
 }
 
 type S = ReturnType<typeof setup>;
@@ -193,7 +194,7 @@ test('a public board → privacy refusal naming no board, no handler called', as
 test('a public board and a broken config → the privacy refusal, not the config one', async () => {
   const s = await ready(setup());
   s.fake.setBoardPermissionLevel(BOARDS.jobs, 'public');
-  await s.raw.setCardClosed(PERSONAL_DETAILS_CARD, true);
+  await s.raw.setCardClosed(s.detailsCard, true);
   const { posted } = await say(s, '@samplebot run');
   assert.equal(posted.length, 1);
   assert.equal(body(posted[0]!), NOT_PRIVATE);
@@ -238,7 +239,7 @@ test('a yes over the cap says the proposal is closed and runs nothing', async ()
 
 test('a Personal details card missing → the constant config reply, nothing else', async () => {
   const s = await ready(setup());
-  await s.raw.setCardClosed(PERSONAL_DETAILS_CARD, true);
+  await s.raw.setCardClosed(s.detailsCard, true);
   const { posted } = await say(s, '@samplebot run');
   assert.deepEqual(s.starts, []);
   assert.equal(posted.length, 1);
@@ -268,7 +269,7 @@ test('/bot yes confirms like @samplebot yes; a custom keyword from Settings repl
   assert.equal(body(posted[0]!), '@usera Confirmed: run.');
 
   const c = await ready(setup());
-  c.fake.setCardDesc(SETTINGS_CARD, '```yaml\nproviders: [claude]\nlocations: [berlin]\nallowed_members: [usera]\nbot_keyword: /jobs\n```');
+  c.fake.setCardDesc(SETTINGS_CARD, '```yaml\nproviders: [claude]\nallowed_members: [usera]\nbot_keyword: /jobs\n```');
   propose(c, newId());
   assert.deepEqual((await say(c, '/bot no')).posted, [], '/bot is not the keyword any more');
   assert.equal(c.logs.filter((l) => l.endsWith(': no mention')).length, 1);
@@ -284,7 +285,7 @@ test('feedback static verb: direct @samplebot feedback posts at once with class 
   assert.equal(posted.length, 1);
   assert.equal(markerOf(posted[0]!).cls, 'static');
   assert.match(body(posted[0]!), /Recorded on/);
-  assert.equal(s.fake.commentsOn(FEEDBACK_CARD).length, 1);
+  assert.equal(s.fake.commentsOn(s.feedbackCard).length, 1);
 });
 
 test('yes on a record_feedback proposal posts it once', async () => {
@@ -300,7 +301,7 @@ test('yes on a record_feedback proposal posts it once', async () => {
   assert.equal(body(posted[0]!), '@usera Confirmed: feedback.');
   assert.deepEqual(markerOf(posted[1]!), { actionId: a.id, cls: 'refusal' });
   assert.match(body(posted[1]!), /Recorded on/);
-  assert.equal(s.fake.commentsOn(FEEDBACK_CARD).length, 1);
+  assert.equal(s.fake.commentsOn(s.feedbackCard).length, 1);
 });
 
 test('two yes comments queued back to back start one run', async () => {
@@ -615,7 +616,7 @@ test('an uncounted result is posted as refusal and does not count', async () => 
 
 test('a reply that fails masking posts the constant line, counted', async () => {
   const s = await ready(setup());
-  await s.raw.addCheckItem(PERSONAL_DETAILS_CHECKLIST, '[USER]', false);
+  s.fake.setCardDesc(s.detailsCard, `${(await s.raw.card(s.detailsCard)).desc}\n[USER]`);
   const restore = withHandler('explain_fit', async () => ({ text: 'about [US\u200BER]' }));
   try {
     const { posted } = await say(s, '@samplebot fit');
