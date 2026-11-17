@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MARKER_PREFIX, botMarkers, formatMarker, parseMarker } from '../../src/bot/marker.ts';
+import { MARKER_PREFIX, botMarkers, formatCont, formatMarker, parseMarker } from '../../src/bot/marker.ts';
 import type { ReplyMarker } from '../../src/bot/marker.ts';
 import type { TComment } from '../../src/trello/api.ts';
 
@@ -77,4 +77,10 @@ test('botMarkers ignores a user comment that ends with a valid marker line', () 
   assert.equal(found[0]!.comment, bot);
   assert.equal(found[0]!.actionId, OTHER);
   assert.equal(found[0]!.resolves, ID);
+});
+
+test('a continuation line names the action and is never parsed as a marker', () => {
+  const id = '5f2b6c1e9d3a4b7c8e1f0a2b';
+  assert.equal(formatCont(id), `career-cards-reply-cont: ${id}`);
+  assert.equal(parseMarker(`part two\n\n${formatCont(id)}`), null);
 });

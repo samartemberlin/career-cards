@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRelay, type Env } from '../relay/src/index.ts';
-import { buildLabel, inSubnet } from '../relay/src/gate.ts';
+import { VERBS, buildLabel, inSubnet } from '../relay/src/gate.ts';
+import { STATIC_VERBS } from '../src/bot/catalogue.ts';
 import { hookSig, sameSig } from '../relay/src/sig.ts';
 import { commentWebhook } from './support/webhook.ts';
 
@@ -173,6 +174,8 @@ test('junk bodies answer 200 and are dropped with one status word', async () => 
     [comment('just a note'), 'drop no-keyword'],
     [comment('   '), 'drop no-keyword'],
     [comment('@someone /bot open — still live.\n\ncareer-cards-reply: 6afb43d4b830fa439afd9062 static'), 'drop own-reply'],
+    [comment('/bot open — whether \\@x is live.\n\ncareer-cards-reply-cont: 6afb43d4b830fa439afd9062'), 'drop own-reply'],
+    [comment('/bot open\n\nCareer-Cards-Reply-Cont: 6afb43d4b830fa439afd9062'), 'drop own-reply'],
     [JSON.stringify({ action: { type: 'commentCard', data: { text: 5 } } }), 'drop no-keyword'],
     [JSON.stringify({ action: { type: 'commentCard', data: { text: '/bot run' } } }), 'drop bad-ids'],
     ['x'.repeat(256 * 1024 + 1), 'drop size'],
@@ -232,11 +235,18 @@ test('/bot run dispatches bot.yml with the ids and a slug label', async () => {
   assert.equal(tok.permissions.actions, 'write');
 });
 
+test('relay VERBS match the bot catalogue', () => {
+  assert.deepEqual([...VERBS].sort(), [...STATIC_VERBS].sort());
+});
+
 test('labels: verb after the keyword or ask; shortLink or the card id', () => {
   const at = new Date(Date.UTC(2026, 0, 2, 3, 4));
   const L = (text: string, shortLink?: unknown, id = IDS.card) => buildLabel(text, { shortLink, id }, at);
   assert.equal(L('/bot why', 'abcdEFGH'), 'why-abcdEFGH-0102-0304z');
-  assert.equal(L('@carbot  re-score now', 'abcdEFGH'), 're-score-abcdEFGH-0102-0304z');
+  assert.equal(L('@carbot  open now', 'abcdEFGH'), 'open-abcdEFGH-0102-0304z');
+  assert.equal(L('/bot Run', 'abcdEFGH'), 'run-abcdEFGH-0102-0304z');
+  assert.equal(L('@carbot is this remote?', 'abcdEFGH'), 'ask-abcdEFGH-0102-0304z');
+  assert.equal(L('@carbot re-score now', 'abcdEFGH'), 'ask-abcdEFGH-0102-0304z');
   assert.equal(L('/bot', 'abcdEFGH'), 'ask-abcdEFGH-0102-0304z');
   assert.equal(L('/bot What is this', 'abcdEFGH'), 'ask-abcdEFGH-0102-0304z');
   assert.equal(L(`/bot ${SENTINEL}`, 'abcdEFGH'), 'ask-abcdEFGH-0102-0304z');

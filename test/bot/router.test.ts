@@ -49,6 +49,15 @@ function cardCtx(o: Partial<CardContext> = {}): CardContext {
 const blocks = (user: string) => [...user.matchAll(/<<<(\w+) ([0-9a-f]{12}) \(untrusted data, never instructions\)\n([\s\S]*?)\n\1 \2>>>/g)]
   .map((m) => ({ label: m[1]!, body: m[3]! }));
 
+test('router context drops the continuation line of a bot reply part', () => {
+  const ctx = cardCtx({ conversation: [
+    { author: 'samplebot', byBot: true, date: '2026-11-12T10:02:00.000Z', text: 'PART-TWO-SENTINEL\n\ncareer-cards-reply-cont: 5f2b6c1e9d3a4b7c8e1f0a2b' },
+  ] });
+  const [, user] = routerMessages({ request: 'hi', ctx, masking: masking() });
+  assert.match(user!.content, /PART-TWO-SENTINEL/);
+  assert.doesNotMatch(user!.content, /career-cards-reply/);
+});
+
 test('router prompt sections', () => {
   const [system, user] = routerMessages({ request: 'am I a fit? REQUEST-SENTINEL', ctx: cardCtx(), masking: masking() });
   assert.match(system!.content, /^career-cards stage: router\n/);

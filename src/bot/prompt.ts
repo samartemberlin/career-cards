@@ -10,7 +10,7 @@ import type { CardContext, JobFields } from './context.ts';
 import { z } from 'zod';
 import { CATALOGUE, COMPANY_TOPICS, FEEDBACK_MAX, REPLY_MAX } from './catalogue.ts';
 import type { ActionSpec } from './catalogue.ts';
-import { MARKER_PREFIX } from './marker.ts';
+import { CONT_PREFIX, MARKER_PREFIX } from './marker.ts';
 import { oneLine } from './stages/call.ts';
 import { RESEARCH_TOPICS, isResearchInput } from './stages/research-input.ts';
 import type { ResearchInput, ResearchTopic } from './stages/research-input.ts';
@@ -157,7 +157,7 @@ export function routerMessages(input: RouterInput): Message[] {
   const { ctx } = input;
   const cardMask = ctx.board === 'profiles' ? m.all : m.details;
   const conversation = ctx.conversation.map((c) => {
-    const text = c.byBot ? c.text.split('\n').filter((l) => !l.trim().startsWith(MARKER_PREFIX)).join('\n') : c.text;
+    const text = c.byBot ? c.text.split('\n').filter((l) => !l.trim().startsWith(MARKER_PREFIX) && !l.trim().startsWith(CONT_PREFIX)).join('\n') : c.text;
     return `${c.date} ${c.author}${c.byBot ? BOT_LINE : ''}: ${oneLine(text)}`;
   });
   const card = [`Board: ${ctx.board}`, `List: ${ctx.card.list}`, `Name: ${ctx.card.name}`, '', ctx.card.desc].join('\n');
