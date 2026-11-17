@@ -539,3 +539,18 @@ test('dry run without a provider key stops like a real run', async () => {
   assert.match(out.report, /no scoring provider/);
   assert.equal(t.scans.length, 0);
 });
+
+test('stats.models and stats.tokens include the compile call', async () => {
+  const t = await setup();
+  const out = await run(t.deps);
+  assert.equal(out.state, 'ok');
+  // The compile step runs once and contributes tokens (fakeLlm returns total_tokens=10 per call).
+  // After the fix, compile model is counted in stats.models and tokens in stats.tokens.
+  const totalKeys = Object.keys(out.stats.models);
+  assert.ok(totalKeys.length > 0, 'stats.models must not be empty after a run with compile');
+  // fakeLlm returns total_tokens=10 for the compile call; scoring adds more tokens.
+  assert.ok(out.stats.tokens >= 10, `stats.tokens ${out.stats.tokens} should include compile tokens`);
+  // Verify model call count: 3 scoring results + 1 compile = at least 4 model calls tracked
+  const totalCalls = Object.values(out.stats.models).reduce((a, b) => a + b, 0);
+  assert.ok(totalCalls >= 4, `expected at least 4 model calls (3 scoring + 1 compile), got ${totalCalls}`);
+});

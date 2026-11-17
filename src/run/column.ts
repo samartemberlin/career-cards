@@ -4,7 +4,8 @@ import { createJobCard, createLabelResolver, archiveCards } from '../trello/writ
 import type { ScoredJob } from '../trello/writer.ts';
 import { jobLabels, isRunColumnName, RUN_SUMMARY_PREFIX } from '../trello/cards.ts';
 import { isGuardError } from '../trello/scoped.ts';
-import { topRules } from './status.ts';
+import { dropLines } from './status.ts';
+import { readingText } from '../compile/reading.ts';
 import type { RunStats } from './stats.ts';
 
 const ARCHIVE_CHUNK = 50;
@@ -26,10 +27,9 @@ export function summaryDesc(s: RunStats): string {
     `**Filtered:** ${filtered(s)}`,
     `**Deferred:** ${deferred(s)} (picked up by the next run)`,
   ];
-  const top = topRules(s.rules, 5);
-  if (top.length) {
-    lines.push('', '**Top rules:**', ...top.map(([r, n]) => `- ${r}: ${n}`));
-  }
+  const drops = dropLines(s);
+  if (drops.length) lines.push('', '**Dropped jobs**', ...drops);
+  if (s.reading) lines.push('', '**How this run read your search**', readingText(s.reading));
   lines.push('', 'Full status: this run\'s card in System › Runs');
   return lines.join('\n');
 }

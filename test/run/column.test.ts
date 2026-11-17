@@ -7,6 +7,7 @@ import {
 } from '../../src/run/column.ts';
 import { emptyStats } from '../../src/run/stats.ts';
 import type { RunStats } from '../../src/run/stats.ts';
+import type { CardReading } from '../../src/compile/reading.ts';
 import { parseJobKey, parseTitleScore, isRunSummaryTitle } from '../../src/trello/cards.ts';
 import { createTrelloClient } from '../../src/trello/client.ts';
 import { scopeUserBoards, ScopeError } from '../../src/trello/scoped.ts';
@@ -71,15 +72,42 @@ test('summaryDesc has no key line and points to System › Runs', () => {
   const desc = summaryDesc(stats());
   assert.equal(parseJobKey(desc), null);
   assert.ok(desc.includes('Full status: this run\'s card in System › Runs'));
-  assert.ok(desc.includes('EXCLUDE_TITLE: 300'));
+  // EXCLUDE_TITLE has no RULE_TEXT entry, so it shows as the rule id in the drop line.
+  assert.ok(desc.includes('Dropped 300: EXCLUDE_TITLE'));
   assert.ok(desc.includes('**Scanned:** 900'));
 });
 
-test('summaryDesc lists at most 5 rules, most frequent first', () => {
+test('summaryDesc shows drop lines in count-desc order (default 6 rules)', () => {
   const rules = { A: 1, B: 7, C: 3, D: 9, E: 2, F: 5 };
   const desc = summaryDesc(stats({ rules }));
-  const listed = [...desc.matchAll(/^- (\w+): \d+$/gm)].map((m) => m[1]);
-  assert.deepEqual(listed, ['D', 'B', 'F', 'C', 'E']);
+  // Top rules block is replaced by Dropped lines (default 6 rules, no Top rules heading).
+  assert.ok(!desc.includes('Top rules'), 'old Top rules block must not appear');
+  const listed = [...desc.matchAll(/^Dropped \d+: (\w+)$/gm)].map((m) => m[1]);
+  assert.deepEqual(listed, ['D', 'B', 'F', 'C', 'E', 'A']);
+});
+
+test('summaryDesc: drop lines replace top rules; reading section appears with Not used', () => {
+  const reading: CardReading[] = [{
+    card: 'Where & how I work',
+    hardRules: ['Keep jobs located in: Berlin'],
+    scoring: [],
+    unused: [{ text: 'Prefer small companies', reason: 'not a filter' }],
+  }];
+  const s = stats({
+    reading,
+    rules: { PLACE_NOT_KEPT: 20, TITLE_EXCLUDED: 10 },
+  });
+  s.ruleExamples = {
+    PLACE_NOT_KEPT: Object.assign(Object.create(null) as Record<string, number>, { 'Zürich, Switzerland': 12, 'Remote (EMEA)': 8 }),
+    TITLE_EXCLUDED: Object.assign(Object.create(null) as Record<string, number>, {}),
+  };
+  const desc = summaryDesc(s);
+  assert.ok(!desc.includes('Top rules'), 'old Top rules block must not appear');
+  assert.ok(desc.includes('**Dropped jobs**'), 'drop heading present');
+  assert.ok(desc.includes('Dropped 20: location not in your places — Zürich, Switzerland 12, Remote (EMEA) 8'));
+  assert.ok(desc.includes('**How this run read your search**'), 'reading heading present');
+  assert.ok(desc.includes('Not used:'), 'unused entry from reading appears');
+  assert.ok(desc.includes("Full status: this run's card in System › Runs"), 'last line unchanged');
 });
 
 // ── column position ───────────────────────────────────────────────────────

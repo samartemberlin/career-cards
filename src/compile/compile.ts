@@ -86,7 +86,7 @@ export async function compileCards(input: CompileInput, o: {
       const problems = unusable(compiled, input.profiles.map((p) => p.name));
       if (problems.length) throw new CompileFailed(problems);
       const u = r.usage;
-      return { compiled, model: r.model, tokens: u.total_tokens ?? (u.prompt_tokens ?? 0) + (u.completion_tokens ?? 0) };
+      return { compiled, model: `${r.provider}:${r.model}`, tokens: u.total_tokens ?? (u.prompt_tokens ?? 0) + (u.completion_tokens ?? 0) };
     } catch (e) {
       if (o.signal?.aborted) throw o.signal.reason;
       if (!(e instanceof QuotaExhausted || e instanceof StageOutputInvalid)) throw e;

@@ -1,5 +1,7 @@
 import type { TCard, TList, BotApi } from '../trello/api.ts';
 import { DESC_LIMIT } from '../trello/cards.ts';
+import { readingText } from '../compile/reading.ts';
+import { RULE_TEXT } from '../compile/filter.ts';
 import type { RunState, RunTrigger, RunStats } from './stats.ts';
 
 export const RUNS_LIST = 'Runs';
@@ -60,6 +62,21 @@ export function topRules(rules: Record<string, number>, n: number): [string, num
     .slice(0, n);
 }
 
+/** Drop lines for the status cards: most-frequent rule first, with example evidence.
+ *  Defaults: 6 rules, 4 examples. Rule ids not in RULE_TEXT show as-is. */
+export function dropLines(s: RunStats, o: { rules?: number; examples?: number } = {}): string[] {
+  const maxRules = o.rules ?? 6;
+  const maxExamples = o.examples ?? 4;
+  return topRules(s.rules, maxRules).map(([id, count]) => {
+    const label = RULE_TEXT[id] ?? id;
+    const exMap = s.ruleExamples[id] ?? {};
+    // Stable sort: Object.entries preserves insertion order; Array.sort is stable in Node 24.
+    const exEntries = Object.entries(exMap).sort((a, b) => b[1] - a[1]).slice(0, maxExamples);
+    const exPart = exEntries.length ? ` — ${exEntries.map(([ex, c]) => `${ex} ${c}`).join(', ')}` : '';
+    return `Dropped ${count}: ${label}${exPart}`;
+  });
+}
+
 function buildCountLines(v: StatusView): string[] {
   const s = v.stats;
   if (!s) return [];
@@ -114,10 +131,10 @@ function buildCountLines(v: StatusView): string[] {
   return lines;
 }
 
-/** Card description with counts, source errors, problems, warnings, log excerpt, and the contract line.
+/** Card description with counts, reading, drop lines, source errors, problems, warnings, log and the contract line.
  *  Always ends with the contract line `career-cards-run: <ISO> <state>`, under Trello's DESC_LIMIT: when over, the
- *  log excerpt is cut first, then the source errors, then warnings and last problems, each list ending with
- *  "… and N more". */
+ *  log excerpt is cut first, then the reading is clipped (never below 1,500 chars), then source errors, warnings and
+ *  last problems, each list ending with "… and N more". Failed runs with no reading show no reading section. */
 export function statusDesc(v: StatusView): string {
   const contract = `career-cards-run: ${v.start.toISOString()} ${v.state}`;
   const CONTRACT_SEP = '\n\n';
@@ -125,6 +142,18 @@ export function statusDesc(v: StatusView): string {
 
   const countLines = buildCountLines(v);
   const r = v.redact ?? ((s: string) => s);
+
+  // Reading and drop sections go after count lines. Null reading (failed compile) → no section.
+  const reading = v.stats?.reading ?? null;
+  const fullReadingText = reading ? readingText(reading) : '';
+  const drops = v.stats ? dropLines(v.stats) : [];
+  function buildReadingPart(rt: string): string {
+    const parts: string[] = [];
+    if (rt) parts.push(`**How this run read your search**\n${rt}`);
+    if (drops.length) parts.push(`**Dropped jobs**\n${drops.join('\n')}`);
+    return parts.join('\n\n');
+  }
+  const fullReadingPart = buildReadingPart(fullReadingText);
 
   // Source-error text can contain provider URLs with keys in the query string — redact the full line.
   const allErrLines = (v.stats?.sourceErrors ?? []).map((e) => r(`${e.company}: ${e.error}`));
@@ -139,15 +168,12 @@ export function statusDesc(v: StatusView): string {
     .slice(-40)
     .map((l) => (l.length > 200 ? l.slice(0, 199) + '…' : l));
 
-  function buildBody(errLines: string[], logLines: string[], keepProblems: number, keepWarnings: number): string {
+  function buildBody(readingPart: string, errLines: string[], logLines: string[], keepProblems: number, keepWarnings: number): string {
     const parts = [...countLines];
-    if (errLines.length) {
-      parts.push('', `Source errors (${errLines.length}):`, ...errLines);
-    }
+    if (readingPart) parts.push('', readingPart);
+    if (errLines.length) parts.push('', `Source errors (${errLines.length}):`, ...errLines);
     parts.push(...section('Problems:', problems, keepProblems), ...section('Warnings:', warnings, keepWarnings));
-    if (logLines.length) {
-      parts.push('', `Log (last ${logLines.length} lines):`, ...logLines);
-    }
+    if (logLines.length) parts.push('', `Log (last ${logLines.length} lines):`, ...logLines);
     // Every field is redacted where it is built; this pass also covers fields added later.
     return r(parts.join('\n'));
   }
@@ -167,24 +193,35 @@ export function statusDesc(v: StatusView): string {
   const P = problems.length;
   const W = warnings.length;
 
-  let body = buildBody(allErrLines, rawLogLines, P, W);
+  let body = buildBody(fullReadingPart, allErrLines, rawLogLines, P, W);
   if (fits(body)) return done(body);
 
   for (let n = rawLogLines.length - 1; n >= 0; n--) {
-    body = buildBody(allErrLines, n > 0 ? rawLogLines.slice(-n) : [], P, W);
+    body = buildBody(fullReadingPart, allErrLines, n > 0 ? rawLogLines.slice(-n) : [], P, W);
     if (fits(body)) return done(body);
   }
 
-  const errs = largest(allErrLines.length, (k) => fits(buildBody(allErrLines.slice(0, k), [], P, W)));
-  body = buildBody(allErrLines.slice(0, errs), [], P, W);
+  // Log is gone. Clip reading text (never below 1,500 chars), then proceed with the existing cuts.
+  const MIN_READING = 1500;
+  let clippedReadingPart = fullReadingPart;
+  if (reading && fullReadingText.length > MIN_READING) {
+    const extra = fullReadingText.length - MIN_READING;
+    const k = largest(extra, (n) => fits(buildBody(buildReadingPart(readingText(reading, { max: MIN_READING + n })), allErrLines, [], P, W)));
+    clippedReadingPart = buildReadingPart(readingText(reading, { max: MIN_READING + k }));
+    body = buildBody(clippedReadingPart, allErrLines, [], P, W);
+    if (fits(body)) return done(body);
+  }
+
+  const errs = largest(allErrLines.length, (k) => fits(buildBody(clippedReadingPart, allErrLines.slice(0, k), [], P, W)));
+  body = buildBody(clippedReadingPart, allErrLines.slice(0, errs), [], P, W);
   if (fits(body)) return done(body);
 
-  const keepW = largest(W, (k) => fits(buildBody([], [], P, k)));
-  body = buildBody([], [], P, keepW);
+  const keepW = largest(W, (k) => fits(buildBody(clippedReadingPart, [], [], P, k)));
+  body = buildBody(clippedReadingPart, [], [], P, keepW);
   if (fits(body)) return done(body);
 
-  const keepP = largest(P, (k) => fits(buildBody([], [], k, 0)));
-  return done(clip(buildBody([], [], keepP, 0), budget));
+  const keepP = largest(P, (k) => fits(buildBody(clippedReadingPart, [], [], k, 0)));
+  return done(clip(buildBody(clippedReadingPart, [], [], keepP, 0), budget));
 }
 
 /** Parses the status and start time from the last line of a status card description.

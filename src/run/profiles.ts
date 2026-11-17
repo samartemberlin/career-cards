@@ -65,9 +65,9 @@ export function botRubric(cfg: UserConfig): string {
 export async function compileUser(cfg: UserConfig, o: {
   llm: LlmConfig; call?: CallOpts; log: (s: string) => void; deadline?: number; signal?: AbortSignal;
   attempts?: number; pauseMs?: number;
-}): Promise<{ compiled: Compiled; reading: CardReading[]; filter: (job: Job) => string | null; rubric: string; preferences: Preferences }> {
+}): Promise<{ compiled: Compiled; reading: CardReading[]; filter: (job: Job) => string | null; rubric: string; preferences: Preferences; model: string; tokens: number }> {
   const input = compileInputOf(cfg);
-  const { compiled } = await compileCards(input, { ...o, masker: buildMasker(cfg.personalDetails) });
+  const { compiled, model, tokens } = await compileCards(input, { ...o, masker: buildMasker(cfg.personalDetails) });
   const names = activeProfileNames(cfg);
   const text = scoringTextOf(cfg);
   return {
@@ -76,5 +76,7 @@ export async function compileUser(cfg: UserConfig, o: {
     filter: compiledFilter(compiled, names),
     rubric: buildRubric(compiled, text, names),
     preferences: preferencesOf(compiled),
+    model,
+    tokens,
   };
 }

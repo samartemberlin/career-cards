@@ -277,6 +277,8 @@ export async function runOnce(deps: RunDeps, opts: RunOpts): Promise<RunOutcome>
       throw e;
     }
     stats.reading = rules.reading;
+    stats.models[rules.model] = (stats.models[rules.model] ?? 0) + 1;
+    stats.tokens += rules.tokens;
     for (const line of readingText(rules.reading).split('\n')) if (line) log(`reading: ${line}`);
 
     const index = await loadJobIndex(api, deps.boards.jobs);
