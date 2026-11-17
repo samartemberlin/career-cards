@@ -21,13 +21,16 @@ export function isRemote(location: string): boolean {
 export function normEmployment(raw: string | undefined): (typeof EMPLOYMENT)[number] | null {
   if (!raw) return null;
   const f = fold(raw.trim()).replace(/[\s\-]+/g, '_');
-  if (f === 'full_time' || f === 'full' || f.includes('vollzeit')) return 'full_time';
-  if (f === 'part_time' || f === 'part' || f.includes('teilzeit')) return 'part_time';
-  if (f === 'contract' || f === 'contractor' || f.includes('befristet')) return 'contract';
-  if (f === 'internship' || f.includes('intern') || f.includes('praktik')) return 'internship';
-  if (f === 'temporary') return 'temporary';
-  if (f === 'freelance' || f.includes('freiberuf')) return 'freelance';
-  return null;
+  const matched = new Set<(typeof EMPLOYMENT)[number]>();
+  if (f === 'full_time' || f === 'full' || f.includes('vollzeit')) matched.add('full_time');
+  if (f === 'part_time' || f === 'part' || f.includes('teilzeit')) matched.add('part_time');
+  if (f === 'contract' || f === 'contractor' || f.includes('befristet')) matched.add('contract');
+  if (f === 'internship' || f.includes('intern') || f.includes('praktik')) matched.add('internship');
+  if (f === 'temporary') matched.add('temporary');
+  if (f === 'freelance' || f.includes('freiberuf')) matched.add('freelance');
+  // Two or more types in one value → ambiguous, treat as unknown to avoid a wrong rejection.
+  if (matched.size !== 1) return null;
+  return [...matched][0]!;
 }
 
 /** `null` when some active profile accepts the job; else `RULE_ID: "evidence"` (first profile's reason). */

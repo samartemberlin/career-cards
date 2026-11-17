@@ -157,6 +157,19 @@ test('normEmployment: unknown string → null', () => {
   assert.equal(normEmployment('something_else'), null);
 });
 
+test('normEmployment: "Vollzeit, Teilzeit" (comma-combined) → null', () => {
+  assert.equal(normEmployment('Vollzeit, Teilzeit'), null);
+});
+
+test('normEmployment: "Vollzeit/Teilzeit" (slash-combined) → null', () => {
+  assert.equal(normEmployment('Vollzeit/Teilzeit'), null);
+});
+
+test('passes: employment.keep part_time + "Vollzeit, Teilzeit" → ambiguous, not rejected', () => {
+  const c = compiled({ employment: { keep: ['part_time'] } });
+  assert.equal(filter(c)(job({ employment_type: 'Vollzeit, Teilzeit' })), null);
+});
+
 // RULE_TEXT
 test('RULE_TEXT: PLACE_NOT_KEPT is exactly correct', () => {
   assert.equal(RULE_TEXT['PLACE_NOT_KEPT'], 'location not in your places');
